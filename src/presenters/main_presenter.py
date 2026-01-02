@@ -851,6 +851,11 @@ class MainPresenter(QObject):
         from PyQt6.QtWidgets import QMessageBox
         
         if analysis_type == "fisher":
+            # Prepare HTML fragments outside f-string to avoid backslash issues
+            sig_span = '<span style="color: green;">Significant</span>'
+            not_sig_span = '<span style="color: red;">Not significant</span>'
+            result_text = sig_span if result['significant'] else not_sig_span
+            
             message = (
                 f"<h3>Fisher's Exact Test Result</h3>"
                 f"<p><b>P-value:</b> {result['pvalue']:.4e}</p>"
@@ -858,7 +863,7 @@ class MainPresenter(QObject):
                 f"<p><b>Significant genes in list:</b> {result['in_list_significant']} / {result['in_list_total']}</p>"
                 f"<p><b>Total significant genes:</b> {result['dataset_significant']} / {result['dataset_total']}</p>"
                 f"<p><b>Enrichment fold:</b> {result['enrichment_fold']:.2f}</p>"
-                f"<p><b>Result:</b> {'<span style=\"color: green;\">Significant</span>' if result['significant'] else '<span style=\"color: red;\">Not significant</span>'}</p>"
+                f"<p><b>Result:</b> {result_text}</p>"
             )
             
             if log_file_path:
