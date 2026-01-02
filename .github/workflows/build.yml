@@ -34,7 +34,7 @@ jobs:
           Compress-Archive -Path "dist\CMG-SeqViewer" -DestinationPath "CMG-SeqViewer-Windows.zip"
       
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: CMG-SeqViewer-Windows
           path: CMG-SeqViewer-Windows.zip
@@ -85,7 +85,7 @@ jobs:
                          CMG-SeqViewer-macOS.dmg
       
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: CMG-SeqViewer-macOS
           path: CMG-SeqViewer-macOS.dmg
@@ -96,12 +96,12 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Download Windows artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: CMG-SeqViewer-Windows
       
       - name: Download macOS artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: CMG-SeqViewer-macOS
       
