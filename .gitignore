@@ -29,7 +29,7 @@ MANIFEST
 
 # PyInstaller
 *.manifest
-*.spec
+# *.spec  # Commented out - we need .spec files for building
 
 # Installer logs
 pip-log.txt
