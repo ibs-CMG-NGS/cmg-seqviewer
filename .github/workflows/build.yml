@@ -1,0 +1,117 @@
+name: Build CMG-SeqViewer
+
+on:
+  push:
+    tags:
+      - 'v*'  # v1.0.0 같은 태그 푸시 시 실행
+  workflow_dispatch:  # 수동 실행 가능
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller pillow
+      
+      - name: Create icon
+        run: python create_icon.py
+      
+      - name: Build executable
+        run: |
+          pyinstaller --clean --noconfirm rna-seq-viewer.spec
+      
+      - name: Create ZIP archive
+        run: |
+          Compress-Archive -Path "dist\CMG-SeqViewer" -DestinationPath "CMG-SeqViewer-Windows.zip"
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: CMG-SeqViewer-Windows
+          path: CMG-SeqViewer-Windows.zip
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip3 install -r requirements.txt
+          pip3 install pyinstaller pillow
+      
+      - name: Create icon (PNG)
+        run: python3 create_icon.py
+      
+      - name: Convert icon to ICNS
+        run: |
+          mkdir cmg-seqviewer.iconset
+          sips -z 16 16     cmg-seqviewer.png --out cmg-seqviewer.iconset/icon_16x16.png
+          sips -z 32 32     cmg-seqviewer.png --out cmg-seqviewer.iconset/icon_16x16@2x.png
+          sips -z 32 32     cmg-seqviewer.png --out cmg-seqviewer.iconset/icon_32x32.png
+          sips -z 64 64     cmg-seqviewer.png --out cmg-seqviewer.iconset/icon_32x32@2x.png
+          sips -z 128 128   cmg-seqviewer.png --out cmg-seqviewer.iconset/icon_128x128.png
+          sips -z 256 256   cmg-seqviewer.png --out cmg-seqviewer.iconset/icon_128x128@2x.png
+          sips -z 256 256   cmg-seqviewer.png --out cmg-seqviewer.iconset/icon_256x256.png
+          sips -z 512 512   cmg-seqviewer.png --out cmg-seqviewer.iconset/icon_256x256@2x.png
+          sips -z 512 512   cmg-seqviewer.png --out cmg-seqviewer.iconset/icon_512x512.png
+          sips -z 1024 1024 cmg-seqviewer.png --out cmg-seqviewer.iconset/icon_512x512@2x.png
+          iconutil -c icns cmg-seqviewer.iconset
+          rm -rf cmg-seqviewer.iconset
+      
+      - name: Build executable
+        run: |
+          pyinstaller --clean --noconfirm cmg-seqviewer-macos.spec
+      
+      - name: Create DMG
+        run: |
+          hdiutil create -volname "CMG-SeqViewer" \
+                         -srcfolder dist/CMG-SeqViewer.app \
+                         -ov -format UDZO \
+                         CMG-SeqViewer-macOS.dmg
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: CMG-SeqViewer-macOS
+          path: CMG-SeqViewer-macOS.dmg
+
+  create-release:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: CMG-SeqViewer-Windows
+      
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: CMG-SeqViewer-macOS
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            CMG-SeqViewer-Windows.zip
+            CMG-SeqViewer-macOS.dmg
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

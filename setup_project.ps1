@@ -1,0 +1,1 @@
+New-Item -ItemType Directory -Path "c:\Users\USER\Documents\GitHub\rna-seq-go-data-view"

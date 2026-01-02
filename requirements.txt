@@ -1,0 +1,36 @@
+# Python Dependencies for CMG-SeqViewer
+
+# Core
+python>=3.9
+
+# GUI Framework
+PyQt6>=6.4.0
+PyQt6-Qt6>=6.4.0
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+openpyxl>=3.1.0  # Excel file support
+xlrd>=2.0.0      # Legacy Excel support
+pyarrow>=11.0.0  # Parquet file support for database
+
+# Statistical Analysis
+scipy>=1.10.0
+scikit-learn>=1.3.0  # Machine learning library for clustering
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+matplotlib-venn>=0.11.0  # Venn diagrams
+upsetplot>=0.8.0         # UpSet plots
+networkx>=3.6.1         # Network graphs
+
+# Utilities
+python-dateutil>=2.8.0
+
+# Development (optional)
+pytest>=7.3.0
+pytest-qt>=4.2.0
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.3.0
