@@ -12,10 +12,28 @@ Architecture:
 """
 
 import sys
+import os
 import atexit
 import logging
+
+# PyInstaller 빌드 환경에서 src 경로 설정
+if getattr(sys, 'frozen', False):
+    # PyInstaller로 빌드된 경우
+    application_path = sys._MEIPASS
+    src_path = os.path.join(application_path, 'src')
+else:
+    # 일반 Python 실행
+    application_path = os.path.dirname(os.path.abspath(__file__))
+    src_path = application_path
+
+# src를 Python path에 추가
+if src_path not in sys.path:
+    sys.path.insert(0, src_path)
+
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
+
+# 이제 상대 import 사용 가능
 from gui.main_window import MainWindow
 from core.logger import setup_logger
 
