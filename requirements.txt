@@ -1,7 +1,5 @@
 # Python Dependencies for CMG-SeqViewer
-
-# Core
-python>=3.9
+# Requires: Python 3.9 or higher
 
 # GUI Framework
 PyQt6>=6.4.0
