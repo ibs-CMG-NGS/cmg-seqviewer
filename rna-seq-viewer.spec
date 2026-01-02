@@ -1,14 +1,23 @@
 # -*- mode: python ; coding: utf-8 -*-
+import sys
+from pathlib import Path
+
+# Add src to path
+src_path = str(Path('.').resolve() / 'src')
+if src_path not in sys.path:
+    sys.path.insert(0, src_path)
 
 block_cipher = None
 
 a = Analysis(
     ['src/main.py'],
-    pathex=[],
+    pathex=['src'],  # Add src to Python path
     binaries=[],
     datas=[
         # Pre-loaded datasets 포함
         ('database', 'database'),  # database 폴더 전체를 배포판에 포함
+        # Include entire src package
+        ('src', 'src'),
     ],
     hiddenimports=[
         # PyQt6
@@ -16,10 +25,13 @@ a = Analysis(
         'PyQt6.QtCore',
         'PyQt6.QtGui',
         'PyQt6.QtWidgets',
-        # Application modules
-        'src',
-        'src.main',
-        'src.gui',
+        # Core modules - explicit imports
+        'gui',
+        'core',
+        'models',
+        'presenters',
+        'utils',
+        'workers',
         'src.gui.main_window',
         'src.gui.filter_panel',
         'src.gui.dataset_manager',
