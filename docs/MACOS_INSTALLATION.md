@@ -6,8 +6,36 @@
 
 1. Go to [Releases](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
 2. Download `CMG-SeqViewer-macOS.dmg`
-3. Double-click the DMG file
-4. Drag `CMG-SeqViewer.app` to your Applications folder
+3. Double-click the DMG file to mount it
+4. **Drag `CMG-SeqViewer.app` to the `Applications` folder** (shortcut visible in DMG window)
+   - If you don't see an Applications shortcut, manually copy to `/Applications`
+
+#### If DMG only shows the app icon (v1.0.3 and earlier):
+
+**Temporary workaround** until v1.0.5 is released:
+
+```bash
+# 1. Mount the DMG (double-click or use command)
+hdiutil attach ~/Downloads/CMG-SeqViewer-macOS.dmg
+
+# 2. Copy app to Applications
+sudo cp -R "/Volumes/CMG-SeqViewer/CMG-SeqViewer.app" /Applications/
+
+# 3. Unmount DMG
+hdiutil detach /Volumes/CMG-SeqViewer
+
+# 4. Remove quarantine
+xattr -cr /Applications/CMG-SeqViewer.app
+```
+
+Or simply run from the mounted DMG:
+```bash
+# Remove quarantine from mounted app
+xattr -cr "/Volumes/CMG-SeqViewer/CMG-SeqViewer.app"
+
+# Run directly
+open "/Volumes/CMG-SeqViewer/CMG-SeqViewer.app"
+```
 
 ---
 

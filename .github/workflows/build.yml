@@ -94,15 +94,31 @@ jobs:
           # Test if app can be opened (check for basic errors)
           codesign --verify --verbose dist/CMG-SeqViewer.app || echo "⚠️  App is not signed (expected for open source)"
       
-      - name: Create DMG
+      - name: Create DMG with Applications symlink
         run: |
+          # Create temporary directory for DMG contents
+          mkdir -p dmg-temp
+          
+          # Copy app to temp directory
+          cp -R dist/CMG-SeqViewer.app dmg-temp/
+          
+          # Create symlink to Applications folder
+          ln -s /Applications dmg-temp/Applications
+          
+          # Create DMG from temp directory
           hdiutil create -volname "CMG-SeqViewer" \
-                         -srcfolder dist/CMG-SeqViewer.app \
+                         -srcfolder dmg-temp \
                          -ov -format UDZO \
                          CMG-SeqViewer-macOS.dmg
           
+          # Clean up temp directory
+          rm -rf dmg-temp
+          
           # Remove quarantine from DMG
           xattr -cr CMG-SeqViewer-macOS.dmg
+          
+          # Verify DMG was created
+          ls -lh CMG-SeqViewer-macOS.dmg
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4
