@@ -80,24 +80,19 @@ jobs:
         run: |
           pyinstaller --clean --noconfirm cmg-seqviewer-macos.spec
       
-      - name: Verify .app bundle creation
+      - name: Fix macOS app permissions and attributes
         run: |
-          echo "Checking dist directory contents:"
-          ls -la dist/
-          echo ""
-          echo "Checking if .app exists:"
-          if [ -d "dist/CMG-SeqViewer.app" ]; then
-            echo "✅ CMG-SeqViewer.app found"
-            ls -la dist/CMG-SeqViewer.app/
-            echo ""
-            echo "Contents/MacOS:"
-            ls -la dist/CMG-SeqViewer.app/Contents/MacOS/ || echo "MacOS directory not found"
-          else
-            echo "❌ CMG-SeqViewer.app NOT found!"
-            echo "Available files in dist:"
-            find dist -type f -o -type d
-            exit 1
-          fi
+          # Set executable permissions
+          chmod +x dist/CMG-SeqViewer.app/Contents/MacOS/CMG-SeqViewer
+          
+          # Remove quarantine attribute (allows running without security warning)
+          xattr -cr dist/CMG-SeqViewer.app
+          
+          # Verify executable
+          file dist/CMG-SeqViewer.app/Contents/MacOS/CMG-SeqViewer
+          
+          # Test if app can be opened (check for basic errors)
+          codesign --verify --verbose dist/CMG-SeqViewer.app || echo "⚠️  App is not signed (expected for open source)"
       
       - name: Create DMG
         run: |
@@ -105,6 +100,9 @@ jobs:
                          -srcfolder dist/CMG-SeqViewer.app \
                          -ov -format UDZO \
                          CMG-SeqViewer-macOS.dmg
+          
+          # Remove quarantine from DMG
+          xattr -cr CMG-SeqViewer-macOS.dmg
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4

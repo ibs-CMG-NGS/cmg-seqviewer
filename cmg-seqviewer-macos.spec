@@ -117,17 +117,17 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name='CMG-SeqViewer',
-    debug=False,
+    debug=True,  # Enable debug mode
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,  # macOS는 GUI 앱이므로 콘솔 숨김
+    console=True,  # Enable console to see error messages
     disable_windowed_traceback=False,
-    argv_emulation=False,
+    argv_emulation=True,  # Enable for macOS compatibility
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='cmg-seqviewer.icns',  # macOS는 .icns 형식 필요
+    icon='cmg-seqviewer.icns',
 )
 
 coll = COLLECT(
@@ -146,11 +146,23 @@ app = BUNDLE(
     coll,
     name='CMG-SeqViewer.app',
     icon='cmg-seqviewer.icns',
-    bundle_identifier='com.yourorg.cmgseqviewer',  # 고유 식별자로 변경 필요
-    version='1.0.0',
+    bundle_identifier='com.ibs.cmgseqviewer',
+    version='1.0.3',
     info_plist={
         'NSPrincipalClass': 'NSApplication',
         'NSAppleScriptEnabled': False,
+        'LSMinimumSystemVersion': '10.14.0',
+        'NSHighResolutionCapable': True,
+        'NSRequiresAquaSystemAppearance': False,
+        'CFBundleShortVersionString': '1.0.3',
+        'CFBundleVersion': '1.0.3',
+        'CFBundleName': 'CMG-SeqViewer',
+        'CFBundleDisplayName': 'CMG-SeqViewer',
+        'CFBundleExecutable': 'CMG-SeqViewer',
+        'CFBundlePackageType': 'APPL',
+        'CFBundleSignature': '????',
+        'LSApplicationCategoryType': 'public.app-category.education',
+        'NSHumanReadableCopyright': 'Copyright © 2025 IBS-CMG',
         'CFBundleDocumentTypes': [
             {
                 'CFBundleTypeName': 'Excel Files',
@@ -159,6 +171,5 @@ app = BUNDLE(
                 'LSHandlerRank': 'Alternate',
             }
         ],
-        'NSHighResolutionCapable': True,
     },
 )
