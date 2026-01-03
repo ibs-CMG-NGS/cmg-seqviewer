@@ -4,7 +4,22 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![PyQt6](https://img.shields.io/badge/PyQt-6-green.svg)](https://www.riverbankcomputing.com/software/pyqt/)
 
-## 📋 Overview
+## � System Requirements
+
+### Windows
+- **OS**: Windows 10 (64-bit) or later
+- **Architecture**: x64
+- **Memory**: 4GB RAM minimum, 8GB recommended
+
+### macOS
+- **OS**: macOS 10.13 High Sierra or later
+- **Architecture**: Intel (x86_64)
+- **Memory**: 4GB RAM minimum, 8GB recommended
+- **Note**: PyQt6 may require macOS 12.0+ on some systems. If you encounter compatibility issues, please check the [macOS Installation Guide](docs/MACOS_INSTALLATION.md).
+
+---
+
+## �📋 Overview
 
 **CMG-SeqViewer** is a comprehensive desktop application for RNA-Seq differential expression analysis and GO/KEGG pathway enrichment visualization. Built with Python and PyQt6, it provides an Excel-like interface for biologists to analyze genomic data without programming.
 

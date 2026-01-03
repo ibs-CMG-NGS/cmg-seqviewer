@@ -43,7 +43,7 @@ jobs:
           path: CMG-SeqViewer-Windows.zip
 
   build-macos:
-    runs-on: macos-latest
+    runs-on: macos-12  # Use macOS 12 Monterey for better compatibility
     steps:
       - uses: actions/checkout@v4
       

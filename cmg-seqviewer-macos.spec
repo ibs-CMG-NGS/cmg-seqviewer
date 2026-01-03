@@ -147,22 +147,22 @@ app = BUNDLE(
     name='CMG-SeqViewer.app',
     icon='cmg-seqviewer.icns',
     bundle_identifier='com.ibs.cmgseqviewer',
-    version='1.0.3',
+    version='1.0.7',
     info_plist={
         'NSPrincipalClass': 'NSApplication',
         'NSAppleScriptEnabled': False,
-        'LSMinimumSystemVersion': '10.14.0',
+        'LSMinimumSystemVersion': '10.13.0',  # macOS 10.13 High Sierra minimum
         'NSHighResolutionCapable': True,
         'NSRequiresAquaSystemAppearance': False,
-        'CFBundleShortVersionString': '1.0.3',
-        'CFBundleVersion': '1.0.3',
+        'CFBundleShortVersionString': '1.0.7',
+        'CFBundleVersion': '1.0.7',
         'CFBundleName': 'CMG-SeqViewer',
         'CFBundleDisplayName': 'CMG-SeqViewer',
         'CFBundleExecutable': 'CMG-SeqViewer',
         'CFBundlePackageType': 'APPL',
         'CFBundleSignature': '????',
         'LSApplicationCategoryType': 'public.app-category.education',
-        'NSHumanReadableCopyright': 'Copyright © 2025 IBS-CMG',
+        'NSHumanReadableCopyright': 'Copyright © 2025-2026 IBS-CMG',
         'CFBundleDocumentTypes': [
             {
                 'CFBundleTypeName': 'Excel Files',

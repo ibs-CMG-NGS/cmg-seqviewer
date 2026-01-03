@@ -1,6 +1,14 @@
 # macOS Installation & Troubleshooting Guide
 
-## 📦 Installation
+## � System Requirements
+
+- **Minimum**: macOS 10.13 High Sierra
+- **Recommended**: macOS 12.0 Monterey or later
+- **PyQt6 Note**: Some PyQt6 builds may require macOS 12.0+. If you encounter compatibility issues on older macOS versions, please report them on GitHub.
+
+---
+
+## �📦 Installation
 
 ### Method 1: Download from Releases (Recommended)
 

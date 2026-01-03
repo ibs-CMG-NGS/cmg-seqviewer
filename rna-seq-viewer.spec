@@ -127,6 +127,7 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon='cmg-seqviewer.ico',
+    version_file=None,  # Future: create version_info.txt for Windows metadata
 )
 
 coll = COLLECT(
