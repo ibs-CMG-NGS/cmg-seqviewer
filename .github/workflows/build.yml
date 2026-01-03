@@ -85,13 +85,37 @@ jobs:
           # Set executable permissions
           chmod +x dist/CMG-SeqViewer.app/Contents/MacOS/CMG-SeqViewer
           
-          # Remove quarantine attribute (allows running without security warning)
+          # Remove quarantine attribute
           xattr -cr dist/CMG-SeqViewer.app
           
-          # Verify executable
+          # Verify executable exists and is correct type
+          echo "🔍 Checking executable file:"
           file dist/CMG-SeqViewer.app/Contents/MacOS/CMG-SeqViewer
+          ls -lh dist/CMG-SeqViewer.app/Contents/MacOS/CMG-SeqViewer
           
-          # Test if app can be opened (check for basic errors)
+          # Check for dynamic library dependencies
+          echo ""
+          echo "🔍 Checking library dependencies:"
+          otool -L dist/CMG-SeqViewer.app/Contents/MacOS/CMG-SeqViewer | head -20
+          
+          # Verify it's not a broken symlink
+          echo ""
+          echo "🔍 Verifying file integrity:"
+          if [ -f "dist/CMG-SeqViewer.app/Contents/MacOS/CMG-SeqViewer" ]; then
+            echo "✅ Executable file exists"
+          else
+            echo "❌ Executable file NOT found!"
+            exit 1
+          fi
+          
+          # Test basic execution (should fail without display but show it's a valid binary)
+          echo ""
+          echo "🔍 Testing executable:"
+          dist/CMG-SeqViewer.app/Contents/MacOS/CMG-SeqViewer --version 2>&1 || echo "⚠️  Expected - no display available in CI"
+          
+          # Codesign verification
+          echo ""
+          echo "🔍 Code signature check:"
           codesign --verify --verbose dist/CMG-SeqViewer.app || echo "⚠️  App is not signed (expected for open source)"
       
       - name: Create DMG with Applications symlink

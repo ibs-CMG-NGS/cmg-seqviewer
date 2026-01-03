@@ -119,8 +119,8 @@ exe = EXE(
     name='CMG-SeqViewer',
     debug=True,  # Enable debug mode
     bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
+    strip=True,  # Strip symbols for smaller size
+    upx=False,  # Disable UPX - can cause issues on macOS
     console=True,  # Enable console to see error messages
     disable_windowed_traceback=False,
     argv_emulation=True,  # Enable for macOS compatibility
@@ -135,8 +135,8 @@ coll = COLLECT(
     a.binaries,
     a.zipfiles,
     a.datas,
-    strip=False,
-    upx=True,
+    strip=True,
+    upx=False,  # Disable UPX for better compatibility
     upx_exclude=[],
     name='CMG-SeqViewer',
 )
