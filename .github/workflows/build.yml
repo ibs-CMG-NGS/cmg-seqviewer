@@ -80,6 +80,25 @@ jobs:
         run: |
           pyinstaller --clean --noconfirm cmg-seqviewer-macos.spec
       
+      - name: Verify .app bundle creation
+        run: |
+          echo "Checking dist directory contents:"
+          ls -la dist/
+          echo ""
+          echo "Checking if .app exists:"
+          if [ -d "dist/CMG-SeqViewer.app" ]; then
+            echo "✅ CMG-SeqViewer.app found"
+            ls -la dist/CMG-SeqViewer.app/
+            echo ""
+            echo "Contents/MacOS:"
+            ls -la dist/CMG-SeqViewer.app/Contents/MacOS/ || echo "MacOS directory not found"
+          else
+            echo "❌ CMG-SeqViewer.app NOT found!"
+            echo "Available files in dist:"
+            find dist -type f -o -type d
+            exit 1
+          fi
+      
       - name: Create DMG
         run: |
           hdiutil create -volname "CMG-SeqViewer" \
