@@ -176,9 +176,9 @@ class MainWindow(QMainWindow):
         # 하단: 로그 터미널
         self.log_terminal = QTextEdit()
         self.log_terminal.setReadOnly(True)
-        self.log_terminal.setMinimumHeight(100)  # 최소 높이 보장
-        self.log_terminal.setMaximumHeight(200)  # 최대 높이 증가
-        self.log_terminal.setFont(QFont("Consolas", 9))
+        self.log_terminal.setMinimumHeight(180)  # 최소 높이 보장
+        self.log_terminal.setMaximumHeight(300)  # 최대 높이 증가
+        self.log_terminal.setFont(QFont("Consolas", 11))
         self.log_terminal.setStyleSheet("""
             QTextEdit {
                 background-color: #1e1e1e;

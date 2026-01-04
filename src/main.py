@@ -29,7 +29,15 @@ else:
 # src를 Python path에 추가
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
-
+ 
+# If running from a PyInstaller bundle, ensure working directory is set
+# to the bundle temp folder so relative resource lookups succeed when
+# the app is launched from Finder (not from terminal).
+if getattr(sys, 'frozen', False):
+    try:
+        os.chdir(application_path)
+    except Exception:
+        pass
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
 
