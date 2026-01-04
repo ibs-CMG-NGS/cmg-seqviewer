@@ -108,11 +108,6 @@ jobs:
             exit 1
           fi
           
-          # Test basic execution (should fail without display but show it's a valid binary)
-          echo ""
-          echo "🔍 Testing executable:"
-          dist/CMG-SeqViewer.app/Contents/MacOS/CMG-SeqViewer --version 2>&1 || echo "⚠️  Expected - no display available in CI"
-          
           # Codesign verification
           echo ""
           echo "🔍 Code signature check:"
