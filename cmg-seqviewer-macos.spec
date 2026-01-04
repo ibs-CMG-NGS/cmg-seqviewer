@@ -117,11 +117,11 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name='CMG-SeqViewer',
-    debug=True,  # Enable debug mode
+    debug=False,  # Disable debug for production
     bootloader_ignore_signals=False,
     strip=True,  # Strip symbols for smaller size
     upx=False,  # Disable UPX - can cause issues on macOS
-    console=True,  # Enable console to see error messages
+    console=False,  # GUI app - no console window
     disable_windowed_traceback=False,
     argv_emulation=True,  # Enable for macOS compatibility
     target_arch=None,
@@ -147,15 +147,15 @@ app = BUNDLE(
     name='CMG-SeqViewer.app',
     icon='cmg-seqviewer.icns',
     bundle_identifier='com.ibs.cmgseqviewer',
-    version='1.0.7',
+    version='1.0.8',
     info_plist={
         'NSPrincipalClass': 'NSApplication',
         'NSAppleScriptEnabled': False,
         'LSMinimumSystemVersion': '10.13.0',  # macOS 10.13 High Sierra minimum
         'NSHighResolutionCapable': True,
         'NSRequiresAquaSystemAppearance': False,
-        'CFBundleShortVersionString': '1.0.7',
-        'CFBundleVersion': '1.0.7',
+        'CFBundleShortVersionString': '1.0.8',
+        'CFBundleVersion': '1.0.8',
         'CFBundleName': 'CMG-SeqViewer',
         'CFBundleDisplayName': 'CMG-SeqViewer',
         'CFBundleExecutable': 'CMG-SeqViewer',
