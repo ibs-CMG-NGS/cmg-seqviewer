@@ -29,15 +29,19 @@ else:
 # src를 Python path에 추가
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
- 
-# If running from a PyInstaller bundle, ensure working directory is set
-# to the bundle temp folder so relative resource lookups succeed when
-# the app is launched from Finder (not from terminal).
+
+# If running from a PyInstaller bundle, ensure working directory and
+# environment are set correctly for Finder launches
 if getattr(sys, 'frozen', False):
     try:
+        # Set working directory to bundle location
         os.chdir(application_path)
-    except Exception:
+        # Also set environment variable for resource lookup
+        os.environ['RESOURCEPATH'] = application_path
+    except Exception as e:
+        print(f"Failed to set working directory: {e}")
         pass
+
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
 
@@ -87,6 +91,20 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("RNA-Seq Data Analyzer")
     app.setOrganizationName("RNA-Seq Analysis Team")
+    
+    # Force light theme for consistent UI across platforms
+    # macOS dark mode causes text visibility issues
+    app.setStyle('Fusion')
+    from PyQt6.QtGui import QPalette, QColor
+    palette = QPalette()
+    palette.setColor(QPalette.ColorRole.Window, QColor(240, 240, 240))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor(0, 0, 0))
+    palette.setColor(QPalette.ColorRole.Base, QColor(255, 255, 255))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor(245, 245, 245))
+    palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
+    palette.setColor(QPalette.ColorRole.Button, QColor(240, 240, 240))
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor(0, 0, 0))
+    app.setPalette(palette)
     
     # 메인 윈도우 생성 및 표시
     main_window = MainWindow()

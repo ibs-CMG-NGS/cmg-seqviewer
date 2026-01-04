@@ -8,7 +8,8 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QSplitter, QTabWidget, QTableWidget, QTableWidgetItem,
                             QTextEdit, QMenuBar, QMenu, QToolBar, QStatusBar,
                             QLabel, QPushButton, QFileDialog, QMessageBox,
-                            QProgressBar, QInputDialog, QLineEdit, QHeaderView)
+                            QProgressBar, QInputDialog, QLineEdit, QHeaderView,
+                            QSizePolicy)
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 from PyQt6.QtGui import QAction, QIcon, QFont, QActionGroup
 import logging
@@ -171,13 +172,17 @@ class MainWindow(QMainWindow):
         self.main_splitter.setStretchFactor(0, 30)
         self.main_splitter.setStretchFactor(1, 70)
         
-        main_layout.addWidget(self.main_splitter, stretch=1)
+        # Main splitter는 확장 가능, 로그는 고정 높이
+        main_layout.addWidget(self.main_splitter, stretch=100)
         
-        # 하단: 로그 터미널
+        # 하단: 로그 터미널 (고정 높이, 축소되지 않음)
         self.log_terminal = QTextEdit()
         self.log_terminal.setReadOnly(True)
-        self.log_terminal.setMinimumHeight(180)  # 최소 높이 보장
-        self.log_terminal.setMaximumHeight(300)  # 최대 높이 증가
+        self.log_terminal.setMinimumHeight(200)  # 최소 높이 보장
+        self.log_terminal.setMaximumHeight(250)  # 최대 높이
+        self.log_terminal.setSizePolicy(
+            QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        )
         self.log_terminal.setFont(QFont("Consolas", 11))
         self.log_terminal.setStyleSheet("""
             QTextEdit {
