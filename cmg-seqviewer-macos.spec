@@ -128,6 +128,8 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon='cmg-seqviewer.icns',
+    # Add runtime options for proper app bundle execution
+    bootloader_version='5.0',
 )
 
 coll = COLLECT(
@@ -147,15 +149,15 @@ app = BUNDLE(
     name='CMG-SeqViewer.app',
     icon='cmg-seqviewer.icns',
     bundle_identifier='com.ibs.cmgseqviewer',
-    version='1.0.8',
+    version='1.0.9',
     info_plist={
         'NSPrincipalClass': 'NSApplication',
         'NSAppleScriptEnabled': False,
         'LSMinimumSystemVersion': '10.13.0',  # macOS 10.13 High Sierra minimum
         'NSHighResolutionCapable': True,
         'NSRequiresAquaSystemAppearance': False,
-        'CFBundleShortVersionString': '1.0.8',
-        'CFBundleVersion': '1.0.8',
+        'CFBundleShortVersionString': '1.0.9',
+        'CFBundleVersion': '1.0.9',
         'CFBundleName': 'CMG-SeqViewer',
         'CFBundleDisplayName': 'CMG-SeqViewer',
         'CFBundleExecutable': 'CMG-SeqViewer',
@@ -163,6 +165,10 @@ app = BUNDLE(
         'CFBundleSignature': '????',
         'LSApplicationCategoryType': 'public.app-category.education',
         'NSHumanReadableCopyright': 'Copyright © 2025-2026 IBS-CMG',
+        # Fix for Finder launch issues
+        'LSEnvironment': {
+            'LC_CTYPE': 'UTF-8',
+        },
         'CFBundleDocumentTypes': [
             {
                 'CFBundleTypeName': 'Excel Files',
