@@ -98,25 +98,26 @@ class ComparisonPanel(QWidget):
         options_group.setLayout(options_layout)
         layout.addWidget(options_group)
         
-        # === 실행 버튼 ===
-        self.compare_btn = QPushButton("Start Comparison")
+        # === 실행 버튼 (나중에 main_window에서 Apply Filter와 함께 배치됨) ===
+        # 버튼만 생성하고 layout에 추가하지 않음 (main_window에서 처리)
+        self.compare_btn = QPushButton("▶ Start Comparison")
         self.compare_btn.setStyleSheet("""
             QPushButton {
-                background-color: #4CAF50;
+                background-color: #2196F3;
                 color: white;
-                padding: 8px;
+                padding: 10px;
                 font-weight: bold;
-                border-radius: 4px;
+                font-size: 11pt;
+                border-radius: 5px;
             }
             QPushButton:hover {
-                background-color: #45a049;
+                background-color: #0b7dda;
             }
             QPushButton:disabled {
                 background-color: #cccccc;
             }
         """)
         self.compare_btn.clicked.connect(self._on_compare_clicked)
-        layout.addWidget(self.compare_btn)
         
         # === 상태 표시 ===
         self.status_label = QLabel("Ready")

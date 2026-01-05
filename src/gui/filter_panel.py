@@ -251,7 +251,8 @@ class FilterPanel(QWidget):
         # Tab Widget 추가
         layout.addWidget(self.filter_tabs)
         
-        # === Apply Filter 버튼 ===
+        # === Apply Filter 버튼 (나중에 main_window에서 비교 버튼과 함께 배치됨) ===
+        # 버튼만 생성하고 layout에 추가하지 않음 (main_window에서 처리)
         self.apply_filter_btn = QPushButton("🔍 Apply Filter")
         self.apply_filter_btn.setStyleSheet("""
             QPushButton {
@@ -267,7 +268,6 @@ class FilterPanel(QWidget):
             }
         """)
         self.apply_filter_btn.clicked.connect(self.filter_requested.emit)
-        layout.addWidget(self.apply_filter_btn)
         
         # Stretch
         layout.addStretch()

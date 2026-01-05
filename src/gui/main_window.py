@@ -94,7 +94,7 @@ class MainWindow(QMainWindow):
         # GUI 초기화
         self._init_ui()
         self._create_menu_bar()
-        self._create_tool_bar()
+        # self._create_tool_bar()  # 툴바 제거 (세로 공간 절약)
         self._create_status_bar()
         
         # UI 설정 복원
@@ -112,6 +112,7 @@ class MainWindow(QMainWindow):
         """UI 구성 요소 초기화"""
         self.setWindowTitle("CMG-SeqViewer")
         self.setGeometry(100, 100, 1400, 900)
+        self.setMinimumSize(1280, 720)  # 최소 창 크기 설정
         
         # Window Icon 설정
         self._set_window_icon()
@@ -138,6 +139,7 @@ class MainWindow(QMainWindow):
         
         # 좌측 패널 컨테이너 (필터 + 비교 기능)
         left_panel = QWidget()
+        left_panel.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)  # 가로: 필요한 만큼, 세로: 확장
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(5)
@@ -153,10 +155,18 @@ class MainWindow(QMainWindow):
         self.comparison_panel.compare_requested.connect(self._on_comparison_requested)
         left_layout.addWidget(self.comparison_panel)
         
+        # === 실행 버튼 레이아웃 (Apply Filter + Start Comparison) ===
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(5)
+        button_layout.addWidget(self.filter_panel.apply_filter_btn)
+        button_layout.addWidget(self.comparison_panel.compare_btn)
+        left_layout.addLayout(button_layout)
+        
         self.main_splitter.addWidget(left_panel)
         
-        # 우측: 데이터 뷰 (탭)
+        # 우측: 데이터 뷰 (탭) - 주로 확장되도록 설정
         self.data_tabs = QTabWidget()
+        self.data_tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)  # 가로/세로 모두 확장
         self.data_tabs.setTabsClosable(True)
         self.data_tabs.tabCloseRequested.connect(self._on_tab_close_requested)
         self.data_tabs.currentChanged.connect(self._on_tab_changed)
@@ -175,13 +185,13 @@ class MainWindow(QMainWindow):
         # Main splitter는 확장 가능, 로그는 고정 높이
         main_layout.addWidget(self.main_splitter, stretch=100)
         
-        # 하단: 로그 터미널 (고정 높이, 축소되지 않음)
+        # 하단: 로그 터미널 (고정 높이, 5-6줄 표시)
         self.log_terminal = QTextEdit()
         self.log_terminal.setReadOnly(True)
-        self.log_terminal.setMinimumHeight(200)  # 최소 높이 보장
-        self.log_terminal.setMaximumHeight(250)  # 최대 높이
+        self.log_terminal.setMinimumHeight(120)  # 5-6줄 표시 높이
+        self.log_terminal.setMaximumHeight(150)  # 최대 높이
         self.log_terminal.setSizePolicy(
-            QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         )
         self.log_terminal.setFont(QFont("Consolas", 11))
         self.log_terminal.setStyleSheet("""
