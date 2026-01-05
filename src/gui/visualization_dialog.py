@@ -1671,9 +1671,8 @@ class DotPlotDialog(QDialog):
                     linkage_matrix = linkage(log2fc_matrix_clean, method='average', metric='euclidean')
                     dendro = dendrogram(linkage_matrix, no_plot=True)
                     gene_order = dendro['leaves']
-            except Exception as e:
-                # 클러스터링 실패 시 원래 순서 유지
-                print(f"Clustering failed: {e}")
+            except Exception:
+                # 클러스터링 실패 시 원래 순서 유지 (사용자에게 알리지 않음)
                 gene_order = list(range(len(genes)))
         
         # 순서에 따라 genes 재정렬

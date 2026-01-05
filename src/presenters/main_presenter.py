@@ -80,11 +80,11 @@ class MainPresenter(QObject):
     
     def _on_loading_started(self, **kwargs):
         """데이터 로딩 시작"""
-        self.logger.info("Data loading started")
+        self.logger.debug("Data loading started")
     
     def _on_filtering_started(self, **kwargs):
         """필터링 시작"""
-        self.logger.info("Filtering started")
+        self.logger.debug("Filtering started")
     
     def _on_analyzing_started(self, **kwargs):
         """분석 시작"""
@@ -127,7 +127,7 @@ class MainPresenter(QObject):
             try:
                 test_df = pd.read_excel(file_path, nrows=10)  # 첫 10행만 읽어서 타입 감지
                 detected_type = self.data_loader._detect_dataset_type(test_df)
-                self.logger.info(f"Quick type detection: {detected_type.value}")
+                self.logger.debug(f"Quick type detection: {detected_type.value}")  # debug로 변경
                 
                 # GO/KEGG 타입이면 전용 로더 사용
                 if detected_type == DatasetType.GO_ANALYSIS:
@@ -180,7 +180,7 @@ class MainPresenter(QObject):
                     # 사용자가 저장 옵션을 선택한 경우
                     if dialog.should_save_mapping():
                         self.data_loader.save_custom_mapping(dataset_type, mapping)
-                        self.logger.info("User mapping saved for future use")
+                        self.logger.debug("User mapping saved for future use")  # debug로 변경
                     
                     return mapping
                 else:
@@ -982,7 +982,7 @@ class MainPresenter(QObject):
             
             self.clustering_worker.start()
             
-            self.logger.info(f"Started GO term clustering (threshold={kappa_threshold})")
+            self.logger.debug(f"Started GO term clustering (threshold={kappa_threshold})")  # debug로 변경
             
         except Exception as e:
             self.logger.error(f"Failed to start clustering: {e}", exc_info=True)

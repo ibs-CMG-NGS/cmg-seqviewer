@@ -193,7 +193,7 @@ class MainWindow(QMainWindow):
         self.log_terminal.setSizePolicy(
             QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         )
-        self.log_terminal.setFont(QFont("Consolas", 11))
+        self.log_terminal.setFont(QFont("Consolas", 9))  # 폰트 크기 11 → 9로 축소
         self.log_terminal.setStyleSheet("""
             QTextEdit {
                 background-color: #1e1e1e;
@@ -1160,11 +1160,11 @@ class MainWindow(QMainWindow):
                 # 대소문자 구분 없이 재시도
                 filtered_df = df[df[gene_id_col].str.upper().isin([g.upper() for g in gene_list])].copy()
                 if not filtered_df.empty:
-                    self.logger.info(f"Found {len(filtered_df)} genes after case-insensitive matching")
+                    self.logger.debug(f"Found {len(filtered_df)} genes after case-insensitive matching")
                 else:
                     continue
             else:
-                self.logger.info(f"Found {len(filtered_df)} matching genes in dataset: {dataset.name}")
+                self.logger.debug(f"Found {len(filtered_df)} matching genes in dataset: {dataset.name}")
             
             # 필요한 컬럼만 선택
             result_df = pd.DataFrame()

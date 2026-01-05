@@ -38,8 +38,8 @@ if getattr(sys, 'frozen', False):
         os.chdir(application_path)
         # Also set environment variable for resource lookup
         os.environ['RESOURCEPATH'] = application_path
-    except Exception as e:
-        print(f"Failed to set working directory: {e}")
+    except Exception:
+        # Silent fail - frozen apps don't have terminal output
         pass
 
 from PyQt6.QtWidgets import QApplication

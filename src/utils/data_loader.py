@@ -117,7 +117,7 @@ class DataLoader:
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
         
-        self.logger.info(f"Loading data from: {file_path}")
+        self.logger.debug(f"Loading data from: {file_path}")
         
         # 데이터셋 이름 설정
         if dataset_name is None:
@@ -130,21 +130,21 @@ class DataLoader:
             else:
                 df = pd.read_excel(file_path)
             
-            self.logger.info(f"Loaded {len(df)} rows, {len(df.columns)} columns")
+            self.logger.debug(f"Loaded {len(df)} rows, {len(df.columns)} columns")
             
             # 데이터셋 타입 자동 감지
             if dataset_type is None:
                 dataset_type = self._detect_dataset_type(df)
-                self.logger.info(f"Detected dataset type: {dataset_type.value}")
+                self.logger.debug(f"Detected dataset type: {dataset_type.value}")  # debug로 변경
             
             # 컬럼 매핑 (자동 + 사용자 정의)
             auto_mapping = self._map_columns(df, dataset_type)
-            self.logger.info(f"Auto-detected column mapping: {auto_mapping}")
+            self.logger.debug(f"Auto-detected column mapping: {auto_mapping}")  # debug로 변경
             
             # 저장된 사용자 정의 매핑 확인
             custom_mapping = self.get_custom_mapping(dataset_type)
             if custom_mapping:
-                self.logger.info(f"Found custom mapping: {custom_mapping}")
+                self.logger.debug(f"Found custom mapping: {custom_mapping}")  # debug로 변경
                 # 사용자 정의 매핑을 {원본: 표준} 형식으로 변환
                 # custom_mapping은 {표준: 원본} 형식으로 저장되어 있음
                 final_mapping = {v: k for k, v in custom_mapping.items()}
@@ -179,7 +179,7 @@ class DataLoader:
             df = self._remove_zero_abundance_genes(df, {}, dataset_type)  # 빈 dict 전달 (표준 컬럼명 사용)
             removed_rows = original_rows - len(df)
             if removed_rows > 0:
-                self.logger.info(f"Filtered out {removed_rows} low-expression genes (baseMean threshold applied) - {removed_rows/original_rows*100:.1f}% removed")
+                self.logger.debug(f"Filtered out {removed_rows} low-expression genes (baseMean threshold applied) - {removed_rows/original_rows*100:.1f}% removed")
             
             dataset = Dataset(
                 name=dataset_name,
