@@ -149,15 +149,15 @@ app = BUNDLE(
     name='CMG-SeqViewer.app',
     icon='cmg-seqviewer.icns',
     bundle_identifier='com.ibs.cmgseqviewer',
-    version='1.0.11',
+    version='1.0.12',
     info_plist={
         'NSPrincipalClass': 'NSApplication',
         'NSAppleScriptEnabled': False,
         'LSMinimumSystemVersion': '10.13.0',  # macOS 10.13 High Sierra minimum
         'NSHighResolutionCapable': True,
         'NSRequiresAquaSystemAppearance': False,
-        'CFBundleShortVersionString': '1.0.11',
-        'CFBundleVersion': '1.0.11',
+        'CFBundleShortVersionString': '1.0.12',
+        'CFBundleVersion': '1.0.12',
         'CFBundleName': 'CMG-SeqViewer',
         'CFBundleDisplayName': 'CMG-SeqViewer',
         'CFBundleExecutable': 'CMG-SeqViewer',
