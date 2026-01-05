@@ -4,31 +4,34 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![PyQt6](https://img.shields.io/badge/PyQt-6-green.svg)](https://www.riverbankcomputing.com/software/pyqt/)
 
-## � System Requirements
+## 💻 System Requirements
 
 ### Windows
 - **OS**: Windows 10 (64-bit) or later
 - **Architecture**: x64
 - **Memory**: 4GB RAM minimum, 8GB recommended
+- **Display**: 1280x720 minimum resolution
 
 ### macOS
-- **OS**: macOS 10.13 High Sierra or later
-- **Architecture**: Intel (x86_64)
+- **OS**: macOS 13.0 Ventura or later
+- **Architecture**: Intel (x86_64) or Apple Silicon (via Rosetta 2)
 - **Memory**: 4GB RAM minimum, 8GB recommended
-- **Note**: PyQt6 may require macOS 12.0+ on some systems. If you encounter compatibility issues, please check the [macOS Installation Guide](docs/MACOS_INSTALLATION.md).
+- **Display**: 1280x720 minimum resolution
+- **Note**: PyQt6 requires macOS 13.0+. For older macOS versions, please build from source with PyQt5.
 
 ---
 
-## �📋 Overview
+## � Overview
 
 **CMG-SeqViewer** is a comprehensive desktop application for RNA-Seq differential expression analysis and GO/KEGG pathway enrichment visualization. Built with Python and PyQt6, it provides an Excel-like interface for biologists to analyze genomic data without programming.
 
-### ✨ Latest Update: GO/KEGG Clustering (Dec 2025)
+### ✨ Latest Update: v1.0.11 - Cross-Platform Stability (Jan 2026)
 
-- 🧬 **GO Term Clustering**: ClueGO-style hierarchical clustering with interactive network visualization
-- 📊 **Enhanced Visualizations**: Dot plots, bar charts, and cluster-based network diagrams
-- 🔄 **Re-filtering Support**: Apply filters on already-filtered results
-- 📖 **Comprehensive Help**: Built-in F1 help with GO/KEGG analysis guide
+- 🎨 **Unified UI Theme**: Consistent light theme across all platforms
+- �️ **macOS Dark Mode Fix**: Text fully readable regardless of system appearance
+- � **Log Terminal**: Always visible at bottom (200-250px, fixed size)
+- 🚀 **Finder Launch**: Fixed double-click execution on macOS
+- � **Cross-Platform**: Fusion style for consistent Windows/macOS appearance
 
 [📋 Full Release Notes](docs/RECENT_UPDATES.md)
 

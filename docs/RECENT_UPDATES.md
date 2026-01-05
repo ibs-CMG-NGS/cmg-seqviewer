@@ -1,5 +1,36 @@
 # Recent Updates & New Features
 
+## 2026-01-01: v1.0.11 - Cross-Platform Stability & UI Improvements
+
+### 🎨 Unified UI Theme
+- **Forced Light Theme**: Consistent, readable UI across all macOS system appearance settings
+  - Fusion style with explicit light palette
+  - Black text on white/light gray backgrounds
+  - Eliminates dark mode readability issues (black text on dark gray was unreadable)
+- **Cross-Platform Consistency**: Same look and feel on Windows and macOS
+
+### 🖥️ macOS Fixes
+- **Finder Launch**: Fixed double-click launch from Finder
+  - Enhanced working directory management with `sys._MEIPASS`
+  - Added `RESOURCEPATH` environment variable for resource lookup
+  - Error logging for debugging launch issues
+- **Log Terminal Visibility**: Log terminal no longer collapses
+  - Fixed size policy (200-250px guaranteed height)
+  - Main content area has expansion priority (stretch=100)
+  - Always visible regardless of window resizing
+
+### 📋 Platform Requirements
+- **macOS**: Minimum version updated to **macOS 13.0 Ventura** (PyQt6 requirement)
+- **Windows**: No changes (Windows 10/11 continues to work)
+- **Apple Silicon**: Supported via Rosetta 2
+
+### 🔧 Technical Improvements
+- Better resource path handling in frozen executables
+- Enhanced error visibility for launch failures
+- Improved layout behavior for consistent UI across platforms
+
+---
+
 ## 2025-12-31: GO/KEGG Analysis Major Update
 
 ### 🆕 GO Term Clustering (ClueGO-style)
