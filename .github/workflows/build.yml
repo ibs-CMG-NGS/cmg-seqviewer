@@ -34,7 +34,8 @@ jobs:
       
       - name: Create ZIP archive
         run: |
-          Compress-Archive -Path "dist\CMG-SeqViewer" -DestinationPath "CMG-SeqViewer-Windows.zip"
+          cd dist\CMG-SeqViewer
+          Compress-Archive -Path "*" -DestinationPath "..\..\CMG-SeqViewer-Windows.zip"
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4

@@ -185,15 +185,15 @@ class MainWindow(QMainWindow):
         # Main splitter는 확장 가능, 로그는 고정 높이
         main_layout.addWidget(self.main_splitter, stretch=100)
         
-        # 하단: 로그 터미널 (고정 높이, 5-6줄 표시)
+        # 하단: 로그 터미널 (폰트 8pt 기준 5줄 표시)
         self.log_terminal = QTextEdit()
         self.log_terminal.setReadOnly(True)
-        self.log_terminal.setMinimumHeight(120)  # 5-6줄 표시 높이
-        self.log_terminal.setMaximumHeight(150)  # 최대 높이
+        self.log_terminal.setMinimumHeight(90)   # 5줄 최소 높이
+        self.log_terminal.setMaximumHeight(110)  # 5줄 최대 높이
         self.log_terminal.setSizePolicy(
             QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         )
-        self.log_terminal.setFont(QFont("Consolas", 9))  # 폰트 크기 11 → 9로 축소
+        self.log_terminal.setFont(QFont("Consolas", 8))  # 폰트 크기 8pt로 축소
         self.log_terminal.setStyleSheet("""
             QTextEdit {
                 background-color: #1e1e1e;
@@ -209,6 +209,22 @@ class MainWindow(QMainWindow):
     def _create_menu_bar(self):
         """메뉴바 생성"""
         menubar = self.menuBar()
+        
+        # 메뉴바 폰트 크기 설정
+        menubar.setStyleSheet("""
+            QMenuBar {
+                font-size: 10pt;
+            }
+            QMenuBar::item {
+                padding: 4px 8px;
+            }
+            QMenu {
+                font-size: 10pt;
+            }
+            QMenu::item {
+                padding: 4px 20px;
+            }
+        """)
         
         # File 메뉴
         file_menu = menubar.addMenu("&File")
