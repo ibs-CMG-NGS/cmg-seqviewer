@@ -56,6 +56,10 @@ class DatabaseManager:
         
         # 메타데이터 로드
         self.metadata_list: List[PreloadedDatasetMetadata] = []
+        
+        # 파일 소스 디렉토리 매핑 (file_path -> source_dir)
+        self._file_source_dirs: Dict[str, str] = {}
+        
         self._load_all_metadata()
     
     def _ensure_directories(self):
@@ -107,12 +111,14 @@ class DatabaseManager:
                     for item in data.get('datasets', [])
                 ]
             
-            # 중복 체크
+            # 중복 체크 (dataset_id와 file_path 모두 확인)
             existing_ids = {meta.dataset_id for meta in self.metadata_list}
+            existing_files = {meta.file_path for meta in self.metadata_list}
             
             for metadata in loaded_metas:
+                # Dataset ID 중복 체크
                 if skip_duplicates and metadata.dataset_id in existing_ids:
-                    self.logger.debug(f"Skipping duplicate dataset: {metadata.alias}")
+                    self.logger.debug(f"Skipping duplicate dataset ID: {metadata.alias}")
                     continue
                 
                 # 파일 경로 정규화
@@ -120,9 +126,16 @@ class DatabaseManager:
                 if file_path.is_absolute():
                     metadata.file_path = file_path.name
                 
+                # 파일명 중복 체크 (같은 파일이 여러 경로에 있을 수 있음)
+                if metadata.file_path in existing_files:
+                    self.logger.debug(f"Skipping duplicate file: {metadata.file_path}")
+                    continue
+                
                 # 실제 파일 존재 여부 확인
                 actual_file = datasets_dir / metadata.file_path
                 if actual_file.exists():
+                    # 소스 디렉토리 정보를 내부 딕셔너리에 저장
+                    self._file_source_dirs[metadata.file_path] = str(datasets_dir)
                     self.metadata_list.append(metadata)
                 else:
                     self.logger.warning(f"Dataset file not found, skipping: {actual_file}")
@@ -132,7 +145,10 @@ class DatabaseManager:
     
     def _scan_and_auto_import(self, datasets_dir: Path):
         """
-        폴더를 스캔하여 메타데이터 없는 parquet 파일 자동 임포트
+        폴더를 스캔하여 고아(orphan) parquet 파일 감지
+        
+        메타데이터 없이 parquet 파일만 있는 경우 경고 메시지 출력.
+        사용자는 metadata.json과 함께 복사해야 함.
         
         Args:
             datasets_dir: 스캔할 datasets 폴더
@@ -145,7 +161,7 @@ class DatabaseManager:
             known_files = {meta.file_path for meta in self.metadata_list}
             
             # Parquet 파일 스캔
-            auto_imported = 0
+            orphan_files = []
             for parquet_file in datasets_dir.glob("*.parquet"):
                 filename = parquet_file.name
                 
@@ -153,162 +169,20 @@ class DatabaseManager:
                 if filename in known_files:
                     continue
                 
-                # 자동으로 메타데이터 생성
-                self.logger.info(f"Auto-importing new parquet file: {filename}")
-                metadata = self._create_metadata_from_parquet(parquet_file, datasets_dir)
-                
-                if metadata:
-                    self.metadata_list.append(metadata)
-                    auto_imported += 1
+                orphan_files.append(filename)
             
-            if auto_imported > 0:
-                self.logger.info(f"Auto-imported {auto_imported} new dataset(s)")
-                # 메타데이터 저장 (외부 데이터 디렉토리에만)
-                if datasets_dir == self.datasets_dir:
-                    self._save_metadata()
+            if orphan_files:
+                self.logger.warning(
+                    f"Found {len(orphan_files)} parquet file(s) without metadata in {datasets_dir}:\n"
+                    f"  {', '.join(orphan_files)}\n"
+                    f"These files will be IGNORED. To import them:\n"
+                    f"  1. Copy the corresponding metadata.json from the source database folder\n"
+                    f"  2. Merge the metadata entries, or\n"
+                    f"  3. Use 'File → Database → Import Current Dataset' to add them properly"
+                )
                     
         except Exception as e:
-            self.logger.error(f"Failed to scan and auto-import: {e}")
-    
-    def _create_metadata_from_parquet(self, parquet_file: Path, datasets_dir: Path) -> Optional[PreloadedDatasetMetadata]:
-        """
-        Parquet 파일로부터 자동으로 메타데이터 생성
-        
-        Args:
-            parquet_file: Parquet 파일 경로
-            datasets_dir: 파일이 위치한 datasets 폴더
-            
-        Returns:
-            생성된 PreloadedDatasetMetadata 또는 None
-        """
-        try:
-            # Parquet 파일 헤더 읽기 (빠른 스캔)
-            df = pd.read_parquet(parquet_file, engine='pyarrow')
-            
-            # 데이터셋 타입 자동 감지
-            from utils.data_loader import DataLoader
-            loader = DataLoader()
-            dataset_type = loader._detect_dataset_type(df)
-            
-            # 메타데이터 생성
-            filename = parquet_file.name
-            dataset_name = parquet_file.stem  # 확장자 제외한 파일명
-            
-            # 유의미한 유전자 수 계산 (가능한 경우)
-            significant_genes = 0
-            if dataset_type == DatasetType.DIFFERENTIAL_EXPRESSION:
-                from models.standard_columns import StandardColumns
-                if StandardColumns.ADJ_PVALUE in df.columns:
-                    try:
-                        significant_genes = int((df[StandardColumns.ADJ_PVALUE].astype(float) < 0.05).sum())
-                    except:
-                        pass
-            
-            metadata = PreloadedDatasetMetadata(
-                dataset_id=str(uuid.uuid4()),
-                alias=dataset_name,
-                original_filename=filename,
-                dataset_type=dataset_type,
-                file_path=filename,  # 상대 경로 (파일명만)
-                import_date=datetime.now().isoformat(),
-                row_count=len(df),
-                gene_count=len(df),  # DE 데이터의 경우 row = gene
-                significant_genes=significant_genes,
-                notes=f"Auto-imported on {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-                tags=["auto-imported"]
-            )
-            
-            self.logger.info(
-                f"Created metadata: {dataset_name} "
-                f"({dataset_type.value}, {len(df)} rows, {len(df.columns)} cols)"
-            )
-            
-            return metadata
-            
-        except Exception as e:
-            self.logger.error(f"Failed to create metadata from {parquet_file.name}: {e}")
-            return None
-            for parquet_file in datasets_dir.glob("*.parquet"):
-                filename = parquet_file.name
-                
-                # 이미 메타데이터에 있으면 스킵
-                if filename in known_files:
-                    continue
-                
-                # 자동 메타데이터 생성 및 임포트
-                if self._auto_import_parquet(parquet_file, datasets_dir):
-                    auto_imported += 1
-            
-            if auto_imported > 0:
-                self.logger.info(f"Auto-imported {auto_imported} parquet file(s) from {datasets_dir}")
-                # 새로 추가된 메타데이터 저장
-                self._save_metadata()
-                
-        except Exception as e:
-            self.logger.error(f"Failed to scan directory {datasets_dir}: {e}")
-    
-    def _auto_import_parquet(self, parquet_file: Path, datasets_dir: Path) -> bool:
-        """
-        Parquet 파일로부터 자동으로 메타데이터 생성 및 임포트
-        
-        Args:
-            parquet_file: Parquet 파일 경로
-            datasets_dir: datasets 폴더 경로
-            
-        Returns:
-            성공 여부
-        """
-        try:
-            self.logger.info(f"Auto-importing: {parquet_file.name}")
-            
-            # DataFrame 로드 (메타데이터 추출용)
-            df = pd.read_parquet(parquet_file, engine='pyarrow')
-            
-            # 데이터셋 타입 자동 감지
-            from utils.data_loader import DataLoader
-            loader = DataLoader()
-            dataset_type = loader._detect_dataset_type(df)
-            
-            # 메타데이터 생성
-            metadata = PreloadedDatasetMetadata(
-                dataset_id=str(uuid.uuid4()),
-                alias=parquet_file.stem,  # 파일명 (확장자 제외)
-                original_filename=parquet_file.name,
-                dataset_type=dataset_type,
-                file_path=parquet_file.name,  # 파일명만
-                import_date=datetime.now().isoformat(),
-                row_count=len(df),
-                gene_count=0,  # 나중에 계산
-                significant_genes=0,
-                tags=["auto-imported"],
-                notes=f"Auto-imported from {parquet_file.name}"
-            )
-            
-            # 유전자 수 계산
-            from models.standard_columns import StandardColumns
-            if StandardColumns.GENE_ID in df.columns:
-                metadata.gene_count = df[StandardColumns.GENE_ID].nunique()
-            elif StandardColumns.SYMBOL in df.columns:
-                metadata.gene_count = df[StandardColumns.SYMBOL].nunique()
-            
-            # 유의미한 유전자 수 (DE 데이터만)
-            if dataset_type == DatasetType.DIFFERENTIAL_EXPRESSION:
-                if StandardColumns.ADJ_PVALUE in df.columns:
-                    try:
-                        significant = df[StandardColumns.ADJ_PVALUE].astype(float) < 0.05
-                        metadata.significant_genes = int(significant.sum())
-                    except:
-                        pass
-            
-            # 메타데이터 리스트에 추가
-            self.metadata_list.append(metadata)
-            self.logger.info(f"Auto-imported: {metadata.alias} ({dataset_type.value}, {metadata.row_count} rows)")
-            
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Failed to auto-import {parquet_file.name}: {e}")
-            return False
+            self.logger.error(f"Failed to scan directory: {e}")
     
     def _load_metadata(self):
         """메타데이터 파일 로드 (레거시 메서드 - 하위 호환성)"""
@@ -346,7 +220,6 @@ class DatabaseManager:
     def _find_dataset_file(self, file_path: str) -> Optional[Path]:
         """
         다중 경로에서 데이터셋 파일 찾기
-        우선순위: 외부 데이터 > 레거시 데이터베이스
         
         Args:
             file_path: 파일 경로 (상대 또는 파일명)
@@ -355,6 +228,14 @@ class DatabaseManager:
             찾은 파일의 절대 경로 또는 None
         """
         filename = Path(file_path).name
+        
+        # 0. 파일이 로드된 원본 디렉토리 우선 검색 (정확한 파일 매칭)
+        if filename in self._file_source_dirs:
+            source_dir = Path(self._file_source_dirs[filename])
+            source_file = source_dir / filename
+            if source_file.exists():
+                self.logger.debug(f"Found in original source: {source_file}")
+                return source_file
         
         # 1. 외부 데이터 폴더에서 검색
         if self.external_data_dir:
@@ -701,10 +582,10 @@ class DatabaseManager:
     
     def refresh_database(self) -> int:
         """
-        데이터베이스를 새로고침하여 새로운 parquet 파일을 스캔합니다.
+        데이터베이스를 새로고침하여 metadata.json을 다시 로드합니다.
         
-        사용자가 외부 데이터 폴더(data/datasets/)에 새 파일을 추가한 후
-        이 메서드를 호출하면 자동으로 메타데이터가 생성됩니다.
+        사용자가 외부 데이터 폴더(data/)에 parquet 파일과 metadata.json을
+        추가한 후 이 메서드를 호출하면 다시 로드됩니다.
         
         Returns:
             int: 새로 추가된 데이터셋 개수
@@ -712,22 +593,21 @@ class DatabaseManager:
         self.logger.info("Refreshing database...")
         initial_count = len(self.metadata_list)
         
-        # 외부 데이터 폴더 스캔
-        if self.external_data_dir:
-            self._scan_and_auto_import(self.external_data_dir / "datasets")
+        # 메타데이터 리스트 초기화
+        self.metadata_list = []
+        self._file_source_dirs = {}
         
-        # 레거시 데이터베이스도 스캔 (선택적)
-        if self.legacy_database_dir:
-            self._scan_and_auto_import(self.legacy_database_dir / "datasets")
+        # 다시 로드
+        self._load_all_metadata()
         
         new_count = len(self.metadata_list) - initial_count
         
         if new_count > 0:
             self.logger.info(f"Refresh completed: {new_count} new dataset(s) added")
-            # 메타데이터 저장
-            self._save_metadata()
+        elif new_count < 0:
+            self.logger.info(f"Refresh completed: {abs(new_count)} dataset(s) removed")
         else:
-            self.logger.info("Refresh completed: No new datasets found")
+            self.logger.info("Refresh completed: No changes")
         
         return new_count
     
