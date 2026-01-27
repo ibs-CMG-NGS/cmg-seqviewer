@@ -14,8 +14,12 @@ a = Analysis(
     pathex=['src'],  # Add src to Python path
     binaries=[],
     datas=[
-        # Pre-loaded datasets 포함
+        # Pre-loaded datasets 포함 (레거시 - 하위 호환성)
         ('database', 'database'),  # database 폴더 전체를 배포판에 포함
+        # 외부 데이터 폴더 (빈 구조 + README.txt)
+        ('data/.gitkeep', 'data'),
+        ('data/datasets/.gitkeep', 'data/datasets'),
+        ('data/README.txt', 'data'),  # 사용 안내 파일
         # Include entire src package
         ('src', 'src'),
     ],

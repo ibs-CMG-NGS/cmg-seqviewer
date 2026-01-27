@@ -145,6 +145,14 @@ database/metadata.json
 !database/.gitkeep
 !database/datasets/.gitkeep
 
+# External data folder (for post-deployment data)
+data/datasets/*.parquet
+data/metadata.json
+# Keep data directory structure but exclude actual data
+!data/.gitkeep
+!data/datasets/.gitkeep
+!data/README.txt
+
 # OS
 .DS_Store
 Thumbs.db
