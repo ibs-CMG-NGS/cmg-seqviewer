@@ -92,8 +92,9 @@ class HelpDialog(QDialog):
             "5. Statistical Analysis",
             "6. Visualization",
             "7. Dataset Comparison",
-            "8. Export & Clipboard",
-            "9. Tips & Shortcuts"
+            "8. Gene Annotation",
+            "9. Export & Clipboard",
+            "10. Tips & Shortcuts"
         ]
         
         for item_text in toc_items:
@@ -112,6 +113,7 @@ class HelpDialog(QDialog):
             self._get_statistical_analysis(),
             self._get_visualization(),
             self._get_comparison(),
+            self._get_gene_annotation(),
             self._get_export(),
             self._get_tips()
         ]
@@ -490,10 +492,226 @@ class HelpDialog(QDialog):
         </ol>
         """
     
+    def _get_gene_annotation(self):
+        """Gene Annotation section"""
+        return """
+        <h1>8. Gene Annotation</h1>
+        
+        <h2>Overview</h2>
+        <p>CMG-SeqViewer provides quick access to external gene annotation databases 
+        through convenient right-click context menus in data tables.</p>
+        
+        <h2>Accessing Gene Information</h2>
+        <p>Right-click on any gene symbol or gene ID in the data table to access annotation resources:</p>
+        
+        <h3>For Gene Symbols/IDs:</h3>
+        <ul>
+            <li><b>🔍 NCBI Gene</b> - Comprehensive gene information
+                <ul>
+                    <li>Official gene names and symbols</li>
+                    <li>Genomic locations and structure</li>
+                    <li>Expression data and orthologs</li>
+                    <li>References and pathways</li>
+                </ul>
+            </li>
+            <li><b>🔍 GeneCards</b> - Human gene database
+                <ul>
+                    <li>Integrated information from 150+ sources</li>
+                    <li>Disease associations</li>
+                    <li>Protein products and domains</li>
+                    <li>Best for human genes</li>
+                </ul>
+            </li>
+            <li><b>🔍 Ensembl</b> - Genome browser
+                <ul>
+                    <li>Multi-species support</li>
+                    <li>Detailed genomic annotations</li>
+                    <li>Variant information</li>
+                    <li>Comparative genomics</li>
+                </ul>
+            </li>
+            <li><b>🔍 UniProt</b> - Protein database
+                <ul>
+                    <li>Protein sequences and structures</li>
+                    <li>Functional annotations</li>
+                    <li>Post-translational modifications</li>
+                    <li>Protein-protein interactions</li>
+                </ul>
+            </li>
+            <li><b>📚 Google Scholar</b> - Literature search
+                <ul>
+                    <li>Research publications about the gene</li>
+                    <li>Citations and reviews</li>
+                    <li>Recent discoveries</li>
+                </ul>
+            </li>
+        </ul>
+        
+        <h2>GO Term Annotation</h2>
+        <p>Right-click on GO term IDs or descriptions in GO analysis results:</p>
+        
+        <h3>For GO Terms (GO:XXXXXXX):</h3>
+        <ul>
+            <li><b>🔍 QuickGO (EBI)</b> - Primary GO resource
+                <ul>
+                    <li>Detailed term definitions</li>
+                    <li>Hierarchical relationships (parent/child terms)</li>
+                    <li>Associated genes and proteins</li>
+                    <li>Fast and comprehensive</li>
+                </ul>
+            </li>
+            <li><b>🔍 AmiGO</b> - Official GO browser
+                <ul>
+                    <li>Interactive ontology browser</li>
+                    <li>Term relationships visualization</li>
+                    <li>Gene product annotations</li>
+                    <li>Official GO Consortium tool</li>
+                </ul>
+            </li>
+            <li><b>🔍 Gene Ontology</b> - GO documentation
+                <ul>
+                    <li>Official GO documentation</li>
+                    <li>Ontology structure information</li>
+                    <li>Best practices and guidelines</li>
+                </ul>
+            </li>
+            <li><b>🔍 NCBI Gene</b> - Genes with this GO term
+                <ul>
+                    <li>Find genes annotated with this term</li>
+                    <li>Cross-reference with your results</li>
+                </ul>
+            </li>
+        </ul>
+        
+        <h2>KEGG Pathway Annotation</h2>
+        <p>Right-click on KEGG pathway IDs or pathway names:</p>
+        
+        <h3>For KEGG Pathways (e.g., hsa04110):</h3>
+        <ul>
+            <li><b>🔍 KEGG Pathway</b> - Interactive pathway maps
+                <ul>
+                    <li>Visual pathway diagrams</li>
+                    <li>Gene/protein relationships</li>
+                    <li>Compound and reaction information</li>
+                    <li>Links to related pathways</li>
+                </ul>
+            </li>
+            <li><b>🔍 KEGG Search</b> - Search KEGG database
+                <ul>
+                    <li>Find related pathways</li>
+                    <li>Search by pathway name or description</li>
+                    <li>Cross-species pathway information</li>
+                </ul>
+            </li>
+            <li><b>🔍 Reactome</b> - Alternative pathway database
+                <ul>
+                    <li>Curated biological pathways</li>
+                    <li>Detailed molecular mechanisms</li>
+                    <li>Pathway visualization tools</li>
+                    <li>Cross-references to other databases</li>
+                </ul>
+            </li>
+            <li><b>🔍 WikiPathways</b> - Community pathways
+                <ul>
+                    <li>Open collaborative pathway database</li>
+                    <li>Regularly updated by community</li>
+                    <li>Integration with other tools</li>
+                </ul>
+            </li>
+        </ul>
+        
+        <h2>General Descriptions</h2>
+        <p>Right-click on description columns for general searches:</p>
+        <ul>
+            <li><b>📚 Google Scholar</b> - Academic literature search</li>
+            <li><b>📚 PubMed</b> - Biomedical literature database
+                <ul>
+                    <li>Research articles and reviews</li>
+                    <li>Clinical studies</li>
+                    <li>Free full-text articles (PMC)</li>
+                </ul>
+            </li>
+        </ul>
+        
+        <h2>How It Works</h2>
+        <ol>
+            <li><b>Auto-detection:</b> The tool automatically detects column types:
+                <ul>
+                    <li>Gene columns: gene_id, symbol, gene_symbol</li>
+                    <li>GO columns: term_id, go_id, or GO:XXXXXXX pattern</li>
+                    <li>KEGG columns: pathway_id, kegg_id, or pathway names</li>
+                    <li>Description columns: description, term_name, pathway_name</li>
+                </ul>
+            </li>
+            <li><b>ID Extraction:</b> Automatically extracts IDs from text:
+                <ul>
+                    <li>GO:0008150 extracted from "GO:0008150 biological_process"</li>
+                    <li>hsa04110 extracted from pathway descriptions</li>
+                </ul>
+            </li>
+            <li><b>One-click access:</b> Click any menu item to open in default browser</li>
+            <li><b>Context-aware:</b> Shows relevant databases based on data type</li>
+        </ol>
+        
+        <h2>Workflow Examples</h2>
+        
+        <h3>Example 1: Gene Function Research</h3>
+        <ol>
+            <li>Load DE analysis results</li>
+            <li>Filter for significant genes (padj &lt; 0.05, |log2FC| &gt; 1)</li>
+            <li>Right-click on interesting gene symbol</li>
+            <li>Select "🔍 GeneCards" for comprehensive overview</li>
+            <li>Select "📚 Google Scholar" for recent publications</li>
+        </ol>
+        
+        <h3>Example 2: GO Term Investigation</h3>
+        <ol>
+            <li>Load GO enrichment results</li>
+            <li>Filter top enriched terms (FDR &lt; 0.01)</li>
+            <li>Right-click on GO term ID</li>
+            <li>Select "🔍 QuickGO" to see term hierarchy</li>
+            <li>Select "🔍 NCBI Gene" to find related genes</li>
+        </ol>
+        
+        <h3>Example 3: Pathway Analysis</h3>
+        <ol>
+            <li>Load KEGG enrichment results</li>
+            <li>Right-click on enriched pathway</li>
+            <li>Select "🔍 KEGG Pathway" to view pathway diagram</li>
+            <li>Select "🔍 Reactome" for alternative pathway view</li>
+            <li>Compare pathway information across databases</li>
+        </ol>
+        
+        <h2>Tips</h2>
+        <ul>
+            <li><b>Multiple Databases:</b> Check multiple databases for comprehensive information</li>
+            <li><b>Species Consideration:</b> 
+                <ul>
+                    <li>GeneCards is best for human genes</li>
+                    <li>Ensembl supports multiple species</li>
+                    <li>NCBI Gene covers many organisms</li>
+                </ul>
+            </li>
+            <li><b>GO Hierarchy:</b> Use QuickGO or AmiGO to explore parent/child term relationships</li>
+            <li><b>Pathway Context:</b> View KEGG pathways to understand gene interactions</li>
+            <li><b>Literature Review:</b> Use Google Scholar and PubMed to find relevant research</li>
+            <li><b>Quick Reference:</b> Right-click is faster than manual web searches</li>
+        </ul>
+        
+        <h2>Benefits</h2>
+        <ul>
+            <li>✅ <b>No local database needed</b> - Always up-to-date information</li>
+            <li>✅ <b>One-click access</b> - Saves time compared to manual searches</li>
+            <li>✅ <b>Multiple resources</b> - Compare information across databases</li>
+            <li>✅ <b>Context-aware</b> - Shows relevant databases for each data type</li>
+            <li>✅ <b>Auto ID extraction</b> - No need to copy-paste IDs manually</li>
+        </ul>
+        """
+    
     def _get_export(self):
         """Export section"""
         return """
-        <h1>8. Export & Clipboard</h1>
+        <h1>9. Export & Clipboard</h1>
         
         <h2>Exporting Data</h2>
         <p>Export any tab's data to file:</p>
@@ -553,7 +771,7 @@ class HelpDialog(QDialog):
     def _get_tips(self):
         """Tips and Shortcuts section"""
         return """
-        <h1>9. Tips & Shortcuts</h1>
+        <h1>10. Tips & Shortcuts</h1>
         
         <h2>Keyboard Shortcuts</h2>
         <table border="1" cellpadding="5" cellspacing="0">
