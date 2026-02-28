@@ -507,6 +507,10 @@ class MainWindow(QMainWindow):
         # 키보드 이벤트 핸들러 연결 (Ctrl+C/Ctrl+V)
         table.keyPressEvent = lambda event: self._handle_table_key_press(event, table)
         
+        # 컨텍스트 메뉴 활성화
+        table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        table.customContextMenuRequested.connect(lambda pos: self._show_table_context_menu(table, pos))
+        
         # 헤더 클릭으로 정렬 가능하도록 설정
         table.horizontalHeader().setSectionsClickable(True)
         table.horizontalHeader().setStyleSheet("""
@@ -2792,3 +2796,100 @@ class MainWindow(QMainWindow):
                         table.setColumnWidth(col, width)
         except Exception as e:
             self.logger.error(f"Failed to restore column widths: {e}")
+    
+    def _show_table_context_menu(self, table: QTableWidget, pos):
+        """
+        테이블 셀 우클릭 시 컨텍스트 메뉴 표시
+        Gene symbol/ID에 대한 외부 데이터베이스 링크 제공
+        """
+        from PyQt6.QtWidgets import QMenu
+        from PyQt6.QtGui import QDesktopServices
+        from PyQt6.QtCore import QUrl
+        
+        # 클릭된 셀 찾기
+        item = table.itemAt(pos)
+        if not item:
+            return
+        
+        row = item.row()
+        col = item.column()
+        
+        # 컬럼 헤더 이름 가져오기
+        header_item = table.horizontalHeaderItem(col)
+        if not header_item:
+            return
+        
+        column_name = header_item.text().lower()
+        
+        # gene_id 또는 symbol 컬럼인지 확인
+        is_gene_column = any(keyword in column_name for keyword in 
+                            ['gene_id', 'gene id', 'geneid', 'symbol', 'gene_symbol', 'gene symbol'])
+        
+        if not is_gene_column:
+            return
+        
+        # 셀 값 가져오기
+        cell_text = item.text().strip()
+        if not cell_text:
+            return
+        
+        # 컨텍스트 메뉴 생성
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: white;
+                border: 1px solid #cccccc;
+            }
+            QMenu::item {
+                padding: 5px 20px;
+            }
+            QMenu::item:selected {
+                background-color: #0078d4;
+                color: white;
+            }
+        """)
+        
+        # NCBI Gene 검색
+        ncbi_action = menu.addAction(f"🔍 Search '{cell_text}' in NCBI Gene")
+        ncbi_action.triggered.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl(f"https://www.ncbi.nlm.nih.gov/gene/?term={cell_text}")
+            )
+        )
+        
+        # GeneCards 검색
+        genecards_action = menu.addAction(f"🔍 Search '{cell_text}' in GeneCards")
+        genecards_action.triggered.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl(f"https://www.genecards.org/cgi-bin/carddisp.pl?gene={cell_text}")
+            )
+        )
+        
+        # Ensembl 검색
+        ensembl_action = menu.addAction(f"🔍 Search '{cell_text}' in Ensembl")
+        ensembl_action.triggered.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl(f"https://www.ensembl.org/Multi/Search/Results?q={cell_text}")
+            )
+        )
+        
+        menu.addSeparator()
+        
+        # UniProt 검색 (단백질 정보)
+        uniprot_action = menu.addAction(f"🔍 Search '{cell_text}' in UniProt")
+        uniprot_action.triggered.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl(f"https://www.uniprot.org/uniprotkb?query={cell_text}")
+            )
+        )
+        
+        # Google Scholar 검색 (논문)
+        scholar_action = menu.addAction(f"📚 Search '{cell_text}' in Google Scholar")
+        scholar_action.triggered.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl(f"https://scholar.google.com/scholar?q={cell_text}")
+            )
+        )
+        
+        # 메뉴 표시
+        menu.exec(table.viewport().mapToGlobal(pos))
