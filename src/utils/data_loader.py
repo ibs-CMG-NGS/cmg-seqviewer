@@ -314,6 +314,14 @@ class DataLoader:
         if StandardColumns.SYMBOL in df.columns:
             df[StandardColumns.SYMBOL] = df[StandardColumns.SYMBOL].astype(str)
         
+        # symbol 컬럼이 없으면 gene_id 값으로 채우기 (fallback)
+        # 우리 파이프라인처럼 gene_id에 symbol이 직접 들어있는 경우 대응
+        if StandardColumns.SYMBOL not in df.columns and StandardColumns.GENE_ID in df.columns:
+            df[StandardColumns.SYMBOL] = df[StandardColumns.GENE_ID]
+            self.logger.info(
+                f"'symbol' column not found. Using 'gene_id' as symbol (fallback)."
+            )
+        
         # 필수 컬럼 체크
         if dataset_type == DatasetType.DIFFERENTIAL_EXPRESSION:
             required = StandardColumns.get_de_required()
