@@ -297,8 +297,12 @@ class DatabaseManager:
             if not metadata.dataset_id:
                 metadata.dataset_id = str(uuid.uuid4())
             
-            # 파일 경로 설정 (상대 경로로 저장 - 파일명만)
-            filename = f"{metadata.dataset_id}.parquet"
+            # 파일명: "{alias_slug}_{uuid_short}.parquet"
+            # alias를 파일명 안전 문자로 변환 + uuid 앞 8자리로 충돌 방지
+            import re
+            alias_slug = re.sub(r'[^\w가-힣]+', '_', metadata.alias).strip('_')[:40]
+            uuid_short = metadata.dataset_id.split('-')[0]   # 예: "57c3c146"
+            filename = f"{alias_slug}_{uuid_short}.parquet"
             file_path = self.datasets_dir / filename
             metadata.file_path = filename  # 파일명만 저장 (상대 경로)
             
