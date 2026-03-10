@@ -72,6 +72,13 @@ class DatabaseManager:
         모든 경로에서 메타데이터 로드
         외부 데이터와 레거시 데이터베이스를 모두 스캔
         """
+        # 단일 경로 모드 (database_dir 직접 지정) - export_dir 이식성 포함
+        if self.external_data_dir is None and self.legacy_database_dir is None:
+            if self.metadata_file.exists():
+                self._load_metadata_from_file(self.metadata_file, self.datasets_dir)
+                self.logger.info(f"Loaded {len(self.metadata_list)} datasets from {self.database_dir}")
+            return
+
         # 외부 데이터 먼저 로드 (우선순위 높음)
         if self.external_data_dir and (self.external_data_dir / "metadata.json").exists():
             self._load_metadata_from_file(self.external_data_dir / "metadata.json", 
@@ -304,12 +311,12 @@ class DatabaseManager:
             
             # 유의미한 유전자 수 계산 (padj < 0.05)
             if dataset.dataset_type == DatasetType.DIFFERENTIAL_EXPRESSION:
-                padj_col = dataset._get_column_name('adj_pvalue')
-                if padj_col:
+                df = dataset.dataframe
+                if df is not None and 'adj_pvalue' in df.columns:
                     try:
-                        significant = dataset.dataframe[padj_col].astype(float) < 0.05
-                        metadata.significant_genes = significant.sum()
-                    except:
+                        significant = pd.to_numeric(df['adj_pvalue'], errors='coerce') < 0.05
+                        metadata.significant_genes = int(significant.sum())
+                    except Exception:
                         metadata.significant_genes = 0
             
             # Parquet 형식으로 저장
@@ -480,10 +487,12 @@ class DatabaseManager:
             return False
         
         try:
-            # 파일 삭제
-            file_path = Path(metadata.file_path)
-            if file_path.exists():
+            # 파일 삭제 - _find_dataset_file()로 실제 경로 찾기
+            file_path = self._find_dataset_file(metadata.file_path)
+            if file_path and file_path.exists():
                 file_path.unlink()
+            else:
+                self.logger.warning(f"Dataset file not found during delete: {metadata.file_path}")
             
             # 메타데이터에서 제거
             self.metadata_list = [m for m in self.metadata_list if m.dataset_id != dataset_id]
@@ -580,6 +589,76 @@ class DatabaseManager:
             }
         }
     
+    def export_dataset(self, dataset_id: str, export_dir: Path) -> bool:
+        """
+        데이터셋을 외부 폴더로 내보내기 (이식 가능한 형태)
+
+        parquet 파일과 해당 데이터셋의 metadata.json 항목을
+        지정한 폴더에 복사합니다. 다른 PC나 다른 인스턴스에서
+        metadata.json + datasets/*.parquet 을 data/ 폴더에 붙여넣으면
+        즉시 인식됩니다.
+
+        Args:
+            dataset_id: 내보낼 데이터셋 ID
+            export_dir: 내보낼 대상 폴더 (없으면 자동 생성)
+
+        Returns:
+            bool: 성공 여부
+        """
+        import shutil
+
+        metadata = self.get_metadata(dataset_id)
+        if metadata is None:
+            self.logger.error(f"Dataset not found: {dataset_id}")
+            return False
+
+        try:
+            export_dir = Path(export_dir)
+            datasets_export_dir = export_dir / "datasets"
+            datasets_export_dir.mkdir(parents=True, exist_ok=True)
+
+            # parquet 파일 복사
+            src_file = self._find_dataset_file(metadata.file_path)
+            if src_file is None or not src_file.exists():
+                self.logger.error(f"Source parquet not found: {metadata.file_path}")
+                return False
+
+            dest_file = datasets_export_dir / src_file.name
+            shutil.copy2(src_file, dest_file)
+
+            # metadata.json 작성 (이 데이터셋 항목만 포함)
+            meta_file = export_dir / "metadata.json"
+            if meta_file.exists():
+                # 기존 파일이 있으면 병합 (중복 ID 제외)
+                with open(meta_file, 'r', encoding='utf-8') as f:
+                    existing = json.load(f)
+                existing_ids = {d['dataset_id'] for d in existing.get('datasets', [])}
+                if metadata.dataset_id not in existing_ids:
+                    existing.setdefault('datasets', []).append(metadata.to_dict())
+                    data = existing
+                else:
+                    self.logger.info(f"Dataset already in target metadata.json: {metadata.alias}")
+                    data = existing
+            else:
+                data = {
+                    'version': '1.0',
+                    'last_updated': datetime.now().isoformat(),
+                    'datasets': [metadata.to_dict()]
+                }
+
+            with open(meta_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+
+            self.logger.info(
+                f"Exported '{metadata.alias}' to {export_dir} "
+                f"({dest_file.stat().st_size} bytes)"
+            )
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Failed to export dataset: {e}")
+            return False
+
     def refresh_database(self) -> int:
         """
         데이터베이스를 새로고침하여 metadata.json을 다시 로드합니다.
