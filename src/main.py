@@ -96,7 +96,7 @@ def main():
     # setWindowIcon을 MainWindow에서만 하면 타이틀바에만 적용되고
     # Windows 작업표시줄에는 표시되지 않으므로 app에도 동일하게 설정
     from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont as QFontIcon
-    from PyQt6.QtCore import Qt, QRect
+    from PyQt6.QtCore import QRect   # Qt는 파일 상단에서 이미 import됨
     _pixmap = QPixmap(64, 64)
     _pixmap.fill(Qt.GlobalColor.transparent)
     _painter = QPainter(_pixmap)
