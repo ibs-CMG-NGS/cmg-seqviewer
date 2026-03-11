@@ -7,6 +7,7 @@ Database Manager for Pre-loaded Datasets
 
 import json
 import logging
+import shutil
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 from datetime import datetime
@@ -347,6 +348,124 @@ class DatabaseManager:
             self.logger.error(f"Failed to save metadata: {e}")
             raise
     
+    def import_from_folder(self, source_dir: Path) -> tuple:
+        """
+        외부 폴더에 있는 metadata.json + parquet 파일들을 현재 DB에 병합.
+
+        source_dir 안에 metadata.json 이 있으면 해당 항목을 읽어 등록합니다.
+        metadata.json 이 없으면 datasets/ 하위의 parquet 파일만 복사하여
+        _scan_and_auto_import() 방식으로 자동 판별 등록합니다.
+
+        - parquet 파일은 self.datasets_dir 로 복사됩니다.
+        - dataset_id 또는 파일명이 이미 존재하면 건너뜁니다(덮어쓰기 안 함).
+
+        Args:
+            source_dir: 병합할 폴더 경로 (metadata.json + datasets/ 폴더 포함)
+
+        Returns:
+            tuple[int, int, int]: (imported, skipped_duplicate, skipped_no_file)
+        """
+        source_dir = Path(source_dir)
+        imported = 0
+        skipped_dup = 0
+        skipped_no_file = 0
+
+        meta_file = source_dir / "metadata.json"
+
+        if meta_file.exists():
+            # ── metadata.json 기반 병합 ──────────────────────────────
+            try:
+                with open(meta_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            except Exception as e:
+                self.logger.error(f"import_from_folder: failed to read {meta_file}: {e}")
+                return 0, 0, 0
+
+            existing_ids = {m.dataset_id for m in self.metadata_list}
+            existing_files = {m.file_path for m in self.metadata_list}
+
+            # parquet 파일 검색 경로: metadata.json 옆의 datasets/ 폴더 또는 source_dir 직접
+            source_datasets_dir = source_dir / "datasets"
+
+            for item in data.get('datasets', []):
+                try:
+                    meta = PreloadedDatasetMetadata.from_dict(item)
+                except Exception as e:
+                    self.logger.warning(f"import_from_folder: invalid metadata item, skipping — {e}")
+                    skipped_no_file += 1
+                    continue
+
+                # 파일 경로를 파일명만으로 정규화
+                meta.file_path = Path(meta.file_path).name
+
+                # 중복 체크
+                if meta.dataset_id in existing_ids or meta.file_path in existing_files:
+                    self.logger.debug(f"import_from_folder: skipping duplicate '{meta.alias}'")
+                    skipped_dup += 1
+                    continue
+
+                # parquet 파일 탐색
+                src_parquet = source_datasets_dir / meta.file_path
+                if not src_parquet.exists():
+                    src_parquet = source_dir / meta.file_path  # fallback: source_dir 직접
+                if not src_parquet.exists():
+                    self.logger.warning(
+                        f"import_from_folder: parquet not found for '{meta.alias}', skipping"
+                    )
+                    skipped_no_file += 1
+                    continue
+
+                # 파일명 충돌 방지: 이미 같은 이름의 파일이 dest에 있으면 uuid suffix 부여
+                dest_name = meta.file_path
+                dest_parquet = self.datasets_dir / dest_name
+                if dest_parquet.exists():
+                    stem = Path(dest_name).stem
+                    suffix = str(uuid.uuid4())[:8]
+                    dest_name = f"{stem}_{suffix}.parquet"
+                    dest_parquet = self.datasets_dir / dest_name
+
+                shutil.copy2(src_parquet, dest_parquet)
+                meta.file_path = dest_name
+
+                self.metadata_list.append(meta)
+                self._file_source_dirs[meta.file_path] = str(self.datasets_dir)
+                imported += 1
+                self.logger.info(
+                    f"import_from_folder: imported '{meta.alias}' → {dest_name}"
+                )
+
+        else:
+            # ── metadata.json 없음: datasets/ 폴더 내 parquet 복사 후 자동 등록 ──
+            source_datasets_dir = source_dir / "datasets"
+            search_dir = source_datasets_dir if source_datasets_dir.exists() else source_dir
+
+            existing_files = {m.file_path for m in self.metadata_list}
+
+            for parquet_file in sorted(search_dir.glob("*.parquet")):
+                if parquet_file.name in existing_files:
+                    skipped_dup += 1
+                    continue
+
+                dest_name = parquet_file.name
+                dest_parquet = self.datasets_dir / dest_name
+                if dest_parquet.exists():
+                    stem = parquet_file.stem
+                    suffix = str(uuid.uuid4())[:8]
+                    dest_name = f"{stem}_{suffix}.parquet"
+                    dest_parquet = self.datasets_dir / dest_name
+
+                shutil.copy2(parquet_file, dest_parquet)
+                # auto-import 스캔이 새 파일을 감지하도록 datasets_dir 를 다시 스캔
+                # (직접 등록하지 않고 _scan_and_auto_import 에 맡김)
+
+            # 복사 후 자동 스캔 실행 → 새로 복사된 파일 등록
+            imported = self._scan_and_auto_import(self.datasets_dir)
+
+        if imported > 0:
+            self._save_metadata()
+
+        return imported, skipped_dup, skipped_no_file
+
     def import_dataset(self, dataset: Dataset, metadata: PreloadedDatasetMetadata) -> bool:
         """
         데이터셋을 데이터베이스에 임포트

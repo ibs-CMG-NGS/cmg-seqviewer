@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
                             QFormLayout, QTextEdit, QCheckBox, QSplitter, QWidget)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
+from pathlib import Path
 from typing import List, Optional
 import logging
 
@@ -81,6 +82,15 @@ class DatabaseBrowserDialog(QDialog):
         open_folder_btn.setToolTip("Open external data folder to add parquet files")
         open_folder_btn.clicked.connect(self._on_open_data_folder)
         search_layout.addWidget(open_folder_btn)
+        
+        # Import Folder 버튼
+        import_folder_btn = QPushButton("📥 Import Folder")
+        import_folder_btn.setToolTip(
+            "Import datasets from a folder containing metadata.json + parquet files.\n"
+            "Use this to merge pipeline output directly into the database."
+        )
+        import_folder_btn.clicked.connect(self._on_import_folder)
+        search_layout.addWidget(import_folder_btn)
         
         layout.addWidget(search_group)
         
@@ -545,4 +555,49 @@ class DatabaseBrowserDialog(QDialog):
                 self,
                 "Error",
                 f"Failed to open data folder:\n{str(e)}"
+            )
+
+    def _on_import_folder(self):
+        """외부 폴더에서 metadata.json + parquet 파일 병합"""
+        from PyQt6.QtWidgets import QFileDialog
+
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            "Select folder containing metadata.json and parquet files",
+            "",
+        )
+        if not folder:
+            return
+
+        try:
+            imported, skipped_dup, skipped_no_file = self.db_manager.import_from_folder(
+                Path(folder)
+            )
+
+            # 테이블 갱신
+            self._load_datasets()
+
+            # 결과 메시지
+            lines = []
+            if imported > 0:
+                lines.append(f"✅ {imported} dataset(s) imported successfully.")
+            if skipped_dup > 0:
+                lines.append(f"⚠️ {skipped_dup} duplicate(s) skipped (already in database).")
+            if skipped_no_file > 0:
+                lines.append(f"⚠️ {skipped_no_file} entry/entries skipped (parquet file not found).")
+            if not lines:
+                lines.append("No new datasets found in the selected folder.")
+
+            QMessageBox.information(
+                self,
+                "Import Folder — Result",
+                "\n".join(lines),
+            )
+
+        except Exception as e:
+            self.logger.error(f"Failed to import folder: {e}")
+            QMessageBox.critical(
+                self,
+                "Import Folder Failed",
+                f"An error occurred while importing the folder:\n{str(e)}",
             )
