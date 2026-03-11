@@ -507,6 +507,10 @@ class MainWindow(QMainWindow):
         # 키보드 이벤트 핸들러 연결 (Ctrl+C/Ctrl+V)
         table.keyPressEvent = lambda event: self._handle_table_key_press(event, table)
         
+        # 컨텍스트 메뉴 활성화
+        table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        table.customContextMenuRequested.connect(lambda pos: self._show_table_context_menu(table, pos))
+        
         # 헤더 클릭으로 정렬 가능하도록 설정
         table.horizontalHeader().setSectionsClickable(True)
         table.horizontalHeader().setStyleSheet("""
@@ -1688,7 +1692,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self, "About RNA-Seq Data Analyzer",
             "<h2>CMG-SeqViewer</h2>"
-            "<p><b>Version 1.0.0</b></p>"
+            "<p><b>Version 1.1.0</b></p>"
             "<p>A comprehensive tool for RNA-Seq data analysis and visualization.</p>"
             "<br>"
             "<p><b>Key Features:</b></p>"
@@ -2792,3 +2796,241 @@ class MainWindow(QMainWindow):
                         table.setColumnWidth(col, width)
         except Exception as e:
             self.logger.error(f"Failed to restore column widths: {e}")
+    
+    def _show_table_context_menu(self, table: QTableWidget, pos):
+        """
+        테이블 셀 우클릭 시 컨텍스트 메뉴 표시
+        Gene symbol/ID, GO term, KEGG pathway에 대한 외부 데이터베이스 링크 제공
+        """
+        from PyQt6.QtWidgets import QMenu
+        from PyQt6.QtGui import QDesktopServices
+        from PyQt6.QtCore import QUrl
+        
+        # 클릭된 셀 찾기
+        item = table.itemAt(pos)
+        if not item:
+            return
+        
+        row = item.row()
+        col = item.column()
+        
+        # 컬럼 헤더 이름 가져오기
+        header_item = table.horizontalHeaderItem(col)
+        if not header_item:
+            return
+        
+        column_name = header_item.text().lower()
+        
+        # 셀 값 가져오기
+        cell_text = item.text().strip()
+        if not cell_text:
+            return
+        
+        # 컬럼 타입 감지
+        is_gene_column = any(keyword in column_name for keyword in 
+                            ['gene_id', 'gene id', 'geneid', 'symbol', 'gene_symbol', 'gene symbol'])
+        
+        is_go_column = any(keyword in column_name for keyword in 
+                          ['term_id', 'termid', 'go_id', 'goid', 'go term'])
+        
+        is_kegg_column = any(keyword in column_name for keyword in 
+                            ['pathway_id', 'pathwayid', 'kegg_id', 'keggid', 'kegg pathway'])
+        
+        is_description_column = any(keyword in column_name for keyword in 
+                                   ['description', 'term_name', 'pathway_name', 'name'])
+        
+        # 아무 것도 해당하지 않으면 메뉴 표시 안 함
+        if not (is_gene_column or is_go_column or is_kegg_column or is_description_column):
+            return
+        
+        # 컨텍스트 메뉴 생성
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: white;
+                border: 1px solid #cccccc;
+            }
+            QMenu::item {
+                padding: 5px 20px;
+            }
+            QMenu::item:selected {
+                background-color: #0078d4;
+                color: white;
+            }
+        """)
+        
+        # Gene 컬럼인 경우
+        if is_gene_column:
+            self._add_gene_menu_items(menu, cell_text)
+        
+        # GO Term 컬럼인 경우
+        elif is_go_column or (is_description_column and cell_text.startswith('GO:')):
+            self._add_go_menu_items(menu, cell_text)
+        
+        # KEGG Pathway 컬럼인 경우
+        elif is_kegg_column or (is_description_column and any(kw in cell_text.lower() for kw in ['pathway', 'kegg'])):
+            self._add_kegg_menu_items(menu, cell_text)
+        
+        # Description 컬럼이지만 GO/KEGG가 아닌 경우 - 일반 검색만
+        elif is_description_column:
+            self._add_general_search_items(menu, cell_text)
+        
+        # 메뉴 표시
+        if menu.actions():  # 메뉴 항목이 있을 때만 표시
+            menu.exec(table.viewport().mapToGlobal(pos))
+    
+    def _add_gene_menu_items(self, menu, gene_text):
+        """Gene 관련 메뉴 항목 추가"""
+        from PyQt6.QtGui import QDesktopServices
+        from PyQt6.QtCore import QUrl
+        
+        # NCBI Gene 검색
+        ncbi_action = menu.addAction(f"🔍 Search '{gene_text}' in NCBI Gene")
+        ncbi_action.triggered.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl(f"https://www.ncbi.nlm.nih.gov/gene/?term={gene_text}")
+            )
+        )
+        
+        # GeneCards 검색
+        genecards_action = menu.addAction(f"🔍 Search '{gene_text}' in GeneCards")
+        genecards_action.triggered.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl(f"https://www.genecards.org/cgi-bin/carddisp.pl?gene={gene_text}")
+            )
+        )
+        
+        # Ensembl 검색
+        ensembl_action = menu.addAction(f"🔍 Search '{gene_text}' in Ensembl")
+        ensembl_action.triggered.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl(f"https://www.ensembl.org/Multi/Search/Results?q={gene_text}")
+            )
+        )
+        
+        menu.addSeparator()
+        
+        # UniProt 검색 (단백질 정보)
+        uniprot_action = menu.addAction(f"🔍 Search '{gene_text}' in UniProt")
+        uniprot_action.triggered.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl(f"https://www.uniprot.org/uniprotkb?query={gene_text}")
+            )
+        )
+        
+        # Google Scholar 검색 (논문)
+        scholar_action = menu.addAction(f"📚 Search '{gene_text}' in Google Scholar")
+        scholar_action.triggered.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl(f"https://scholar.google.com/scholar?q={gene_text}")
+            )
+        )
+    
+    def _add_go_menu_items(self, menu, go_text):
+        """GO Term 관련 메뉴 항목 추가"""
+        from PyQt6.QtGui import QDesktopServices
+        from PyQt6.QtCore import QUrl
+        import re
+        
+        # GO ID 추출 (GO:0008150 형식)
+        go_id_match = re.search(r'GO:\d+', go_text)
+        go_id = go_id_match.group(0) if go_id_match else go_text
+        
+        # QuickGO (EBI)
+        quickgo_action = menu.addAction(f"🔍 View '{go_id}' in QuickGO")
+        quickgo_action.triggered.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl(f"https://www.ebi.ac.uk/QuickGO/term/{go_id}")
+            )
+        )
+        
+        # AmiGO (official GO browser)
+        amigo_action = menu.addAction(f"🔍 View '{go_id}' in AmiGO")
+        amigo_action.triggered.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl(f"http://amigo.geneontology.org/amigo/term/{go_id}")
+            )
+        )
+        
+        menu.addSeparator()
+        
+        # Gene Ontology (official site)
+        go_action = menu.addAction(f"🔍 Search '{go_id}' in Gene Ontology")
+        go_action.triggered.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl(f"http://geneontology.org/docs/ontology-documentation/")
+            )
+        )
+        
+        # NCBI Gene search with GO term
+        ncbi_action = menu.addAction(f"🔍 Search genes with '{go_id}' in NCBI")
+        ncbi_action.triggered.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl(f"https://www.ncbi.nlm.nih.gov/gene/?term={go_id}")
+            )
+        )
+    
+    def _add_kegg_menu_items(self, menu, kegg_text):
+        """KEGG Pathway 관련 메뉴 항목 추가"""
+        from PyQt6.QtGui import QDesktopServices
+        from PyQt6.QtCore import QUrl
+        import re
+        
+        # KEGG pathway ID 추출 (hsa04110, mmu04110 등)
+        kegg_id_match = re.search(r'[a-z]{2,4}\d{5}', kegg_text)
+        kegg_id = kegg_id_match.group(0) if kegg_id_match else kegg_text
+        
+        # KEGG Pathway 직접 링크
+        pathway_action = menu.addAction(f"🔍 View '{kegg_id}' in KEGG Pathway")
+        pathway_action.triggered.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl(f"https://www.genome.jp/pathway/{kegg_id}")
+            )
+        )
+        
+        # KEGG Pathway 검색
+        search_action = menu.addAction(f"🔍 Search '{kegg_text}' in KEGG")
+        search_action.triggered.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl(f"https://www.genome.jp/dbget-bin/www_bfind_sub?mode=bfind&max_hit=1000&dbkey=pathway&keywords={kegg_text}")
+            )
+        )
+        
+        menu.addSeparator()
+        
+        # Reactome (alternative pathway database)
+        reactome_action = menu.addAction(f"🔍 Search '{kegg_text}' in Reactome")
+        reactome_action.triggered.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl(f"https://reactome.org/content/query?q={kegg_text}")
+            )
+        )
+        
+        # WikiPathways
+        wiki_action = menu.addAction(f"🔍 Search '{kegg_text}' in WikiPathways")
+        wiki_action.triggered.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl(f"https://www.wikipathways.org/index.php/Special:SearchPathways?query={kegg_text}")
+            )
+        )
+    
+    def _add_general_search_items(self, menu, text):
+        """일반 검색 메뉴 항목 추가 (description 등)"""
+        from PyQt6.QtGui import QDesktopServices
+        from PyQt6.QtCore import QUrl
+        
+        # Google Scholar 검색
+        scholar_action = menu.addAction(f"📚 Search '{text}' in Google Scholar")
+        scholar_action.triggered.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl(f"https://scholar.google.com/scholar?q={text}")
+            )
+        )
+        
+        # PubMed 검색
+        pubmed_action = menu.addAction(f"📚 Search '{text}' in PubMed")
+        pubmed_action.triggered.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl(f"https://pubmed.ncbi.nlm.nih.gov/?term={text}")
+            )
+        )

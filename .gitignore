@@ -123,7 +123,10 @@ dmypy.json
 .pyre/
 
 # IDE
-.vscode/
+# .vscode/ 는 개인 설정이므로 대부분 무시하되, 팀 공유 파일만 추적
+!.vscode/
+.vscode/*
+!.vscode/tasks.json
 .idea/
 *.swp
 *.swo
@@ -144,6 +147,14 @@ database/metadata.json
 # Keep database directory structure but exclude actual data
 !database/.gitkeep
 !database/datasets/.gitkeep
+
+# External data folder (for post-deployment data)
+data/datasets/*.parquet
+data/metadata.json
+# Keep data directory structure but exclude actual data
+!data/.gitkeep
+!data/datasets/.gitkeep
+!data/README.txt
 
 # OS
 .DS_Store

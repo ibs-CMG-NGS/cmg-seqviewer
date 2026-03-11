@@ -70,9 +70,17 @@ class DatabaseBrowserDialog(QDialog):
         search_layout.addWidget(QLabel("Organism:"))
         search_layout.addWidget(self.organism_filter)
         
+        # Refresh 버튼
         refresh_btn = QPushButton("🔄 Refresh")
-        refresh_btn.clicked.connect(self._load_datasets)
+        refresh_btn.setToolTip("Scan for new parquet files in data folder")
+        refresh_btn.clicked.connect(self._on_refresh_database)
         search_layout.addWidget(refresh_btn)
+        
+        # Open Data Folder 버튼
+        open_folder_btn = QPushButton("📂 Open Data Folder")
+        open_folder_btn.setToolTip("Open external data folder to add parquet files")
+        open_folder_btn.clicked.connect(self._on_open_data_folder)
+        search_layout.addWidget(open_folder_btn)
         
         layout.addWidget(search_group)
         
@@ -106,8 +114,29 @@ class DatabaseBrowserDialog(QDialog):
                   "Rows", "Genes", "Sig. Genes", "Import Date", "Tags"]
         self.table.setColumnCount(len(columns))
         self.table.setHorizontalHeaderLabels(columns)
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+
+        # 모든 컬럼을 사용자가 드래그로 자유롭게 조절할 수 있도록 Interactive 모드
+        header = self.table.horizontalHeader()
+        if header is not None:
+            header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+            # 마지막 컬럼(Tags)은 남은 공간을 채우도록 Stretch
+            header.setStretchLastSection(True)
+
+        # 초기 컬럼 너비 설정 (픽셀)
+        initial_widths = {
+            0: 200,   # Alias
+            1:  90,   # Type
+            2: 180,   # Condition
+            3: 110,   # Cell Type
+            4: 120,   # Organism
+            5:  60,   # Rows
+            6:  60,   # Genes
+            7:  70,   # Sig. Genes
+            8: 130,   # Import Date
+            9: 120,   # Tags
+        }
+        for col, width in initial_widths.items():
+            self.table.setColumnWidth(col, width)
         
         # 더블클릭 시 로드
         self.table.doubleClicked.connect(self._on_load_selected)
@@ -436,10 +465,71 @@ class DatabaseBrowserDialog(QDialog):
         """편집 완료 후 목록 새로고침"""
         self.logger.info(f"Dataset metadata edited: {dataset_id}")
         self._load_datasets()
-        
-        # 편집한 데이터셋 다시 선택
-        for row in range(self.table.rowCount()):
-            item = self.table.item(row, 0)
-            if item and item.data(Qt.ItemDataRole.UserRole) == dataset_id:
-                self.table.selectRow(row)
-                break
+    
+    def _on_refresh_database(self):
+        """데이터베이스 새로고침 - 새로운 parquet 파일 스캔 및 자동 등록"""
+        self.logger.info("Refreshing database...")
+
+        try:
+            json_added, auto_imported = self.db_manager.refresh_database()
+
+            # 목록 새로고침
+            self._load_datasets()
+
+            total = len(self.db_manager.metadata_list)
+
+            if auto_imported > 0 and json_added > 0:
+                msg = (
+                    f"✅ {json_added} dataset(s) loaded from metadata.json\n"
+                    f"✅ {auto_imported} parquet file(s) auto-registered\n\n"
+                    f"Total datasets: {total}"
+                )
+            elif auto_imported > 0:
+                msg = (
+                    f"✅ {auto_imported} parquet file(s) were automatically registered.\n"
+                    f"   (alias = filename, other fields left blank)\n\n"
+                    f"Total datasets: {total}\n\n"
+                    f"Tip: Select each dataset and click '✏️ Edit Metadata' "
+                    f"to fill in condition, organism, etc."
+                )
+            elif json_added > 0:
+                msg = (
+                    f"✅ {json_added} new dataset(s) loaded from metadata.json\n\n"
+                    f"Total datasets: {total}"
+                )
+            else:
+                msg = (
+                    f"No new datasets found.\n\n"
+                    f"Current datasets: {total}"
+                )
+
+            QMessageBox.information(self, "Refresh Complete", msg)
+
+        except Exception as e:
+            self.logger.error(f"Failed to refresh database: {e}")
+            QMessageBox.critical(
+                self,
+                "Refresh Failed",
+                f"Failed to refresh database:\n{str(e)}"
+            )
+    
+    def _on_open_data_folder(self):
+        """외부 데이터 폴더를 파일 탐색기에서 열기"""
+        try:
+            self.db_manager.open_external_data_folder()
+            
+            QMessageBox.information(
+                self,
+                "Data Folder Opened",
+                "External data folder has been opened.\n\n"
+                "Add your parquet files to the 'datasets' subfolder,\n"
+                "then click 'Refresh' to import them."
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Failed to open data folder: {e}")
+            QMessageBox.warning(
+                self,
+                "Error",
+                f"Failed to open data folder:\n{str(e)}"
+            )
