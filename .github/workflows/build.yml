@@ -32,16 +32,11 @@ jobs:
         run: |
           pyinstaller --clean --noconfirm rna-seq-viewer.spec
       
-      - name: Create ZIP archive
-        run: |
-          cd dist\CMG-SeqViewer
-          Compress-Archive -Path ".\*" -DestinationPath "..\..\CMG-SeqViewer-Windows.zip"
-      
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: CMG-SeqViewer-Windows
-          path: CMG-SeqViewer-Windows.zip
+          path: dist\CMG-SeqViewer\
 
   build-macos:
     runs-on: macos-latest  # Use latest macOS for faster build availability
@@ -155,7 +150,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: CMG-SeqViewer-Windows
-      
+          path: CMG-SeqViewer-Windows   # 폴더로 받기
+
+      - name: Create Windows ZIP
+        run: |
+          cd CMG-SeqViewer-Windows
+          zip -r ../CMG-SeqViewer-Windows.zip .
+
       - name: Download macOS artifact
         uses: actions/download-artifact@v4
         with:
