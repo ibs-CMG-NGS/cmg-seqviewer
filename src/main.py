@@ -91,6 +91,24 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("RNA-Seq Data Analyzer")
     app.setOrganizationName("RNA-Seq Analysis Team")
+
+    # 작업표시줄 및 전체 앱 아이콘 설정 (QApplication 레벨)
+    # setWindowIcon을 MainWindow에서만 하면 타이틀바에만 적용되고
+    # Windows 작업표시줄에는 표시되지 않으므로 app에도 동일하게 설정
+    from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont as QFontIcon
+    from PyQt6.QtCore import Qt, QRect
+    _pixmap = QPixmap(64, 64)
+    _pixmap.fill(Qt.GlobalColor.transparent)
+    _painter = QPainter(_pixmap)
+    _painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    _painter.setBrush(QColor(70, 130, 180))
+    _painter.setPen(Qt.PenStyle.NoPen)
+    _painter.drawEllipse(2, 2, 60, 60)
+    _painter.setPen(QColor(255, 255, 255))
+    _painter.setFont(QFontIcon("Arial", 28, QFontIcon.Weight.Bold))
+    _painter.drawText(QRect(0, 0, 64, 64), Qt.AlignmentFlag.AlignCenter, "🧬")
+    _painter.end()
+    app.setWindowIcon(QIcon(_pixmap))
     
     # Force light theme for consistent UI across platforms
     # macOS dark mode causes text visibility issues
