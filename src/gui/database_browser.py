@@ -140,6 +140,9 @@ class DatabaseBrowserDialog(QDialog):
         
         # 더블클릭 시 로드
         self.table.doubleClicked.connect(self._on_load_selected)
+
+        # 헤더 클릭으로 정렬 활성화
+        self.table.setSortingEnabled(True)
         
         splitter.addWidget(self.table)
         
@@ -251,32 +254,42 @@ class DatabaseBrowserDialog(QDialog):
     
     def _populate_table(self, metadata_list: List[PreloadedDatasetMetadata]):
         """테이블에 데이터셋 목록 표시"""
+        # 데이터를 채우는 동안 정렬을 끔:
+        # setSortingEnabled 상태에서 insertRow/setItem 하면 행이 즉시 재정렬되어
+        # dataset_id UserRole 매핑이 틀어지는 것을 방지
+        self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
-        
+
         for meta in metadata_list:
             row = self.table.rowCount()
             self.table.insertRow(row)
-            
+
             # 데이터셋 ID를 숨겨진 데이터로 저장
             alias_item = QTableWidgetItem(meta.alias)
             alias_item.setData(Qt.ItemDataRole.UserRole, meta.dataset_id)
             self.table.setItem(row, 0, alias_item)
-            
+
             self.table.setItem(row, 1, QTableWidgetItem(meta.dataset_type.value))
             self.table.setItem(row, 2, QTableWidgetItem(meta.experiment_condition))
             self.table.setItem(row, 3, QTableWidgetItem(meta.cell_type))
             self.table.setItem(row, 4, QTableWidgetItem(meta.organism))
-            self.table.setItem(row, 5, QTableWidgetItem(str(meta.row_count)))
-            self.table.setItem(row, 6, QTableWidgetItem(str(meta.gene_count)))
-            self.table.setItem(row, 7, QTableWidgetItem(str(meta.significant_genes)))
-            
+
+            # 숫자 컬럼: 표시는 문자열, 정렬은 숫자(Qt.DisplayRole 대신 UserRole 사용)
+            for col, val in [(5, meta.row_count), (6, meta.gene_count), (7, meta.significant_genes)]:
+                item = QTableWidgetItem()
+                item.setData(Qt.ItemDataRole.DisplayRole, val)   # 숫자로 저장 → 숫자 정렬
+                self.table.setItem(row, col, item)
+
             # 날짜 포맷
             import_date = meta.import_date.split('T')[0] if meta.import_date else "-"
             self.table.setItem(row, 8, QTableWidgetItem(import_date))
-            
+
             # 태그
             tags_str = ", ".join(meta.tags) if meta.tags else "-"
             self.table.setItem(row, 9, QTableWidgetItem(tags_str))
+
+        # 데이터를 다 채운 뒤 정렬 복원
+        self.table.setSortingEnabled(True)
     
     def _update_filters(self):
         """필터 콤보박스 업데이트"""
