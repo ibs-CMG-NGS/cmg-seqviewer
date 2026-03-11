@@ -114,8 +114,29 @@ class DatabaseBrowserDialog(QDialog):
                   "Rows", "Genes", "Sig. Genes", "Import Date", "Tags"]
         self.table.setColumnCount(len(columns))
         self.table.setHorizontalHeaderLabels(columns)
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+
+        # 모든 컬럼을 사용자가 드래그로 자유롭게 조절할 수 있도록 Interactive 모드
+        header = self.table.horizontalHeader()
+        if header is not None:
+            header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+            # 마지막 컬럼(Tags)은 남은 공간을 채우도록 Stretch
+            header.setStretchLastSection(True)
+
+        # 초기 컬럼 너비 설정 (픽셀)
+        initial_widths = {
+            0: 200,   # Alias
+            1:  90,   # Type
+            2: 180,   # Condition
+            3: 110,   # Cell Type
+            4: 120,   # Organism
+            5:  60,   # Rows
+            6:  60,   # Genes
+            7:  70,   # Sig. Genes
+            8: 130,   # Import Date
+            9: 120,   # Tags
+        }
+        for col, width in initial_widths.items():
+            self.table.setColumnWidth(col, width)
         
         # 더블클릭 시 로드
         self.table.doubleClicked.connect(self._on_load_selected)
