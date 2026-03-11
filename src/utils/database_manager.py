@@ -150,46 +150,112 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"Failed to load metadata from {metadata_file}: {e}")
     
-    def _scan_and_auto_import(self, datasets_dir: Path):
+    def _scan_and_auto_import(self, datasets_dir: Path) -> int:
         """
-        폴더를 스캔하여 고아(orphan) parquet 파일 감지
-        
-        메타데이터 없이 parquet 파일만 있는 경우 경고 메시지 출력.
-        사용자는 metadata.json과 함께 복사해야 함.
-        
+        폴더를 스캔하여 고아(orphan) parquet 파일을 자동으로 metadata.json에 등록.
+
+        metadata.json에 없는 parquet 파일을 발견하면 컬럼 구조를 분석하여
+        DE / GO 타입을 자동 판별하고 최소 메타데이터 항목을 생성해
+        metadata.json에 추가합니다.
+
         Args:
             datasets_dir: 스캔할 datasets 폴더
+
+        Returns:
+            int: 새로 자동 등록된 데이터셋 수
         """
         if not datasets_dir.exists():
-            return
-        
+            return 0
+
+        auto_imported = 0
+
         try:
-            # 기존 메타데이터의 파일명 목록
             known_files = {meta.file_path for meta in self.metadata_list}
-            
-            # Parquet 파일 스캔
-            orphan_files = []
-            for parquet_file in datasets_dir.glob("*.parquet"):
+
+            for parquet_file in sorted(datasets_dir.glob("*.parquet")):
                 filename = parquet_file.name
-                
-                # 이미 메타데이터가 있으면 스킵
+
                 if filename in known_files:
                     continue
-                
-                orphan_files.append(filename)
-            
-            if orphan_files:
-                self.logger.warning(
-                    f"Found {len(orphan_files)} parquet file(s) without metadata in {datasets_dir}:\n"
-                    f"  {', '.join(orphan_files)}\n"
-                    f"These files will be IGNORED. To import them:\n"
-                    f"  1. Copy the corresponding metadata.json from the source database folder\n"
-                    f"  2. Merge the metadata entries, or\n"
-                    f"  3. Use 'File → Database → Import Current Dataset' to add them properly"
+
+                # ── parquet 열어서 컬럼 확인 ──────────────────────────────
+                try:
+                    df = pd.read_parquet(parquet_file, engine='pyarrow')
+                except Exception as e:
+                    self.logger.warning(f"Cannot read parquet (skipping): {filename} — {e}")
+                    continue
+
+                cols = set(df.columns)
+
+                # DE/GO 자동 판별
+                de_required = {'gene_id', 'log2fc', 'adj_pvalue'}
+                go_required = {'term_id', 'description', 'fdr'}
+
+                if de_required.issubset(cols):
+                    dataset_type = DatasetType.DIFFERENTIAL_EXPRESSION
+                elif go_required.issubset(cols):
+                    dataset_type = DatasetType.GO_ANALYSIS
+                else:
+                    self.logger.warning(
+                        f"Cannot determine type of '{filename}' "
+                        f"(no DE or GO standard columns found). Skipping."
+                    )
+                    continue
+
+                # ── 통계 계산 ──────────────────────────────────────────────
+                row_count = len(df)
+                gene_count = 0
+                significant_genes = 0
+
+                if dataset_type == DatasetType.DIFFERENTIAL_EXPRESSION:
+                    gene_count = row_count
+                    if 'adj_pvalue' in cols:
+                        try:
+                            significant_genes = int(
+                                (pd.to_numeric(df['adj_pvalue'], errors='coerce') < 0.05).sum()
+                            )
+                        except Exception:
+                            significant_genes = 0
+
+                # ── alias: 파일명에서 uuid8 suffix 제거 ───────────────────
+                # 예) "MonTG_vs_nMonTF_de_b8cc6614.parquet" → "MonTG_vs_nMonTF_de"
+                stem = parquet_file.stem  # 확장자 제외
+                import re
+                alias = re.sub(r'_[0-9a-f]{8}$', '', stem) or stem
+
+                # ── 메타데이터 항목 생성 ────────────────────────────────────
+                new_id = str(uuid.uuid4())
+                metadata = PreloadedDatasetMetadata(
+                    dataset_id=new_id,
+                    alias=alias,
+                    original_filename=filename,
+                    dataset_type=dataset_type,
+                    row_count=row_count,
+                    gene_count=gene_count,
+                    significant_genes=significant_genes,
+                    import_date=datetime.now().isoformat(),
+                    file_path=filename,
+                    notes="Auto-imported (no metadata.json entry found)",
                 )
-                    
+
+                self.metadata_list.append(metadata)
+                self._file_source_dirs[filename] = str(datasets_dir)
+                auto_imported += 1
+
+                self.logger.info(
+                    f"Auto-imported '{alias}' ({dataset_type.value}, "
+                    f"{row_count} rows) from {filename}"
+                )
+
+            # 새로 등록된 항목이 있으면 metadata.json 저장
+            if auto_imported > 0:
+                self._save_metadata()
+                self.logger.info(f"Auto-imported {auto_imported} orphan parquet file(s)")
+
         except Exception as e:
             self.logger.error(f"Failed to scan directory: {e}")
+
+        return auto_imported
     
     def _load_metadata(self):
         """메타데이터 파일 로드 (레거시 메서드 - 하위 호환성)"""
@@ -663,36 +729,65 @@ class DatabaseManager:
             self.logger.error(f"Failed to export dataset: {e}")
             return False
 
-    def refresh_database(self) -> int:
+    def refresh_database(self) -> tuple[int, int]:
         """
         데이터베이스를 새로고침하여 metadata.json을 다시 로드합니다.
-        
-        사용자가 외부 데이터 폴더(data/)에 parquet 파일과 metadata.json을
-        추가한 후 이 메서드를 호출하면 다시 로드됩니다.
-        
+
+        사용자가 외부 데이터 폴더(data/)에 parquet 파일을 추가한 후
+        이 메서드를 호출하면 metadata.json 없이도 자동으로 등록됩니다.
+
         Returns:
-            int: 새로 추가된 데이터셋 개수
+            tuple[int, int]:
+                (json_added, auto_imported)
+                - json_added   : metadata.json 에서 새로 읽힌 데이터셋 수
+                - auto_imported: 고아 parquet 파일에서 자동 등록된 수
         """
         self.logger.info("Refreshing database...")
         initial_count = len(self.metadata_list)
-        
+
         # 메타데이터 리스트 초기화
         self.metadata_list = []
         self._file_source_dirs = {}
-        
-        # 다시 로드
-        self._load_all_metadata()
-        
-        new_count = len(self.metadata_list) - initial_count
-        
-        if new_count > 0:
-            self.logger.info(f"Refresh completed: {new_count} new dataset(s) added")
-        elif new_count < 0:
-            self.logger.info(f"Refresh completed: {abs(new_count)} dataset(s) removed")
+
+        # metadata.json 다시 로드 (auto_import 포함)
+        # _load_all_metadata → _scan_and_auto_import 순서로 호출됨
+        # _scan_and_auto_import의 반환값을 여기서 직접 받기 위해 분리 호출
+        # ── 1단계: metadata.json 로드 ──────────────────────────────────
+        if self.external_data_dir is None and self.legacy_database_dir is None:
+            if self.metadata_file.exists():
+                self._load_metadata_from_file(self.metadata_file, self.datasets_dir)
         else:
-            self.logger.info("Refresh completed: No changes")
-        
-        return new_count
+            if self.external_data_dir and (self.external_data_dir / "metadata.json").exists():
+                self._load_metadata_from_file(
+                    self.external_data_dir / "metadata.json",
+                    self.external_data_dir / "datasets"
+                )
+            if self.legacy_database_dir and (self.legacy_database_dir / "metadata.json").exists():
+                self._load_metadata_from_file(
+                    self.legacy_database_dir / "metadata.json",
+                    self.legacy_database_dir / "datasets",
+                    skip_duplicates=True
+                )
+
+        json_count = len(self.metadata_list)
+        json_added = json_count - initial_count  # 음수면 삭제된 것
+
+        # ── 2단계: 고아 parquet 자동 등록 ─────────────────────────────
+        auto_imported = 0
+        if self.external_data_dir:
+            # 다중 경로 모드: 외부 데이터 폴더 스캔
+            auto_imported += self._scan_and_auto_import(self.external_data_dir / "datasets")
+        else:
+            # 단일 경로 모드: database_dir/datasets 스캔
+            auto_imported += self._scan_and_auto_import(self.datasets_dir)
+
+        total = len(self.metadata_list)
+        self.logger.info(
+            f"Refresh completed: total={total}, "
+            f"from_json={json_added:+d}, auto_imported={auto_imported}"
+        )
+
+        return json_added, auto_imported
     
     @staticmethod
     def open_external_data_folder():

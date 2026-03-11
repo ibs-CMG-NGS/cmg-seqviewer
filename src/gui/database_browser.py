@@ -467,32 +467,44 @@ class DatabaseBrowserDialog(QDialog):
         self._load_datasets()
     
     def _on_refresh_database(self):
-        """데이터베이스 새로고침 - 새로운 parquet 파일 스캔"""
+        """데이터베이스 새로고침 - 새로운 parquet 파일 스캔 및 자동 등록"""
         self.logger.info("Refreshing database...")
-        
+
         try:
-            # 데이터베이스 스캔 (새 parquet 파일 자동 임포트)
-            new_count = self.db_manager.refresh_database()
-            
+            json_added, auto_imported = self.db_manager.refresh_database()
+
             # 목록 새로고침
             self._load_datasets()
-            
-            # 결과 메시지
-            if new_count > 0:
-                QMessageBox.information(
-                    self,
-                    "Refresh Complete",
-                    f"Found and imported {new_count} new dataset(s).\n\n"
-                    f"Total datasets: {len(self.db_manager.metadata_list)}"
+
+            total = len(self.db_manager.metadata_list)
+
+            if auto_imported > 0 and json_added > 0:
+                msg = (
+                    f"✅ {json_added} dataset(s) loaded from metadata.json\n"
+                    f"✅ {auto_imported} parquet file(s) auto-registered\n\n"
+                    f"Total datasets: {total}"
+                )
+            elif auto_imported > 0:
+                msg = (
+                    f"✅ {auto_imported} parquet file(s) were automatically registered.\n"
+                    f"   (alias = filename, other fields left blank)\n\n"
+                    f"Total datasets: {total}\n\n"
+                    f"Tip: Select each dataset and click '✏️ Edit Metadata' "
+                    f"to fill in condition, organism, etc."
+                )
+            elif json_added > 0:
+                msg = (
+                    f"✅ {json_added} new dataset(s) loaded from metadata.json\n\n"
+                    f"Total datasets: {total}"
                 )
             else:
-                QMessageBox.information(
-                    self,
-                    "Refresh Complete",
-                    "No new datasets found.\n\n"
-                    f"Current datasets: {len(self.db_manager.metadata_list)}"
+                msg = (
+                    f"No new datasets found.\n\n"
+                    f"Current datasets: {total}"
                 )
-                
+
+            QMessageBox.information(self, "Refresh Complete", msg)
+
         except Exception as e:
             self.logger.error(f"Failed to refresh database: {e}")
             QMessageBox.critical(
