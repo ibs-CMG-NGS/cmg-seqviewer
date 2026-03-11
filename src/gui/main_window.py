@@ -1692,7 +1692,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self, "About RNA-Seq Data Analyzer",
             "<h2>CMG-SeqViewer</h2>"
-            "<p><b>Version 1.0.0</b></p>"
+            "<p><b>Version 1.1.0</b></p>"
             "<p>A comprehensive tool for RNA-Seq data analysis and visualization.</p>"
             "<br>"
             "<p><b>Key Features:</b></p>"
