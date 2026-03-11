@@ -23,6 +23,7 @@ from gui.filter_panel import FilterPanel
 from gui.dataset_manager import DatasetManagerWidget
 from gui.comparison_panel import ComparisonPanel
 from gui.visualization_dialog import VolcanoPlotDialog, PadjHistogramDialog, HeatmapDialog, DotPlotDialog
+from gui.pca_dialog import PCADialog
 from gui.venn_dialog import VennDiagramDialog
 from gui.venn_dialog_comparison import VennDiagramFromComparisonDialog
 from gui.help_dialog import HelpDialog
@@ -386,6 +387,11 @@ class MainWindow(QMainWindow):
         self.heatmap_action.triggered.connect(lambda: self._on_visualization_requested("heatmap"))
         # 항상 활성화
         viz_menu.addAction(self.heatmap_action)
+        
+        self.pca_action = QAction("🔵 PCA Plot", self)
+        self.pca_action.setShortcut("Ctrl+P")
+        self.pca_action.triggered.connect(lambda: self._on_visualization_requested("pca"))
+        viz_menu.addAction(self.pca_action)
         
         viz_menu.addSeparator()
         
@@ -1755,6 +1761,22 @@ class MainWindow(QMainWindow):
                 required_cols = ['padj']
             elif viz_type == "heatmap":
                 required_cols = []  # Heatmap은 샘플 발현 데이터 자동 탐지
+            elif viz_type == "pca":
+                # PCA: DE 데이터셋만 허용, 컬럼 검사는 다이얼로그 내부에서 수행
+                if dataset.dataset_type.value != "DE":
+                    from models.data_models import DatasetType as _DT
+                    if dataset.dataset_type != _DT.DIFFERENTIAL_EXPRESSION:
+                        QMessageBox.warning(
+                            self, "PCA — DE Dataset Required",
+                            "PCA Plot is only available for Differential Expression datasets.\n"
+                            "Please select a DE dataset tab."
+                        )
+                        return
+                dataset_name = dataset.name if hasattr(dataset, 'name') else ""
+                dialog = PCADialog(dataframe, dataset_name=dataset_name, parent=self)
+                dialog.exec()
+                self.logger.info("Visualization opened: pca")
+                return
             else:
                 QMessageBox.warning(self, "Unknown Visualization", 
                                   f"Unknown visualization type: {viz_type}")
