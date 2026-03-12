@@ -87,14 +87,16 @@ class HelpDialog(QDialog):
         toc_items = [
             "1. Getting Started",
             "2. Loading Data",
-            "3. Data Filtering",
-            "4. GO/KEGG Analysis",
-            "5. Statistical Analysis",
-            "6. Visualization",
-            "7. Dataset Comparison",
-            "8. Gene Annotation",
-            "9. Export & Clipboard",
-            "10. Tips & Shortcuts"
+            "3. Dataset Database",
+            "4. Data Filtering",
+            "5. GO/KEGG Analysis",
+            "6. Statistical Analysis",
+            "7. Visualization",
+            "8. PCA Plot",
+            "9. Dataset Comparison",
+            "10. Gene Annotation",
+            "11. Export & Clipboard",
+            "12. Tips & Shortcuts"
         ]
         
         for item_text in toc_items:
@@ -108,10 +110,12 @@ class HelpDialog(QDialog):
         content_sections = [
             self._get_getting_started(),
             self._get_loading_data(),
+            self._get_dataset_database(),
             self._get_filtering(),
             self._get_go_kegg_analysis(),
             self._get_statistical_analysis(),
             self._get_visualization(),
+            self._get_pca_plot(),
             self._get_comparison(),
             self._get_gene_annotation(),
             self._get_export(),
@@ -154,10 +158,10 @@ class HelpDialog(QDialog):
         <p>All menus are always accessible. The application will show appropriate error messages 
         if an operation cannot be performed in the current context.</p>
         <ul>
-            <li><b>File:</b> Open datasets, recent files, export data</li>
+            <li><b>File:</b> Open datasets, database browser, recent files, export data</li>
             <li><b>Analysis:</b> Filtering, Fisher's Exact Test, GSEA, dataset comparison</li>
             <li><b>View:</b> Column display level, decimal precision</li>
-            <li><b>Visualization:</b> Volcano plots, histograms, heatmaps, dot plots, Venn diagrams</li>
+            <li><b>Visualization:</b> Volcano plots, histograms, heatmaps, PCA plots, dot plots, Venn diagrams</li>
             <li><b>Help:</b> About dialog and user documentation</li>
         </ul>
         """
@@ -236,10 +240,164 @@ class HelpDialog(QDialog):
         </ul>
         """
     
+    def _get_dataset_database(self):
+        """Dataset Database (Import / DB Browser) section"""
+        return """
+        <h1>3. Dataset Database</h1>
+
+        <p>CMG-SeqViewer maintains a <b>built-in Parquet database</b> that stores frequently
+        used datasets so you don't have to re-import Excel files every session.
+        Datasets saved here load in milliseconds, are automatically registered
+        when you drop files into the data folder, and can be merged from
+        pipeline output folders with one click.</p>
+
+        <h2>Opening the Database Browser</h2>
+        <p>Go to <b>File &rarr; Database &rarr; Browse Database</b>.</p>
+        <p>The browser shows all registered datasets with columns:</p>
+        <ul>
+            <li><b>Alias</b> – friendly name you assigned</li>
+            <li><b>Type</b> – DE or GO</li>
+            <li><b>Rows / Genes / Sig. Genes</b> – quick statistics</li>
+            <li><b>Organism / Cell Type</b> – optional metadata</li>
+            <li><b>Import Date</b></li>
+        </ul>
+        <p>Click any column header to sort. Use the <b>Search</b> box and
+        <b>Cell Type / Organism</b> dropdowns to filter the list.</p>
+
+        <h2>Loading a Dataset from the Database</h2>
+        <ol>
+            <li>Open the Database Browser</li>
+            <li>Select one or more rows (Shift/Ctrl+click for multi-select)</li>
+            <li>Click <b>Load Selected</b> — the dataset opens as a new tab immediately</li>
+        </ol>
+
+        <h2>Importing a New Dataset into the Database</h2>
+        <p>Go to <b>File &rarr; Database &rarr; Import Dataset to Database</b>:</p>
+        <ol>
+            <li>Select an Excel (.xlsx / .xls) or CSV file</li>
+            <li>Map columns to standard names in the Column Mapper dialog</li>
+            <li>Fill in metadata (alias, organism, cell type, notes — optional)</li>
+            <li>Click <b>Import</b> — the file is converted to Parquet and registered</li>
+        </ol>
+        <p><b>Tip:</b> Once imported, the original Excel file is no longer needed.</p>
+
+        <h2>Auto-Registration (Orphan Parquet Files)</h2>
+        <p>If you copy <code>.parquet</code> files directly into the
+        <code>datasets/</code> subfolder of the external data directory,
+        click <b>🔄 Refresh</b> in the Database Browser.
+        The app will:</p>
+        <ul>
+            <li>Detect files that are not yet registered</li>
+            <li>Read their columns to auto-determine DE vs GO type</li>
+            <li>Register them with an automatically generated alias
+                (derived from the filename)</li>
+            <li>Save the new entries to <code>metadata.json</code></li>
+        </ul>
+        <p>No manual editing of <code>metadata.json</code> is needed.</p>
+
+        <h2>📥 Import Folder — Merging Pipeline Output</h2>
+        <p>When your analysis pipeline produces a separate output folder
+        (containing <code>metadata.json</code> + <code>datasets/*.parquet</code>)
+        for each run, use <b>Import Folder</b> to merge everything in one step.</p>
+
+        <h3>How to use</h3>
+        <ol>
+            <li>Open the Database Browser
+                (<b>File &rarr; Database &rarr; Browse Database</b>)</li>
+            <li>Click the <b>📥 Import Folder</b> button in the top toolbar</li>
+            <li>Select the pipeline output folder
+                (the folder that contains <code>metadata.json</code>
+                and a <code>datasets/</code> sub-folder)</li>
+            <li>The app reads every dataset entry from
+                <code>metadata.json</code>, copies the matching
+                <code>.parquet</code> files into the app database,
+                and registers them — <b>duplicate datasets are automatically
+                skipped</b></li>
+            <li>A summary dialog shows how many datasets were
+                imported / skipped</li>
+        </ol>
+
+        <h3>When there is no metadata.json</h3>
+        <p>If the selected folder has no <code>metadata.json</code>, the app
+        falls back to auto-detection: it scans all <code>.parquet</code> files,
+        determines DE vs GO type from columns, and registers them
+        exactly like the <b>Refresh</b> button does.</p>
+
+        <h3>Duplicate handling</h3>
+        <ul>
+            <li>Datasets with the same <code>dataset_id</code> or filename
+                are <b>never overwritten</b></li>
+            <li>Filename collisions receive a short UUID suffix
+                (e.g. <code>ctrl_vs_trt_de_a1b2c3d4.parquet</code>)</li>
+        </ul>
+
+        <h2>merge_db.py — CLI Tool for Batch Merging</h2>
+        <p>For server/scripted workflows, use the
+        <code>merge_db.py</code> script at the project root:</p>
+
+        <pre style="background:#f4f4f4; padding:8px; border-radius:4px; font-size:11px;">
+# Merge one folder into the default app database
+python merge_db.py path/to/pipeline_run/
+
+# Merge multiple folders at once
+python merge_db.py run1/ run2/ run3/
+
+# Specify a custom target database directory
+python merge_db.py run1/ --target D:/my_db/
+
+# Preview without writing any files
+python merge_db.py run1/ --dry-run</pre>
+
+        <h2>Pipeline Output Convention</h2>
+        <p>For the smoothest workflow, have your R/Python pipeline
+        write output in this layout:</p>
+        <pre style="background:#f4f4f4; padding:8px; border-radius:4px; font-size:11px;">
+pipeline_run_2026-03-12/
+├── metadata.json          ← dataset registry
+└── datasets/
+    ├── CtrlvsKO_de_xxxx.parquet
+    └── CtrlvsKO_go_xxxx.parquet</pre>
+
+        <p>The <code>metadata.json</code> format:</p>
+        <pre style="background:#f4f4f4; padding:8px; border-radius:4px; font-size:11px;">
+{
+  "version": "1.0",
+  "datasets": [
+    {
+      "dataset_id": "...",
+      "alias": "Ctrl vs KO — DE",
+      "dataset_type": "DE",
+      "file_path": "CtrlvsKO_de_xxxx.parquet",
+      "organism": "Mus musculus",
+      "cell_type": "MEF"
+    }
+  ]
+}</pre>
+
+        <h2>Data Folder Location</h2>
+        <p>Click <b>📂 Open Data Folder</b> in the Database Browser to open
+        the external data directory in your file explorer.
+        The default path is:</p>
+        <ul>
+            <li><b>Windows:</b> <code>%USERPROFILE%/CMG-SeqViewer/data/</code></li>
+            <li><b>macOS / Linux:</b> <code>~/CMG-SeqViewer/data/</code></li>
+        </ul>
+        <p>Parquet files placed in the <code>datasets/</code> subfolder
+        are picked up on the next <b>Refresh</b>.</p>
+
+        <h2>Editing &amp; Deleting Datasets</h2>
+        <ul>
+            <li>Select a dataset row → click <b>✏️ Edit</b> to change alias,
+                organism, cell type, or notes</li>
+            <li>Select a dataset row → click <b>🗑 Delete</b> to remove it
+                from the registry (the <code>.parquet</code> file is also deleted)</li>
+        </ul>
+        """
+    
     def _get_filtering(self):
         """Filtering section"""
         return """
-        <h1>3. Data Filtering</h1>
+        <h1>4. Data Filtering</h1>
         
         <h2>Filter Panel</h2>
         <p>The left Filter Panel provides two filtering modes:</p>
@@ -283,7 +441,7 @@ class HelpDialog(QDialog):
     def _get_statistical_analysis(self):
         """Statistical Analysis section"""
         return """
-        <h1>5. Statistical Analysis</h1>
+        <h1>6. Statistical Analysis</h1>
         
         <h2>Fisher's Exact Test</h2>
         <p>Perform Fisher's exact test for gene set enrichment:</p>
@@ -323,7 +481,7 @@ class HelpDialog(QDialog):
     def _get_visualization(self):
         """Visualization section"""
         return """
-        <h1>6. Visualization</h1>
+        <h1>7. Visualization</h1>
         
         <h2>Volcano Plot</h2>
         <p>Visualize differential expression with log2FC vs. -log10(padj):</p>
@@ -402,10 +560,153 @@ class HelpDialog(QDialog):
         </ul>
         """
     
+    def _get_pca_plot(self):
+        """PCA Plot section"""
+        return """
+        <h1>8. PCA Plot</h1>
+
+        <h2>Overview</h2>
+        <p>Principal Component Analysis (PCA) reduces the high-dimensional
+        sample expression space to 2 (or more) principal components,
+        making it easy to see how samples cluster and whether replicates
+        group together as expected.</p>
+
+        <p><b>Available for:</b> Differential Expression datasets that include
+        per-sample abundance columns (e.g. <code>ctrl_1</code>,
+        <code>ctrl_2</code>, <code>trt_1</code>, …).</p>
+
+        <h2>Opening the PCA Plot</h2>
+        <ul>
+            <li>Select a DE dataset tab</li>
+            <li>Go to <b>Visualization &rarr; 🔵 PCA Plot</b>
+                (or press <b>Ctrl+P</b>)</li>
+        </ul>
+
+        <h2>How Sample Columns Are Detected</h2>
+        <p>The app automatically identifies sample columns by exclusion —
+        any numeric column that is <b>not</b> a standard DE statistics column
+        (<code>log2fc</code>, <code>adj_pvalue</code>, <code>base_mean</code>,
+        <code>pvalue</code>, <code>stat</code>, etc.) is treated as a sample
+        abundance column.  No manual configuration is needed.</p>
+
+        <p>The number of detected samples and a column preview are shown in
+        the <b>Dataset Info</b> panel on the left side of the dialog.</p>
+
+        <h2>Settings</h2>
+        <table border="1" cellpadding="5" cellspacing="0" width="100%">
+            <tr style="background:#f0f0f0;">
+                <th>Setting</th><th>Default</th><th>Description</th>
+            </tr>
+            <tr>
+                <td><b>Top genes (variance)</b></td>
+                <td>500</td>
+                <td>Select the top N most variable genes before PCA.
+                    Reduces noise from low-variance genes.</td>
+            </tr>
+            <tr>
+                <td><b>Transformation</b></td>
+                <td>log2(x+1)</td>
+                <td>Applied to raw abundance values before PCA.
+                    <ul>
+                        <li><b>log2(x+1)</b> — standard RNA-seq transform,
+                            stabilises variance, comparable to DESeq2 vst output</li>
+                        <li><b>log1p</b> — natural log transform</li>
+                        <li><b>None</b> — raw values (not recommended for count data)</li>
+                    </ul></td>
+            </tr>
+            <tr>
+                <td><b>Feature scaling</b></td>
+                <td>StandardScaler</td>
+                <td>Centers each gene to mean=0 and scales to std=1
+                    across samples before PCA.
+                    Prevents high-expression genes from dominating the plot.</td>
+            </tr>
+            <tr>
+                <td><b>X / Y axis PC</b></td>
+                <td>PC1 / PC2</td>
+                <td>Choose which principal components to display on each axis.
+                    PC1 always explains the most variance.</td>
+            </tr>
+            <tr>
+                <td><b>Point size</b></td>
+                <td>80</td>
+                <td>Size of sample dots in the scatter plot.</td>
+            </tr>
+            <tr>
+                <td><b>Show sample labels</b></td>
+                <td>On</td>
+                <td>Display sample names next to each dot.</td>
+            </tr>
+        </table>
+        <p>Click <b>🔄 Update Plot</b> to apply changed settings.</p>
+        <p>All settings are saved and restored between sessions.</p>
+
+        <h2>Reading the Plot</h2>
+        <ul>
+            <li>Each dot represents one sample</li>
+            <li>Axis labels show the PC number and its <b>explained variance %</b>
+                — e.g. <em>PC1 (42.3% variance)</em></li>
+            <li>A <b>scree summary</b> in the bottom-right corner lists
+                explained variance for PC1–PC5</li>
+            <li>Dashed lines mark the origin (0, 0)</li>
+            <li>Good replicates should cluster tightly;
+                treatment groups should separate along PC1 or PC2</li>
+        </ul>
+
+        <h2>Comparison with DESeq2 PCA</h2>
+        <p>DESeq2's <code>plotPCA()</code> uses VST-normalised counts and
+        selects the top 500 variable genes before calling <code>prcomp()</code>.
+        This app uses the abundance columns already present in your DE table:</p>
+        <ul>
+            <li>If your pipeline exports <b>DESeq2 normalised counts</b>
+                (via <code>counts(dds, normalized=TRUE)</code>) alongside
+                DE statistics, the PCA result will be essentially equivalent
+                to DESeq2's plot with the same gene selection and scaling</li>
+            <li>If your pipeline exports raw counts, the log2 transform here
+                approximates (but does not replicate) the VST step —
+                the cluster separation pattern will be similar but
+                numbers will differ slightly</li>
+        </ul>
+
+        <h2>Preparing Your Data</h2>
+        <p>To get the best PCA, include normalised sample counts in your
+        DE result Excel file before importing to the database:</p>
+        <pre style="background:#f4f4f4; padding:8px; border-radius:4px; font-size:11px;">
+# R example — include normalised counts in the DE output
+res   &lt;- results(dds)
+ncnts &lt;- counts(dds, normalized = TRUE)
+write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
+          "final_de_result.csv")</pre>
+        <p>When this file is imported, the per-sample columns
+        (<code>ctrl_1</code>, <code>ctrl_2</code>, <code>trt_1</code>, …)
+        are automatically detected and used for PCA.</p>
+
+        <h2>Export</h2>
+        <ul>
+            <li><b>💾 Export PCA Scores (CSV)</b> — saves sample scores
+                (PC1, PC2, …) plus explained variance row to a CSV file.
+                Useful for custom downstream plots in R/Python.</li>
+            <li><b>🖼 Export Image</b> — saves the plot as
+                PNG (raster) or SVG / PDF (vector).</li>
+        </ul>
+
+        <h2>Tips</h2>
+        <ul>
+            <li>Start with the default 500 top-variance genes;
+                increase to 2000+ if the plot looks noisy</li>
+            <li>If you have &lt; 4 samples, PCA is less informative —
+                consider a heatmap instead</li>
+            <li>Outlier samples appear far from their group cluster —
+                investigate before including in downstream analysis</li>
+            <li>Use <b>PC1 vs PC3</b> or <b>PC2 vs PC3</b> to look for
+                secondary sources of variation (batch effects, sex, etc.)</li>
+        </ul>
+        """
+
     def _get_comparison(self):
         """Comparison section"""
         return """
-        <h1>7. Dataset Comparison</h1>
+        <h1>9. Dataset Comparison</h1>
         
         <h2>Comparison Panel </h2>
         <p>Located in the left panel below the Filter Panel:</p>
@@ -495,7 +796,7 @@ class HelpDialog(QDialog):
     def _get_gene_annotation(self):
         """Gene Annotation section"""
         return """
-        <h1>8. Gene Annotation</h1>
+        <h1>10. Gene Annotation</h1>
         
         <h2>Overview</h2>
         <p>CMG-SeqViewer provides quick access to external gene annotation databases 
@@ -711,7 +1012,7 @@ class HelpDialog(QDialog):
     def _get_export(self):
         """Export section"""
         return """
-        <h1>9. Export & Clipboard</h1>
+        <h1>11. Export &amp; Clipboard</h1>
         
         <h2>Exporting Data</h2>
         <p>Export any tab's data to file:</p>
@@ -771,7 +1072,7 @@ class HelpDialog(QDialog):
     def _get_tips(self):
         """Tips and Shortcuts section"""
         return """
-        <h1>10. Tips & Shortcuts</h1>
+        <h1>12. Tips &amp; Shortcuts</h1>
         
         <h2>Keyboard Shortcuts</h2>
         <table border="1" cellpadding="5" cellspacing="0">
@@ -794,6 +1095,10 @@ class HelpDialog(QDialog):
             <tr>
                 <td><b>Ctrl+V</b></td>
                 <td>Volcano Plot (or Paste in Gene List)</td>
+            </tr>
+            <tr>
+                <td><b>Ctrl+P</b></td>
+                <td>PCA Plot</td>
             </tr>
             <tr>
                 <td><b>Ctrl+C</b></td>
@@ -830,10 +1135,15 @@ class HelpDialog(QDialog):
         
         <h2>New Features Summary</h2>
         <ul>
+            <li><b>Dataset Database:</b> Parquet-based DB for instant dataset loading</li>
+            <li><b>📥 Import Folder:</b> Merge pipeline output folders into the DB in one click</li>
+            <li><b>merge_db.py:</b> CLI tool for batch-merging multiple pipeline runs</li>
+            <li><b>Auto-Register:</b> Drop parquet files and click Refresh — no metadata editing</li>
+            <li><b>🔵 PCA Plot:</b> Sample-level PCA from abundance columns (Ctrl+P)</li>
             <li><b>Window Icons:</b> Each window has a unique icon for easy identification in taskbar</li>
             <li><b>Dataset Rename:</b> Change dataset names anytime - updates everywhere automatically</li>
             <li><b>Recent Files:</b> Quick access to your 10 most recent files with path preview</li>
-            <li><b>Drag & Drop:</b> Drop Excel files anywhere to load datasets instantly</li>
+            <li><b>Drag &amp; Drop:</b> Drop Excel files anywhere to load datasets instantly</li>
             <li><b>Dot Plot:</b> New visualization for comparison results with clustering</li>
             <li><b>Smart Tooltips:</b> Auto-positioning tooltips that never get cut off</li>
             <li><b>Gene Clustering:</b> Reorder genes by similarity in heatmaps and dot plots</li>
@@ -861,7 +1171,7 @@ class HelpDialog(QDialog):
     def _get_go_kegg_analysis(self):
         """GO/KEGG Analysis section"""
         return """
-        <h1>4. GO/KEGG Analysis</h1>
+        <h1>5. GO/KEGG Analysis</h1>
         
         <h2>Overview</h2>
         <p>CMG-SeqViewer provides specialized tools for Gene Ontology (GO) and KEGG pathway enrichment analysis.</p>
