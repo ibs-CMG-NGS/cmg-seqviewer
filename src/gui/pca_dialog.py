@@ -384,17 +384,14 @@ class PCADialog(QDialog):
 
     def _run_pca(self) -> tuple[np.ndarray, list[float]]:
         """
-        PCA 수행.
+        PCA 수행 (numpy SVD 기반 — sklearn 의존성 없음).
 
-        행 = 유전자, 열 = 샘플 → sklearn은 (샘플 × 특성) 을 원하므로 전치.
+        행 = 유전자, 열 = 샘플 → PCA는 (샘플 × 특성) 을 원하므로 전치.
 
         Returns:
             scores: ndarray (n_samples, n_pcs)
             explained_variance_ratio: list[float]
         """
-        from sklearn.preprocessing import StandardScaler
-        from sklearn.decomposition import PCA
-
         df = self.dataframe.copy()
         expr = df[self.sample_cols].copy()
 
@@ -417,14 +414,25 @@ class PCADialog(QDialog):
         # ── PCA 입력: (samples × genes) ─────────────────────────────────
         X = mat.T  # (n_samples, n_genes)
 
-        # ── 스케일링 ─────────────────────────────────────────────────────
+        # ── StandardScaler (numpy 구현) ───────────────────────────────────
         if self.scaling == 'standard':
-            X = StandardScaler().fit_transform(X)
+            mean = X.mean(axis=0)
+            std  = X.std(axis=0, ddof=0)
+            std[std == 0] = 1.0          # 분산 0인 컬럼 보호
+            X = (X - mean) / std
 
-        # ── PCA ──────────────────────────────────────────────────────────
-        n_components = min(len(self.sample_cols), X.shape[1], 10)
-        pca = PCA(n_components=n_components)
-        scores = pca.fit_transform(X)  # (n_samples, n_components)
+        # ── PCA via SVD (numpy 구현) ──────────────────────────────────────
+        # 1) 평균 중심화
+        X_centered = X - X.mean(axis=0)
+        # 2) SVD: X_centered = U @ diag(s) @ Vt
+        U, s, Vt = np.linalg.svd(X_centered, full_matrices=False)
+        # 3) 설명 분산 비율
+        explained_variance = (s ** 2) / (X_centered.shape[0] - 1)
+        total_variance = explained_variance.sum()
+        explained_variance_ratio = (explained_variance / total_variance).tolist()
+        # 4) 스코어 (n_samples × n_components)
+        n_components = min(len(self.sample_cols), X_centered.shape[1], 10)
+        scores = U[:, :n_components] * s[:n_components]
 
         # PCA scores DataFrame 캐시 (export 용)
         self._pca_result = pd.DataFrame(
@@ -432,7 +440,7 @@ class PCADialog(QDialog):
             index=self.sample_cols,
             columns=[f"PC{i+1}" for i in range(scores.shape[1])],
         )
-        self._explained_var = pca.explained_variance_ratio_.tolist()
+        self._explained_var = explained_variance_ratio[:n_components]
 
         return scores, self._explained_var
 

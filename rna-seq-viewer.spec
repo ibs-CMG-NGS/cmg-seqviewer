@@ -8,25 +8,12 @@ src_path = str(Path('.').resolve() / 'src')
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
-# Collect sklearn .libs DLLs (msvcp140.dll etc.) for Windows
-import glob
-sklearn_binaries = []
-try:
-    import sklearn
-    sklearn_dir = Path(sklearn.__file__).parent
-    libs_dir = sklearn_dir / '.libs'
-    if libs_dir.exists():
-        for dll in libs_dir.glob('*.dll'):
-            sklearn_binaries.append((str(dll), 'sklearn/.libs'))
-except Exception:
-    pass
-
 block_cipher = None
 
 a = Analysis(
     ['src/main.py'],
     pathex=['src'],  # Add src to Python path
-    binaries=sklearn_binaries,
+    binaries=[],
     datas=[
         # Pre-loaded datasets 포함 (레거시 - 하위 호환성)
         ('database', 'database'),  # database 폴더 전체를 배포판에 포함
@@ -97,18 +84,6 @@ a = Analysis(
         'openpyxl',
         'pyarrow',
         'pyarrow.parquet',
-        'sklearn',
-        'sklearn.cluster',
-        'sklearn.decomposition',
-        'sklearn.decomposition._pca',
-        'sklearn.preprocessing',
-        'sklearn.preprocessing._data',
-        'sklearn.utils',
-        'sklearn.utils._bunch',
-        'sklearn.utils.extmath',
-        'sklearn.utils.validation',
-        'sklearn._distributor_init',
-        'sklearn.__check_build',
         # Visualization
         'matplotlib',
         'matplotlib.backends.backend_qt5agg',
