@@ -13,10 +13,10 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
       
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       
@@ -33,7 +33,7 @@ jobs:
           pyinstaller --clean --noconfirm rna-seq-viewer.spec
       
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: CMG-SeqViewer-Windows
           path: dist\CMG-SeqViewer\
@@ -41,10 +41,10 @@ jobs:
   build-macos:
     runs-on: macos-latest  # Use latest macOS for faster build availability
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
       
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       
@@ -136,7 +136,7 @@ jobs:
           ls -lh CMG-SeqViewer-macOS.dmg
       
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: CMG-SeqViewer-macOS
           path: CMG-SeqViewer-macOS.dmg
@@ -147,7 +147,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Download Windows artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v4.3.0
         with:
           name: CMG-SeqViewer-Windows
           path: CMG-SeqViewer-Windows   # 폴더로 받기
@@ -158,12 +158,12 @@ jobs:
           zip -r ../CMG-SeqViewer-Windows.zip .
 
       - name: Download macOS artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v4.3.0
         with:
           name: CMG-SeqViewer-macOS
       
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             CMG-SeqViewer-Windows.zip
