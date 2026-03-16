@@ -10,7 +10,6 @@ from typing import List, Dict, Set, Tuple, Optional
 import logging
 from scipy.cluster.hierarchy import linkage, fcluster
 from scipy.spatial.distance import squareform
-from sklearn.metrics import pairwise_distances
 
 from models.standard_columns import StandardColumns
 
@@ -56,11 +55,15 @@ class GOClustering:
                 gene_idx = gene_to_idx[gene]
                 binary_matrix[term_idx, gene_idx] = 1
         
-        # Jaccard distance를 pairwise로 계산
-        # sklearn의 pairwise_distances를 사용 (jaccard metric)
-        # distance = 1 - similarity이므로 변환 필요
-        jaccard_distance = pairwise_distances(binary_matrix, metric='jaccard')
-        jaccard_similarity = 1 - jaccard_distance
+        # Jaccard distance를 pairwise로 계산 (numpy 구현)
+        # Jaccard distance = 1 - |A ∩ B| / |A ∪ B|
+        # binary matrix에서: intersection = dot product, union = sum(a) + sum(b) - dot
+        intersection = binary_matrix @ binary_matrix.T          # (n_terms, n_terms)
+        row_sums     = binary_matrix.sum(axis=1, keepdims=True)  # (n_terms, 1)
+        union        = row_sums + row_sums.T - intersection      # (n_terms, n_terms)
+        with np.errstate(invalid='ignore', divide='ignore'):
+            jaccard_distance = np.where(union == 0, 1.0, 1.0 - intersection / union)
+        jaccard_similarity = 1.0 - jaccard_distance
         
         # NaN 처리 (empty sets)
         jaccard_similarity = np.nan_to_num(jaccard_similarity, nan=0.0)
