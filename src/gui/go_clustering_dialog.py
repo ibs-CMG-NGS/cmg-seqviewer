@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QSpinBox, QDoubleSpinBox, QTableWidget, QTableWidgetItem,
     QHeaderView, QSplitter, QWidget, QTabWidget, QTextEdit,
     QFileDialog, QMessageBox, QProgressBar, QGroupBox, QFormLayout,
-    QSlider, QCheckBox, QListWidget, QListWidgetItem
+    QSlider, QCheckBox, QListWidget, QListWidgetItem, QScrollArea, QSizePolicy
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QBrush, QColor, QPixmap, QIcon
@@ -475,10 +475,12 @@ class GOClusteringDialog(QDialog):
         
         layout.addWidget(settings_group)
 
-        # Matplotlib figure
+        # Matplotlib figure — 실제 크기는 클러스터 수에 따라 _update_network_graph에서 동적 조정
         self.figure = Figure(figsize=(10, 8))
         self.canvas = FigureCanvas(self.figure)
         self.canvas.mpl_connect('motion_notify_event', self._on_network_hover)
+        # 가로는 뷰포트에 맞추고, 세로만 확장되도록 설정
+        self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         # Toolbar
         self.toolbar = NavigationToolbar(self.canvas, tab)
@@ -487,11 +489,20 @@ class GOClusteringDialog(QDialog):
         # canvas fills the left area and the legend is a persistent Qt widget
         content_hbox = QHBoxLayout()
 
+        # ── 캔버스를 QScrollArea로 감싸서 세로 스크롤 지원 ─────────────
+        self.canvas_scroll = QScrollArea()
+        self.canvas_scroll.setWidgetResizable(True)          # 가로는 뷰포트에 fit
+        self.canvas_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)           # 가로 스크롤 없음
+        self.canvas_scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded)            # 세로만 필요 시 표시
+        self.canvas_scroll.setWidget(self.canvas)
+
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.addWidget(self.toolbar)
-        left_layout.addWidget(self.canvas)
+        left_layout.addWidget(self.canvas_scroll)
 
         # Legend container on the right (scrollable via QListWidget)
         legend_group = QGroupBox("Legend")
@@ -627,10 +638,26 @@ class GOClusteringDialog(QDialog):
         self.edge_alpha = self.edge_alpha_spin.value()
         self.label_size = self.label_size_spin.value()
         self.show_hulls = self.show_hulls_checkbox.isChecked()
-        
+
+        # ── Figure 크기: 가로는 뷰포트에 맞추고 세로는 클러스터 행 수에 비례 ──
+        GRID_COLS   = 4
+        n_valid     = sum(
+            1 for members in self.clusters.values()
+            if self.min_cluster_size <= len(members) <= self.max_cluster_size
+        )
+        grid_rows   = max(1, ceil(n_valid / GRID_COLS))
+        dpi         = self.figure.get_dpi()
+        # 뷰포트 가로 픽셀 → 인치 (스크롤바 너비 약 20px 제외)
+        viewport_w  = self.canvas_scroll.viewport().width() - 20
+        fig_w_in    = max(8.0, viewport_w / dpi)
+        # 행 하나당 약 2.8인치 (헤더 + 노드 영역), 최소 6인치
+        fig_h_in    = max(6.0, grid_rows * 2.8)
+
+        self.figure.set_size_inches(fig_w_in, fig_h_in)
+        # 캔버스 고정 높이 업데이트 (QScrollArea가 세로 스크롤 담당)
+        self.canvas.setFixedHeight(int(fig_h_in * dpi))
+
         self.figure.clear()
-        # Create subplot with space for legend on the right
-        # Use subplots_adjust to reserve 20% space on the right for legend
         ax = self.figure.add_subplot(111)
         self.figure.subplots_adjust(right=0.75)  # Reserve 25% for legend
         
