@@ -100,6 +100,11 @@ class DatabaseManager:
             self._scan_and_auto_import(self.external_data_dir / "datasets")
         
         self.logger.info(f"Total loaded: {len(self.metadata_list)} dataset(s)")
+
+        # ── Sig. Genes 기준 마이그레이션 ─────────────────────────────────
+        # 구버전(padj < 0.05 only)으로 저장된 significant_genes를
+        # 새 기준(padj < 0.05 AND |log2FC| > 1)으로 소급 재계산
+        self._migrate_significant_genes()
     
     def _load_metadata_from_file(self, metadata_file: Path, datasets_dir: Path, 
                                  skip_duplicates: bool = False):
@@ -212,9 +217,12 @@ class DatabaseManager:
                     gene_count = row_count
                     if 'adj_pvalue' in cols:
                         try:
-                            significant_genes = int(
-                                (pd.to_numeric(df['adj_pvalue'], errors='coerce') < 0.05).sum()
-                            )
+                            padj_ok = pd.to_numeric(df['adj_pvalue'], errors='coerce') < 0.05
+                            if 'log2fc' in cols:
+                                lfc_ok = pd.to_numeric(df['log2fc'], errors='coerce').abs() > 1
+                                significant_genes = int((padj_ok & lfc_ok).sum())
+                            else:
+                                significant_genes = int(padj_ok.sum())
                         except Exception:
                             significant_genes = 0
 
@@ -347,7 +355,88 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"Failed to save metadata: {e}")
             raise
-    
+
+    def _migrate_significant_genes(self):
+        """
+        기존 데이터셋의 significant_genes를 새 기준으로 소급 재계산.
+
+        구버전 기준: padj < 0.05
+        신버전 기준: padj < 0.05  AND  |log2FC| > 1
+
+        log2fc 컬럼이 없는 데이터셋은 건드리지 않음.
+        변경이 발생한 경우에만 metadata.json 저장.
+        """
+        updated_count = 0
+        # 소스 디렉토리별로 변경 여부 추적
+        dirty_source_dirs: set = set()
+
+        for meta in self.metadata_list:
+            if meta.dataset_type != DatasetType.DIFFERENTIAL_EXPRESSION:
+                continue
+
+            source_dir = self._file_source_dirs.get(meta.file_path)
+            if not source_dir:
+                continue
+
+            parquet_path = Path(source_dir) / meta.file_path
+            if not parquet_path.exists():
+                continue
+
+            try:
+                df = pd.read_parquet(parquet_path, columns=None)
+
+                # log2fc 컬럼 없으면 재계산 불가 → 스킵
+                if 'log2fc' not in df.columns:
+                    continue
+                if 'adj_pvalue' not in df.columns:
+                    continue
+
+                padj_ok = pd.to_numeric(df['adj_pvalue'], errors='coerce') < 0.05
+                lfc_ok  = pd.to_numeric(df['log2fc'],     errors='coerce').abs() > 1
+                new_sig = int((padj_ok & lfc_ok).sum())
+
+                if new_sig != meta.significant_genes:
+                    self.logger.info(
+                        f"[migrate] {meta.alias}: sig_genes {meta.significant_genes} → {new_sig}"
+                    )
+                    meta.significant_genes = new_sig
+                    updated_count += 1
+                    dirty_source_dirs.add(source_dir)
+
+            except Exception as e:
+                self.logger.warning(f"[migrate] Could not process {meta.file_path}: {e}")
+
+        if updated_count == 0:
+            self.logger.debug("[migrate] significant_genes already up-to-date, nothing changed")
+            return
+
+        self.logger.info(f"[migrate] Updated {updated_count} dataset(s), saving metadata")
+
+        # 변경된 소스 디렉토리별로 metadata.json 저장
+        for source_dir_str in dirty_source_dirs:
+            source_dir_path = Path(source_dir_str).parent  # datasets/ 의 부모 = database 루트
+            meta_file = source_dir_path / "metadata.json"
+            if not meta_file.exists():
+                # 외부 데이터 경로는 self.metadata_file 사용
+                meta_file = self.metadata_file
+
+            # 해당 소스 디렉토리에 속한 메타데이터만 추출
+            metas_for_dir = [
+                m for m in self.metadata_list
+                if self._file_source_dirs.get(m.file_path) == source_dir_str
+            ]
+            try:
+                data = {
+                    'version': '1.0',
+                    'last_updated': datetime.now().isoformat(),
+                    'datasets': [m.to_dict() for m in metas_for_dir]
+                }
+                with open(meta_file, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                self.logger.info(f"[migrate] Saved {meta_file}")
+            except Exception as e:
+                self.logger.error(f"[migrate] Failed to save {meta_file}: {e}")
+
     def import_from_folder(self, source_dir: Path) -> tuple:
         """
         외부 폴더에 있는 metadata.json + parquet 파일들을 현재 DB에 병합.
@@ -498,13 +587,17 @@ class DatabaseManager:
             metadata.row_count = len(dataset.dataframe)
             metadata.gene_count = len(dataset.get_genes())
             
-            # 유의미한 유전자 수 계산 (padj < 0.05)
+            # 유의미한 유전자 수 계산 (padj < 0.05 AND |log2FC| > 1)
             if dataset.dataset_type == DatasetType.DIFFERENTIAL_EXPRESSION:
                 df = dataset.dataframe
                 if df is not None and 'adj_pvalue' in df.columns:
                     try:
-                        significant = pd.to_numeric(df['adj_pvalue'], errors='coerce') < 0.05
-                        metadata.significant_genes = int(significant.sum())
+                        padj_ok = pd.to_numeric(df['adj_pvalue'], errors='coerce') < 0.05
+                        if 'log2fc' in df.columns:
+                            lfc_ok = pd.to_numeric(df['log2fc'], errors='coerce').abs() > 1
+                            metadata.significant_genes = int((padj_ok & lfc_ok).sum())
+                        else:
+                            metadata.significant_genes = int(padj_ok.sum())
                     except Exception:
                         metadata.significant_genes = 0
             
