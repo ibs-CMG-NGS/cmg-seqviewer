@@ -1698,7 +1698,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self, "About RNA-Seq Data Analyzer",
             "<h2>CMG-SeqViewer</h2>"
-            "<p><b>Version 1.1.1</b></p>"
+            "<p><b>Version 1.1.2</b></p>"
             "<p>A comprehensive tool for RNA-Seq data analysis and visualization.</p>"
             "<br>"
             "<p><b>Key Features:</b></p>"
@@ -1716,6 +1716,8 @@ class MainWindow(QMainWindow):
             "<li>Import Folder — one-click pipeline output merging</li>"
             "<li>merge_db.py — CLI batch-merge tool</li>"
             "<li>Auto-registration of orphan parquet files</li>"
+            "<li>Sig. Genes: padj &lt; 0.05 AND |log2FC| &gt; 1 (auto-migrated on startup)</li>"
+            "<li>GO Clustering — grid-cell layout for readability</li>"
             "<li>Interactive tooltips with boundary detection</li>"
             "<li>Customizable plot titles, labels, and color schemes</li>"
             "<li>Heatmap clustering (Padj, Log2FC, Hierarchical)</li>"
@@ -1724,7 +1726,7 @@ class MainWindow(QMainWindow):
             "<li>Column display levels (Basic, DE Analysis, Full)</li>"
             "</ul>"
             "<br>"
-            "<p><b>Developed with:</b> Python, PyQt6, Pandas, Matplotlib, scikit-learn</p>"
+            "<p><b>Developed with:</b> Python, PyQt6, Pandas, Matplotlib, NumPy</p>"
             "<p>© 2025 ibs CMG NGS core</p>"
         )
     
