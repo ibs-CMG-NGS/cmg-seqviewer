@@ -20,6 +20,7 @@ from PyQt6.QtGui import QFont, QBrush, QColor, QPixmap, QIcon
 from models.standard_columns import StandardColumns
 import pandas as pd
 import matplotlib
+import matplotlib.patches
 matplotlib.use('Qt5Agg')
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
@@ -698,141 +699,170 @@ class GOClusteringDialog(QDialog):
                 self.cluster_colors[cluster_id] = self.COLORS[color_idx % len(self.COLORS)]
                 color_idx += 1
         
-        # Layout clusters - ONLY VALID CLUSTERS (exclude small/large/singletons)
-        cluster_positions = {}
-        grid_spacing = 20.0  # Increased spacing for better separation (was 15.0)
-        
-        # Valid clusters in grid layout - sort by size (largest first) for better organization
+        # ══════════════════════════════════════════════════════════════════
+        # GRID-CELL LAYOUT
+        # 고정 열 수 × 동적 행 수. 각 셀에 클러스터 1개.
+        # 셀 상단에 클러스터 헤더, 셀 경계는 light-grey 점선.
+        # ══════════════════════════════════════════════════════════════════
+        cluster_positions = {}   # node_idx → (canvas_x, canvas_y)
+        cell_info = []           # (col, row, cluster_id, members, local_pos, color)
+
+        GRID_COLS   = 4          # 고정 열 수 (클러스터가 많으면 행만 추가)
+        CELL_W      = 1.0        # 셀 너비 (정규화 단위)
+        CELL_H      = 1.0        # 셀 높이
+        HEADER_FRAC = 0.18       # 셀 높이 중 헤더가 차지하는 비율
+        PAD         = 0.06       # 셀 내부 padding (비율)
+
         if valid_clusters:
-            # Sort clusters by size (descending) so largest clusters are at top-left
             valid_clusters_sorted = sorted(valid_clusters, key=lambda x: len(x[1]), reverse=True)
-            
-            n_clusters = len(valid_clusters_sorted)
-            grid_cols = ceil(sqrt(n_clusters))
-            grid_rows = ceil(n_clusters / grid_cols)
-            
+            n_clusters  = len(valid_clusters_sorted)
+            grid_cols   = min(GRID_COLS, n_clusters)
+            grid_rows   = ceil(n_clusters / grid_cols)
+
             for cluster_idx, (cluster_id, members) in enumerate(valid_clusters_sorted):
-                # Grid layout: top-left to bottom-right
-                # Note: matplotlib y-axis increases upward, so we negate row for top-down layout
-                row = cluster_idx // grid_cols
                 col = cluster_idx % grid_cols
-                center_x = col * grid_spacing
-                center_y = -row * grid_spacing  # Negative for top-to-bottom layout
-                
+                row = cluster_idx // grid_cols
+
+                # ── 셀 내부 노드 배치 (spring_layout → [0,1]²로 정규화) ──
                 subgraph = G.subgraph(members)
-                if len(members) > 1:
-                    # Much larger k for better spread
-                    sub_pos = nx.spring_layout(subgraph, k=2.5, iterations=50, scale=2.0)
+                n = len(members)
+                if n > 1:
+                    k_val   = max(1.0, 3.0 / (n ** 0.3))
+                    raw_pos = nx.spring_layout(subgraph, k=k_val, iterations=80, seed=42)
+                    # 정규화: [PAD, 1-PAD] 범위로
+                    xs = [p[0] for p in raw_pos.values()]
+                    ys = [p[1] for p in raw_pos.values()]
+                    xmin, xmax = min(xs), max(xs)
+                    ymin, ymax = min(ys), max(ys)
+                    xspan = xmax - xmin if xmax > xmin else 1.0
+                    yspan = ymax - ymin if ymax > ymin else 1.0
+                    node_area_h = CELL_H * (1.0 - HEADER_FRAC - 2 * PAD)
+                    node_area_w = CELL_W * (1.0 - 2 * PAD)
+                    local_pos = {}
+                    for node, (px, py) in raw_pos.items():
+                        nx_ = PAD + ((px - xmin) / xspan) * node_area_w
+                        ny_ = PAD + ((py - ymin) / yspan) * node_area_h
+                        local_pos[node] = (nx_, ny_)
                 else:
-                    sub_pos = {members[0]: (0, 0)}
-                
-                for node, (x, y) in sub_pos.items():
-                    # Larger multiplier for more spread
-                    cluster_positions[node] = (center_x + x * 3.0, center_y + y * 3.0)
-        
+                    cx = CELL_W * 0.5
+                    cy = CELL_H * (HEADER_FRAC + (1.0 - HEADER_FRAC) * 0.5)
+                    local_pos = {members[0]: (cx, cy)}
+
+                color = self.cluster_colors.get(cluster_id, '#999999')
+                cell_info.append((col, row, cluster_id, members, local_pos, color))
+
+                # 캔버스 절대좌표로 변환
+                origin_x = col * CELL_W
+                origin_y = -(row + 1) * CELL_H   # matplotlib y축 위가 +이므로 반전
+                for node, (lx, ly) in local_pos.items():
+                    canvas_y = origin_y + CELL_H - HEADER_FRAC * CELL_H - ly
+                    cluster_positions[node] = (origin_x + lx, canvas_y)
+
         # Skip small clusters, large clusters, and singletons from visualization
         # They are still in the data and can be exported, just not drawn
         
         self.node_positions = cluster_positions
-        
-        # Draw convex hulls for valid clusters (if enabled)
+
+        # ── 그리드 셀 경계선 (light grey 점선) + 헤더 배경 ──────────────
+        for col, row, cluster_id, members, local_pos, color in cell_info:
+            ox = col * CELL_W
+            oy = -(row + 1) * CELL_H
+
+            # 셀 테두리
+            rect_x = [ox, ox + CELL_W, ox + CELL_W, ox, ox]
+            rect_y = [oy, oy, oy + CELL_H, oy + CELL_H, oy]
+            ax.plot(rect_x, rect_y, color='#cccccc', linewidth=0.8,
+                    linestyle='--', zorder=0)
+
+            # 헤더 배경 (셀 색상 연하게)
+            header_h = CELL_H * HEADER_FRAC
+            header_rect = matplotlib.patches.FancyBboxPatch(
+                (ox + 0.005, oy + CELL_H - header_h + 0.005),
+                CELL_W - 0.01, header_h - 0.01,
+                boxstyle='round,pad=0.005',
+                facecolor=color, alpha=0.18, edgecolor='none', zorder=1
+            )
+            ax.add_patch(header_rect)
+
+            # 헤더 텍스트: 대표 term 이름
+            desc_col = None
+            for dcol in ['description', 'Description', 'Term', 'term', 'GO Term', 'KEGG Pathway']:
+                if dcol in self.clustered_df.columns:
+                    desc_col = dcol
+                    break
+            rep_label = f"C{cluster_id}  (n={len(members)})"
+            if desc_col:
+                for m in members:
+                    if self.clustered_df.loc[m, 'is_representative']:
+                        full = str(self.clustered_df.loc[m, desc_col])
+                        # 헤더 너비에 맞게 truncate (약 35자)
+                        rep_label = (full[:33] + '…') if len(full) > 35 else full
+                        rep_label = f"{rep_label}  (n={len(members)})"
+                        break
+            ax.text(ox + CELL_W * 0.5,
+                    oy + CELL_H - header_h * 0.5,
+                    rep_label,
+                    fontsize=max(6, self.label_size - 0.5),
+                    ha='center', va='center',
+                    color='#222222', weight='bold',
+                    clip_on=True, zorder=3)
+
+        # ── Convex hull (옵션) ────────────────────────────────────────────
         if self.show_hulls:
-            for cluster_id, members in valid_clusters:
+            for col, row, cluster_id, members, local_pos, color in cell_info:
                 if len(members) < 3:
                     continue
-                points = np.array([cluster_positions[m] for m in members])
+                pts = np.array([cluster_positions[m] for m in members
+                                if m in cluster_positions])
+                if len(pts) < 3:
+                    continue
                 try:
-                    hull = ConvexHull(points)
-                    hull_points = points[hull.vertices]
-                    polygon = Polygon(hull_points, alpha=0.2, 
-                                    facecolor=self.cluster_colors[cluster_id],
-                                    edgecolor=self.cluster_colors[cluster_id], 
-                                    linewidth=2)
+                    hull = ConvexHull(pts)
+                    polygon = Polygon(pts[hull.vertices],
+                                      alpha=0.15,
+                                      facecolor=color,
+                                      edgecolor=color,
+                                      linewidth=1.5, zorder=1)
                     ax.add_patch(polygon)
-                except:
+                except Exception:
                     pass
-        
-        # Draw edges with configurable transparency
+
+        # ── 엣지 ─────────────────────────────────────────────────────────
         for edge in G.edges(data=True):
             n1, n2, data = edge
             if n1 in cluster_positions and n2 in cluster_positions:
                 x1, y1 = cluster_positions[n1]
                 x2, y2 = cluster_positions[n2]
                 weight = data.get('weight', 0.5)
-                # Use configurable edge alpha
-                ax.plot([x1, x2], [y1, y2], color='gray', alpha=self.edge_alpha, 
-                       linewidth=weight * 1.5, zorder=1)
-        
-        # Draw nodes with improved sizing
+                ax.plot([x1, x2], [y1, y2], color='gray',
+                        alpha=self.edge_alpha, linewidth=weight * 1.2, zorder=1)
+
+        # ── 노드 ─────────────────────────────────────────────────────────
         for node in G.nodes():
             if node not in cluster_positions:
                 continue
-            
             x, y = cluster_positions[node]
             cluster_id = G.nodes[node]['cluster_id']
-            is_rep = G.nodes[node].get('is_representative', False)
-            
-            # Check if this is a singleton (cluster_id = -1)
-            if cluster_id == -1:
-                color = '#999999'  # Gray for singletons
-            else:
-                color = self.cluster_colors.get(cluster_id, '#999999')
-            
+            is_rep     = G.nodes[node].get('is_representative', False)
+            color      = self.cluster_colors.get(cluster_id, '#999999')
+
             if is_rep:
-                # Representative nodes: larger and bold border
-                size = self.node_size * 1.5
-                edge_color = 'black'
-                edge_width = 3
+                size       = self.node_size * 1.4
+                edge_color = '#222222'
+                edge_width = 2.0
             else:
-                # Member nodes: smaller
-                size = self.node_size * 0.3
+                size       = self.node_size * 0.5
                 edge_color = color
-                edge_width = 1.5
-            
-            ax.scatter(x, y, s=size, c=color, edgecolors=edge_color, 
-                      linewidths=edge_width, zorder=2)
-        
-        # Draw labels for representative terms only (clearer visualization)
-        # Collect all label positions first to detect and adjust overlaps
-        label_positions = []
-        
-        for idx, row in self.clustered_df.iterrows():
-            if idx not in cluster_positions:
-                continue
-            
-            # Only label representative terms
-            if not row.get('is_representative', False):
-                continue
-            
-            x, y = cluster_positions[idx]
-            desc_col = None
-            # Try multiple possible column names (case-insensitive)
-            for col in ['description', 'Description', 'Term', 'term', 'GO Term', 'KEGG Pathway']:
-                if col in row.index:
-                    desc_col = col
-                    break
-            
-            if desc_col:
-                label = row[desc_col]
-                # Truncate long labels more aggressively to reduce overlap
-                if len(label) > 30:
-                    label = label[:27] + '...'
-                
-                # Offset label slightly upward to reduce node-label overlap
-                label_y = y + 0.3
-                
-                # Use configurable label size with higher transparency to see through overlaps
-                ax.text(x, label_y, label, fontsize=self.label_size, ha='center', va='bottom',
-                       bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
-                               edgecolor='gray', alpha=0.75, linewidth=0.8),
-                       zorder=4, weight='bold')
-        
-        # Populate the Qt-side legend list so it's always visible independently
-        # of Matplotlib layout/backends. Clear previous items first.
+                edge_width = 1.0
+
+            ax.scatter(x, y, s=size, c=color,
+                       edgecolors=edge_color, linewidths=edge_width,
+                       zorder=4)
+
+        # ── Qt 레전드 리스트 업데이트 ─────────────────────────────────────
         try:
             self.legend_list.clear()
         except Exception:
-            # If legend widget isn't available (older state), skip gracefully
             pass
 
         # Valid clusters - show up to a reasonable number
@@ -865,7 +895,6 @@ class GOClusteringDialog(QDialog):
                 item.setToolTip(rep_term if rep_term else label)
                 self.legend_list.addItem(item)
             except Exception:
-                # silently ignore widget errors in headless/static analysis
                 pass
 
         # Add small/large/singleton summaries (count from full data, not drawn)
@@ -894,17 +923,21 @@ class GOClusteringDialog(QDialog):
             item.setIcon(QIcon(pix))
             self.legend_list.addItem(item)
 
-        # Set axis limits with proper margins (from backup file style)
-        if cluster_positions:
+        # Set axis limits — 그리드 전체 영역에 맞게 설정
+        if cell_info:
+            n_c = min(GRID_COLS, len(cell_info))
+            n_r = ceil(len(cell_info) / n_c)
+            ax.set_xlim(-0.02, n_c * CELL_W + 0.02)
+            ax.set_ylim(-n_r * CELL_H - 0.02, 0.02)
+        elif cluster_positions:
             x_coords = [pos[0] for pos in cluster_positions.values()]
             y_coords = [pos[1] for pos in cluster_positions.values()]
             x_min, x_max = min(x_coords), max(x_coords)
             y_min, y_max = min(y_coords), max(y_coords)
             x_range = x_max - x_min
             y_range = y_max - y_min
-            # Use 15% margins like the backup file for better spacing
-            x_margin = x_range * 0.15 if x_range > 0 else 1
-            y_margin = y_range * 0.15 if y_range > 0 else 1
+            x_margin = x_range * 0.05 if x_range > 0 else 1
+            y_margin = y_range * 0.05 if y_range > 0 else 1
             ax.set_xlim(x_min - x_margin, x_max + x_margin)
             ax.set_ylim(y_min - y_margin, y_max + y_margin)
         
