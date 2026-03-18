@@ -460,11 +460,12 @@ class VolcanoPlotDialog(QDialog):
         self.plot_ylabel = self.ylabel_edit.text()
         self.show_legend = self.legend_check.isChecked()
 
-        # Gene annotation
-        _mode_names = ['none', 'top_n', 'custom']
-        self.annotation_mode = _mode_names[self.annot_mode_combo.currentIndex()]
-        self.annotation_top_n = self.annot_top_n_spin.value()
-        self.annotation_label_size = self.annot_size_spin.value()
+        # Gene annotation (위젯이 아직 없을 수 있으므로 guard)
+        if hasattr(self, 'annot_mode_combo'):
+            _mode_names = ['none', 'top_n', 'custom']
+            self.annotation_mode = _mode_names[self.annot_mode_combo.currentIndex()]
+            self.annotation_top_n = self.annot_top_n_spin.value()
+            self.annotation_label_size = self.annot_size_spin.value()
         
         # 설정값을 클래스 변수에 저장 (세션 동안 유지)
         self._saved_settings.update({
@@ -507,6 +508,9 @@ class VolcanoPlotDialog(QDialog):
     
     def _plot(self):
         """Volcano Plot 그리기"""
+        # _init_ui 완료 전 호출 방지
+        if not hasattr(self, 'figure'):
+            return
         self.figure.clear()
         ax = self.figure.add_subplot(111)
         
@@ -597,7 +601,9 @@ class VolcanoPlotDialog(QDialog):
         self.annot_load_btn.setEnabled(idx == 2)
         self.annot_file_label.setEnabled(idx == 2)
         self.annot_size_spin.setEnabled(idx != 0)
-        self._on_settings_changed()
+        # figure가 이미 생성된 경우에만 replot (init 중 호출 시 스킵)
+        if hasattr(self, 'figure'):
+            self._on_settings_changed()
 
     def _load_annotation_gene_list(self):
         """txt/csv/tsv 파일에서 gene list 로드"""
