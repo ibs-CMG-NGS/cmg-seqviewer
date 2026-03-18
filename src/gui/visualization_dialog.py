@@ -79,7 +79,12 @@ class VolcanoPlotDialog(QDialog):
         'ylabel': '-Log10(Padj)',
         'show_legend': True,
         'fig_width': 12,
-        'fig_height': 8
+        'fig_height': 8,
+        # Gene annotation
+        'annotation_mode': 'none',   # 'none' | 'top_n' | 'custom'
+        'annotation_top_n': 10,
+        'annotation_label_size': 8,
+        'annotation_custom_genes': [],  # list[str]
     }
     
     def __init__(self, dataframe, parent=None):
@@ -107,6 +112,11 @@ class VolcanoPlotDialog(QDialog):
         self.show_legend = self._saved_settings['show_legend']
         self.fig_width = self._saved_settings['fig_width']
         self.fig_height = self._saved_settings['fig_height']
+        # Gene annotation
+        self.annotation_mode = self._saved_settings['annotation_mode']
+        self.annotation_top_n = self._saved_settings['annotation_top_n']
+        self.annotation_label_size = self._saved_settings['annotation_label_size']
+        self.annotation_custom_genes = list(self._saved_settings['annotation_custom_genes'])
         
         self._init_ui()
         self._plot()
@@ -265,6 +275,51 @@ class VolcanoPlotDialog(QDialog):
         
         custom_group.setLayout(custom_layout)
         left_panel.addWidget(custom_group)
+
+        # ── Gene Annotation 패널 ──────────────────────────────────────
+        annot_group = QGroupBox("Gene Annotation")
+        annot_layout = QFormLayout()
+
+        # Mode 선택: None / Top N / Custom List
+        self.annot_mode_combo = QComboBox()
+        self.annot_mode_combo.addItems(["None", "Top N (by significance)", "Custom List"])
+        mode_map = {'none': 0, 'top_n': 1, 'custom': 2}
+        self.annot_mode_combo.setCurrentIndex(mode_map.get(self.annotation_mode, 0))
+        self.annot_mode_combo.currentIndexChanged.connect(self._on_annot_mode_changed)
+        annot_layout.addRow("Mode:", self.annot_mode_combo)
+
+        # Top N spinbox
+        self.annot_top_n_spin = QSpinBox()
+        self.annot_top_n_spin.setRange(1, 200)
+        self.annot_top_n_spin.setValue(self.annotation_top_n)
+        self.annot_top_n_spin.valueChanged.connect(self._on_settings_changed)
+        annot_layout.addRow("Top N genes:", self.annot_top_n_spin)
+
+        # Custom list: 파일 로드 버튼 + 상태 레이블
+        custom_list_layout = QHBoxLayout()
+        self.annot_load_btn = QPushButton("Load File…")
+        self.annot_load_btn.setMaximumWidth(90)
+        self.annot_load_btn.clicked.connect(self._load_annotation_gene_list)
+        custom_list_layout.addWidget(self.annot_load_btn)
+        self.annot_file_label = QLabel(
+            f"{len(self.annotation_custom_genes)} genes loaded"
+            if self.annotation_custom_genes else "No file loaded"
+        )
+        self.annot_file_label.setStyleSheet("color: grey; font-size: 10px;")
+        custom_list_layout.addWidget(self.annot_file_label)
+        annot_layout.addRow("Gene list:", custom_list_layout)
+
+        # Label font size
+        self.annot_size_spin = QSpinBox()
+        self.annot_size_spin.setRange(5, 20)
+        self.annot_size_spin.setValue(self.annotation_label_size)
+        self.annot_size_spin.valueChanged.connect(self._on_settings_changed)
+        annot_layout.addRow("Label size:", self.annot_size_spin)
+
+        annot_group.setLayout(annot_layout)
+        left_panel.addWidget(annot_group)
+        self._on_annot_mode_changed()   # 초기 위젯 표시 상태 반영
+
         left_panel.addStretch()  # 아래 여백
         
         # 왼쪽 패널을 메인 레이아웃에 추가
@@ -404,6 +459,12 @@ class VolcanoPlotDialog(QDialog):
         self.plot_xlabel = self.xlabel_edit.text()
         self.plot_ylabel = self.ylabel_edit.text()
         self.show_legend = self.legend_check.isChecked()
+
+        # Gene annotation
+        _mode_names = ['none', 'top_n', 'custom']
+        self.annotation_mode = _mode_names[self.annot_mode_combo.currentIndex()]
+        self.annotation_top_n = self.annot_top_n_spin.value()
+        self.annotation_label_size = self.annot_size_spin.value()
         
         # 설정값을 클래스 변수에 저장 (세션 동안 유지)
         self._saved_settings.update({
@@ -420,7 +481,11 @@ class VolcanoPlotDialog(QDialog):
             'title': self.plot_title,
             'xlabel': self.plot_xlabel,
             'ylabel': self.plot_ylabel,
-            'show_legend': self.show_legend
+            'show_legend': self.show_legend,
+            'annotation_mode': self.annotation_mode,
+            'annotation_top_n': self.annotation_top_n,
+            'annotation_label_size': self.annotation_label_size,
+            'annotation_custom_genes': list(self.annotation_custom_genes),
         })
         
         self._plot()
@@ -513,12 +578,116 @@ class VolcanoPlotDialog(QDialog):
                                 zorder=1000)
         self.annot.set_visible(False)
         
+        # ── Gene Name Annotation (label) ─────────────────────────────
+        self._draw_gene_labels(ax, df)
+
         # Hover 이벤트 연결 (DEG만)
         self.figure.canvas.mpl_connect("motion_notify_event", self._on_hover)
         
         self.figure.tight_layout()
         self.canvas.draw()
-    
+
+    # ── Gene Annotation 관련 메서드 ───────────────────────────────────────
+
+    def _on_annot_mode_changed(self):
+        """Annotation mode 콤보박스 변경 시 관련 위젯 활성/비활성"""
+        idx = self.annot_mode_combo.currentIndex()
+        # 0=None, 1=Top N, 2=Custom List
+        self.annot_top_n_spin.setEnabled(idx == 1)
+        self.annot_load_btn.setEnabled(idx == 2)
+        self.annot_file_label.setEnabled(idx == 2)
+        self.annot_size_spin.setEnabled(idx != 0)
+        self._on_settings_changed()
+
+    def _load_annotation_gene_list(self):
+        """txt/csv/tsv 파일에서 gene list 로드"""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open Gene List",
+            "",
+            "Text/CSV/TSV Files (*.txt *.csv *.tsv);;All Files (*)"
+        )
+        if not file_path:
+            return
+        try:
+            genes: list[str] = []
+            with open(file_path, encoding='utf-8', errors='replace') as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    # csv/tsv → 첫 번째 컬럼만 사용
+                    for sep in ('\t', ','):
+                        if sep in line:
+                            line = line.split(sep)[0].strip()
+                            break
+                    if line:
+                        genes.append(line)
+            if genes:
+                self.annotation_custom_genes = genes
+                self.annot_file_label.setText(f"{len(genes)} genes loaded")
+                self.annot_file_label.setStyleSheet("color: green; font-size: 10px;")
+                self._on_settings_changed()
+            else:
+                QMessageBox.warning(self, "Empty File", "No gene names found in the file.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to load gene list:\n{e}")
+
+    def _draw_gene_labels(self, ax, df: 'pd.DataFrame'):
+        """Volcano plot 위에 gene name 레이블 그리기"""
+        mode_idx = self.annot_mode_combo.currentIndex()
+        if mode_idx == 0:   # None
+            return
+
+        # gene name 컬럼 결정 (symbol 우선)
+        gene_col = None
+        for c in ('symbol', 'gene_id'):
+            if c in df.columns:
+                gene_col = c
+                break
+        if gene_col is None:
+            return
+
+        label_size = self.annot_size_spin.value()
+
+        if mode_idx == 1:   # Top N by significance score
+            top_n = self.annot_top_n_spin.value()
+            # significant genes만 대상 (up + down)
+            sig = df[df['regulation'].isin(['up', 'down'])].copy()
+            if sig.empty:
+                return
+            # score = |log2FC| * -log10(padj) 로 순위 결정
+            sig['_score'] = sig['log2FC'].abs() * sig['-log10(padj)']
+            sig = sig.nlargest(top_n, '_score')
+            genes_to_label = sig
+        else:               # Custom List
+            if not self.annotation_custom_genes:
+                return
+            custom_upper = {g.upper() for g in self.annotation_custom_genes}
+            genes_to_label = df[df[gene_col].astype(str).str.upper().isin(custom_upper)]
+            if genes_to_label.empty:
+                return
+
+        # 각 gene에 레이블 annotate
+        for _, row in genes_to_label.iterrows():
+            x = row['log2FC']
+            y = row['-log10(padj)']
+            name = str(row[gene_col])
+            ax.annotate(
+                name,
+                xy=(x, y),
+                xytext=(4, 4),
+                textcoords='offset points',
+                fontsize=label_size,
+                fontweight='bold',
+                color='black',
+                arrowprops=dict(arrowstyle='-', color='grey',
+                                lw=0.5, shrinkA=0, shrinkB=2),
+                bbox=dict(boxstyle='round,pad=0.15', fc='white',
+                          ec='none', alpha=0.6),
+                zorder=500,
+            )
+
     def _on_hover(self, event):
         """마우스 오버 시 DEG 정보 표시"""
         if event.inaxes is None:
