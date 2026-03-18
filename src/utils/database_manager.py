@@ -712,6 +712,15 @@ class DatabaseManager:
             
             self.logger.info(f"Available columns: {df.columns.tolist()[:10]}")
             
+            # GO 데이터의 경우 fold_enrichment 파생 계산 (없을 때만)
+            if metadata.dataset_type == DatasetType.GO_ANALYSIS:
+                fe_col = StandardColumns.FOLD_ENRICHMENT
+                if fe_col not in df.columns:
+                    try:
+                        df = loader._compute_fold_enrichment(df)
+                    except Exception as _fe_err:
+                        self.logger.warning(f"Could not compute fold_enrichment: {_fe_err}")
+            
             # Dataset 객체 생성
             dataset = Dataset(
                 name=metadata.alias,
