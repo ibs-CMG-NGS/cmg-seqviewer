@@ -646,11 +646,38 @@ class MainWindow(QMainWindow):
         # gene_set은 GO 필터링에 필요하므로 유지, direction은 제거
         internal_columns = {'_gene_set', 'Value', StandardColumns.DIRECTION}
         
-        # GO/KEGG 데이터인 경우 - 원본 엑셀 파일의 컬럼 순서 유지
+        # GO/KEGG 데이터인 경우 - 지정된 순서로 표시
         if dataset and dataset.dataset_type == DatasetType.GO_ANALYSIS:
-            # 내부 처리용 컬럼만 제거하고 원본 순서 그대로 유지
-            columns_to_show = [col for col in all_columns if col not in internal_columns]
-            return columns_to_show
+            # 고정 앞부분: ID / 설명
+            prefix_order = [
+                StandardColumns.ONTOLOGY,
+                StandardColumns.TERM_ID,
+                StandardColumns.DESCRIPTION,
+            ]
+            # 고정 통계 순서 (gene_count 제외 - gene_ratio 분자와 중복)
+            stat_order = [
+                StandardColumns.GENE_RATIO,
+                StandardColumns.BG_RATIO,
+                StandardColumns.FOLD_ENRICHMENT,
+                StandardColumns.PVALUE_GO,
+                StandardColumns.FDR,
+                StandardColumns.QVALUE,
+                StandardColumns.GENE_SYMBOLS,
+            ]
+            # 위 순서에 포함되지 않은 나머지 컬럼 (예상 외 컬럼 보존)
+            ordered = []
+            seen = set()
+            for col in prefix_order + stat_order:
+                if col in all_columns and col not in internal_columns and col not in seen:
+                    ordered.append(col)
+                    seen.add(col)
+            # 나머지 컬럼 뒤에 추가 (gene_count 포함 중복 컬럼은 제외)
+            skip_cols = internal_columns | {StandardColumns.GENE_COUNT}
+            for col in all_columns:
+                if col not in seen and col not in skip_cols:
+                    ordered.append(col)
+                    seen.add(col)
+            return ordered
         
         # DE 데이터인 경우 (기존 로직)
         if self.column_display_level == "full":
