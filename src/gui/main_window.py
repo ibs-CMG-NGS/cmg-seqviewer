@@ -959,8 +959,15 @@ class MainWindow(QMainWindow):
                     QMessageBox.warning(self, "No Gene Column", "No gene identifier column found.")
                     return
                 
-                # 필터링
-                filtered_df = df[df[gene_col].astype(str).str.upper().isin([g.upper() for g in criteria.gene_list])]
+                # 필터링 (gene list 입력 순서 유지)
+                gene_order = {g.upper(): i for i, g in enumerate(criteria.gene_list)}
+                mask = df[gene_col].astype(str).str.upper().isin(gene_order)
+                filtered_df = (
+                    df[mask]
+                    .assign(_sort_key=df.loc[mask, gene_col].astype(str).str.upper().map(gene_order))
+                    .sort_values('_sort_key')
+                    .drop(columns='_sort_key')
+                )
                 new_tab_name = f"Filtered: {tab_name} - Gene List ({len(criteria.gene_list)} genes)"
                 
             else:  # Statistical filter
@@ -1179,19 +1186,27 @@ class MainWindow(QMainWindow):
             # 디버깅: 첫 5개 gene 값 출력
             self.logger.info(f"First 5 genes in dataset: {df[gene_id_col].head().tolist()}")
             
-            # 필터링
-            filtered_df = df[df[gene_id_col].isin(gene_list)].copy()
+            # 필터링 (gene list 입력 순서 유지)
+            gene_order = {g.upper(): i for i, g in enumerate(gene_list)}
+            mask = df[gene_id_col].isin(gene_list)
             
-            if filtered_df.empty:
+            if not mask.any():
                 self.logger.warning(f"No matching genes found in dataset: {dataset.name}")
                 # 대소문자 구분 없이 재시도
-                filtered_df = df[df[gene_id_col].str.upper().isin([g.upper() for g in gene_list])].copy()
-                if not filtered_df.empty:
-                    self.logger.debug(f"Found {len(filtered_df)} genes after case-insensitive matching")
-                else:
+                mask = df[gene_id_col].str.upper().isin(gene_order)
+                if not mask.any():
                     continue
+                else:
+                    self.logger.debug(f"Found {mask.sum()} genes after case-insensitive matching")
             else:
-                self.logger.debug(f"Found {len(filtered_df)} matching genes in dataset: {dataset.name}")
+                self.logger.debug(f"Found {mask.sum()} matching genes in dataset: {dataset.name}")
+
+            filtered_df = (
+                df[mask].copy()
+                .assign(_sort_key=df.loc[mask, gene_id_col].astype(str).str.upper().map(gene_order))
+                .sort_values('_sort_key')
+                .drop(columns='_sort_key')
+            )
             
             # 필요한 컬럼만 선택
             result_df = pd.DataFrame()
