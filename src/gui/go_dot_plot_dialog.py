@@ -66,13 +66,11 @@ class GODotPlotDialog(QDialog):
         self.top_n_spin.valueChanged.connect(self._update_plot)
         settings_layout.addRow("Top N terms:", self.top_n_spin)
         
-        # X-axis는 Gene Ratio로 고정 (UI에서 제거)
-        # Sort by는 Gene Ratio descending으로 고정 (UI에서 제거)
-        # 큰 값이 위, 작은 값이 아래로 표시
-        
-        # Color와 Size는 고정 (UI에서 제거, 내부적으로 FDR과 Gene Count 사용)
-        # Color: FDR (고정)
-        # Size: Gene Count (고정)
+        # X-axis 선택: Gene Ratio 또는 Fold Enrichment
+        self.x_axis_combo = QComboBox()
+        self.x_axis_combo.addItems(["Gene Ratio", "Fold Enrichment"])
+        self.x_axis_combo.currentTextChanged.connect(self._on_x_axis_changed)
+        settings_layout.addRow("X-axis:", self.x_axis_combo)
         
         settings_group.setLayout(settings_layout)
         left_panel.addWidget(settings_group)
@@ -201,6 +199,13 @@ class GODotPlotDialog(QDialog):
         # 오른쪽 패널을 메인 레이아웃에 추가
         main_layout.addLayout(right_panel, stretch=3)  # 오른쪽을 더 크게
     
+    def _on_x_axis_changed(self, text: str):
+        """X-axis 콤보 변경 시 xlabel_edit 자동 동기화 후 replot"""
+        self.xlabel_edit.blockSignals(True)
+        self.xlabel_edit.setText(text)
+        self.xlabel_edit.blockSignals(False)
+        self._update_plot()
+
     def _on_figure_size_changed(self):
         """Figure 크기 변경 시 처리"""
         width = self.width_spin.value()
@@ -287,25 +292,32 @@ class GODotPlotDialog(QDialog):
             self.canvas.draw()
             return
         
-        # Sorting - Gene Ratio로 정렬 (큰 값을 선택하기 위해 descending)
-        # Gene Ratio 계산
+        # Sorting - 선택된 X축 값 기준으로 정렬
+        # Gene Ratio 계산 (정렬 및 Gene Ratio 모드에 사용)
         gene_ratios = self._calculate_gene_ratio(df)
         df = df.copy()
         df['_gene_ratio'] = gene_ratios
-        
+
+        # Fold Enrichment 컬럼 준비
+        x_axis_type = self.x_axis_combo.currentText()
+        if x_axis_type == "Fold Enrichment" and StandardColumns.FOLD_ENRICHMENT in df.columns:
+            df['_x_val'] = pd.to_numeric(df[StandardColumns.FOLD_ENRICHMENT], errors='coerce').fillna(0)
+        else:
+            df['_x_val'] = df['_gene_ratio']
+
         # 큰 값부터 정렬하여 Top N 선택
-        df = df.sort_values('_gene_ratio', ascending=False)  # 내림차순 정렬
+        df = df.sort_values('_x_val', ascending=False)
         
         # Top N terms 선택
         top_n = self.top_n_spin.value()
         df = df.head(top_n)
         
         # Y축 표시를 위해 다시 오름차순 정렬 (작은 값이 아래, 큰 값이 위)
-        df = df.sort_values('_gene_ratio', ascending=True)
+        df = df.sort_values('_x_val', ascending=True)
         
-        # X-axis 데이터 - Gene Ratio 고정
-        x_data = df['_gene_ratio']
-        x_label = "Gene Ratio"
+        # X-axis 데이터
+        x_data = df['_x_val']
+        x_label = x_axis_type
         
         # Y-axis (Term descriptions)
         if StandardColumns.DESCRIPTION in df.columns:

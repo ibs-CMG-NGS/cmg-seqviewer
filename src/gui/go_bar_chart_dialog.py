@@ -67,8 +67,8 @@ class GOBarChartDialog(QDialog):
         
         # X-axis 선택
         self.x_axis_combo = QComboBox()
-        self.x_axis_combo.addItems(["-log10(FDR)", "Gene Count", "Fold Enrichment"])
-        self.x_axis_combo.currentTextChanged.connect(self._update_plot)
+        self.x_axis_combo.addItems(["-log10(FDR)", "Gene Ratio", "Fold Enrichment"])
+        self.x_axis_combo.currentTextChanged.connect(self._on_x_axis_changed)
         settings_layout.addRow("X-axis:", self.x_axis_combo)
         
         # Sort by 선택
@@ -182,6 +182,18 @@ class GOBarChartDialog(QDialog):
         self.figure.set_size_inches(width, height)
         self.canvas.draw()
     
+    def _on_x_axis_changed(self, text: str):
+        """X-axis 콤보 변경 시 xlabel_edit 자동 동기화 후 replot"""
+        label_map = {
+            "-log10(FDR)": "-log10(FDR)",
+            "Gene Ratio": "Gene Ratio",
+            "Fold Enrichment": "Fold Enrichment",
+        }
+        self.xlabel_edit.blockSignals(True)
+        self.xlabel_edit.setText(label_map.get(text, text))
+        self.xlabel_edit.blockSignals(False)
+        self._update_plot()
+
     def _choose_bar_color(self):
         """Bar 색상 선택"""
         color = QColorDialog.getColor(self.bar_color, self, "Choose Bar Color")
@@ -246,16 +258,26 @@ class GOBarChartDialog(QDialog):
             else:
                 x_data = pd.Series(1, index=df.index)
                 x_label = "Value"
-        elif x_axis_type == "Gene Count":
-            if StandardColumns.GENE_COUNT in df.columns:
-                x_data = df[StandardColumns.GENE_COUNT]
-                x_label = "Gene Count"
+        elif x_axis_type == "Gene Ratio":
+            if StandardColumns.GENE_RATIO in df.columns:
+                def _parse_ratio(r):
+                    try:
+                        if pd.isna(r):
+                            return 0.0
+                        if isinstance(r, (int, float)):
+                            return float(r)
+                        parts = str(r).split('/')
+                        return float(parts[0]) / float(parts[1]) if len(parts) == 2 and float(parts[1]) > 0 else 0.0
+                    except Exception:
+                        return 0.0
+                x_data = df[StandardColumns.GENE_RATIO].apply(_parse_ratio)
+                x_label = "Gene Ratio"
             else:
                 x_data = pd.Series(1, index=df.index)
                 x_label = "Value"
         else:  # Fold Enrichment
             if StandardColumns.FOLD_ENRICHMENT in df.columns:
-                x_data = df[StandardColumns.FOLD_ENRICHMENT]
+                x_data = pd.to_numeric(df[StandardColumns.FOLD_ENRICHMENT], errors='coerce').fillna(0)
                 x_label = "Fold Enrichment"
             else:
                 x_data = pd.Series(1, index=df.index)
