@@ -344,8 +344,66 @@ class GOKEGGLoader:
             self.logger.warning(f"Removed {duplicates_count} duplicate columns: {duplicated_names}")
             self.logger.info(f"Remaining columns after deduplication: {list(df.columns)}")
         
+        # Fold Enrichment 파생 계산 (gene_ratio / bg_ratio)
+        df = self._compute_fold_enrichment(df)
+
         return df
-    
+
+    def _compute_fold_enrichment(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        gene_ratio와 bg_ratio로부터 fold_enrichment를 파생 계산.
+
+        FoldEnrichment = GeneRatio / BgRatio
+                       = (k/n) / (M/N)
+
+        - k : DEG 중 해당 term 히트 수
+        - n : 전체 DEG 수
+        - M : 배경 genome에서 해당 term 크기
+        - N : 배경 genome 전체 gene 수
+
+        이미 fold_enrichment 컬럼이 있으면 덮어쓰지 않는다.
+        """
+        fe_col = StandardColumns.FOLD_ENRICHMENT
+        gr_col = StandardColumns.GENE_RATIO
+        br_col = StandardColumns.BG_RATIO
+
+        # 이미 있으면 스킵
+        if fe_col in df.columns:
+            return df
+
+        # 두 ratio 컬럼이 모두 없으면 스킵
+        if gr_col not in df.columns or br_col not in df.columns:
+            return df
+
+        def _parse_ratio(val) -> float:
+            """'10/100' 형식 또는 float 값을 float으로 변환"""
+            try:
+                if pd.isna(val):
+                    return float('nan')
+                if isinstance(val, (int, float)):
+                    return float(val)
+                parts = str(val).split('/')
+                if len(parts) == 2:
+                    num, den = float(parts[0]), float(parts[1])
+                    return num / den if den > 0 else float('nan')
+            except Exception:
+                pass
+            return float('nan')
+
+        gr = df[gr_col].apply(_parse_ratio)
+        br = df[br_col].apply(_parse_ratio)
+
+        # BgRatio == 0 이면 NaN 처리
+        fold_enrichment = gr / br.replace(0, float('nan'))
+        df[fe_col] = fold_enrichment.round(4)
+
+        n_computed = fold_enrichment.notna().sum()
+        self.logger.info(
+            f"Computed fold_enrichment for {n_computed}/{len(df)} rows "
+            f"(gene_ratio / bg_ratio)"
+        )
+        return df
+
     def _extract_direction_ontology(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Gene Set 컬럼에서 Direction과 Ontology 정보 추출
