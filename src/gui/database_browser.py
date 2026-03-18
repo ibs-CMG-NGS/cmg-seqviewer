@@ -101,6 +101,7 @@ class DatabaseBrowserDialog(QDialog):
         self.table = QTableWidget()
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)  # 편집 불가 (read-only)
         self.table.itemSelectionChanged.connect(self._on_selection_changed)
         
         # 선택 강조를 위한 스타일시트 적용

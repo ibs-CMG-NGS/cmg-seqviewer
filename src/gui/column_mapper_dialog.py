@@ -84,6 +84,7 @@ class ColumnMapperDialog(QDialog):
         
         self.preview_table = QTableWidget()
         self.preview_table.setMaximumHeight(150)
+        self.preview_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._populate_preview()
         preview_layout.addWidget(self.preview_table)
         

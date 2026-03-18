@@ -535,6 +535,7 @@ class GOClusteringDialog(QDialog):
         layout = QVBoxLayout(tab)
         self.cluster_table = QTableWidget()
         self.cluster_table.setSortingEnabled(True)
+        self.cluster_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         layout.addWidget(self.cluster_table)
         return tab
         
@@ -544,6 +545,7 @@ class GOClusteringDialog(QDialog):
         layout = QVBoxLayout(tab)
         self.representative_table = QTableWidget()
         self.representative_table.setSortingEnabled(True)
+        self.representative_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         layout.addWidget(self.representative_table)
         return tab
         

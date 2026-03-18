@@ -500,6 +500,7 @@ class MainWindow(QMainWindow):
         # 셀 단위 선택으로 변경 (기존: SelectRows)
         table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectItems)
         table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)  # 다중 선택 가능
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)  # 편집 불가 (read-only)
         table.setSortingEnabled(True)  # 정렬 기능 활성화
         
         # 선택 색상을 연한 파란색으로 설정
