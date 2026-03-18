@@ -243,6 +243,7 @@ class FilterCriteria:
     
     # Statistical 모드용 (GO)
     fdr_max: float = 0.05
+    fold_enrichment_min: float = 0.0
     ontology: str = "All"  # "All", "BP", "MF", "CC", "KEGG"
     go_direction: str = "All"  # "All", "UP", "DOWN", "TOTAL"
     
@@ -257,6 +258,7 @@ class FilterCriteria:
             'log2fc_min': self.log2fc_min,
             'gene_list': self.gene_list,
             'fdr_max': self.fdr_max,
+            'fold_enrichment_min': self.fold_enrichment_min,
             'regulation_direction': self.regulation_direction,
             'ontology': self.ontology,
             'go_direction': self.go_direction,

@@ -1050,6 +1050,12 @@ class MainWindow(QMainWindow):
                         fdr_values = pd.to_numeric(filtered_df[StandardColumns.FDR], errors='coerce')
                         filtered_df = filtered_df[fdr_values <= criteria.fdr_max]
                     
+                    # Fold Enrichment 필터
+                    fe_min = getattr(criteria, 'fold_enrichment_min', 0.0)
+                    if fe_min > 0 and StandardColumns.FOLD_ENRICHMENT in filtered_df.columns:
+                        fe_values = pd.to_numeric(filtered_df[StandardColumns.FOLD_ENRICHMENT], errors='coerce')
+                        filtered_df = filtered_df[fe_values >= fe_min]
+                    
                     # Ontology 필터
                     if criteria.ontology != "All" and StandardColumns.ONTOLOGY in filtered_df.columns:
                         filtered_df = filtered_df[filtered_df[StandardColumns.ONTOLOGY] == criteria.ontology]
@@ -1065,6 +1071,9 @@ class MainWindow(QMainWindow):
                         filters.append(f"FDR≤{criteria.fdr_max:.1e}")
                     else:
                         filters.append(f"FDR≤{criteria.fdr_max:.3f}")
+                    fe_min = getattr(criteria, 'fold_enrichment_min', 0.0)
+                    if fe_min > 0:
+                        filters.append(f"FE≥{fe_min:.1f}")
                     if criteria.ontology != "All":
                         filters.append(criteria.ontology)
                     if criteria.go_direction != "All":

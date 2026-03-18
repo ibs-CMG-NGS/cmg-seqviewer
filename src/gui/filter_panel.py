@@ -194,7 +194,7 @@ class FilterPanel(QWidget):
         
         self.go_fdr_input = QLineEdit()
         self.go_fdr_input.setText("0.05")
-        self.go_fdr_input.setMaximumWidth(100)
+        self.go_fdr_input.setFixedWidth(80)
         self.go_fdr_input.setPlaceholderText("e.g., 1e-5")
         self.go_fdr_input.setToolTip("Enter FDR threshold (supports scientific notation like 1e-5)")
         
@@ -205,15 +205,19 @@ class FilterPanel(QWidget):
         self.go_fdr_input.setValidator(validator)
         go_fdr_layout.addWidget(self.go_fdr_input)
         
-        # Preset 버튼들
-        preset_values = [("0.1", 0.1), ("0.05", 0.05), ("0.01", 0.01), ("1e-3", 0.001), ("1e-5", 1e-5)]
-        for label, value in preset_values:
-            btn = QPushButton(label)
-            btn.setMaximumWidth(45)
-            btn.setToolTip(f"Set FDR to {value}")
-            btn.clicked.connect(lambda checked, v=value: self._set_go_fdr_value(v))
-            go_fdr_layout.addWidget(btn)
-        
+        go_fdr_layout.addSpacing(16)
+
+        # Fold Enrichment 최솟값 필터
+        go_fdr_layout.addWidget(QLabel("FE ≥"))
+        self.go_fe_input = QDoubleSpinBox()
+        self.go_fe_input.setRange(0.0, 100.0)
+        self.go_fe_input.setSingleStep(0.5)
+        self.go_fe_input.setDecimals(1)
+        self.go_fe_input.setValue(0.0)
+        self.go_fe_input.setFixedWidth(70)
+        self.go_fe_input.setToolTip("Minimum fold enrichment (gene_ratio / bg_ratio). 0 = no filter")
+        go_fdr_layout.addWidget(self.go_fe_input)
+
         go_fdr_layout.addStretch()
         stats_layout.addLayout(go_fdr_layout)
         
@@ -269,6 +273,10 @@ class FilterPanel(QWidget):
         """)
         self.apply_filter_btn.clicked.connect(self.filter_requested.emit)
         
+        # 좌측 패널 최소 너비: 입력 위젯들이 잘리지 않도록 고정
+        # FDR(80) + 간격(16) + "FE ≥"라벨 + FE spinbox(70) + 마진 여유 = 약 360px
+        self.setMinimumWidth(360)
+
         # Stretch
         layout.addStretch()
     
@@ -434,6 +442,7 @@ class FilterPanel(QWidget):
             log2fc_min=self.log2fc_input.value(),
             gene_list=gene_list,
             fdr_max=self._get_go_fdr_value(),
+            fold_enrichment_min=self.go_fe_input.value(),
             regulation_direction=regulation_direction,
             ontology=self.ontology_combo.currentText(),
             go_direction=self.go_direction_combo.currentText(),
