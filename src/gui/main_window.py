@@ -651,6 +651,7 @@ class MainWindow(QMainWindow):
             # 고정 앞부분: ID / 설명
             prefix_order = [
                 StandardColumns.ONTOLOGY,
+                StandardColumns.GENE_SET,
                 StandardColumns.TERM_ID,
                 StandardColumns.DESCRIPTION,
             ]
