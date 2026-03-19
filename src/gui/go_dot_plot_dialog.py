@@ -71,6 +71,12 @@ class GODotPlotDialog(QDialog):
         self.x_axis_combo.addItems(["Gene Ratio", "Fold Enrichment"])
         self.x_axis_combo.currentTextChanged.connect(self._on_x_axis_changed)
         settings_layout.addRow("X-axis:", self.x_axis_combo)
+
+        # Dot Size 선택
+        self.size_combo = QComboBox()
+        self.size_combo.addItems(["Gene Count", "Gene Ratio", "Fold Enrichment"])
+        self.size_combo.currentTextChanged.connect(self._update_plot)
+        settings_layout.addRow("Dot Size:", self.size_combo)
         
         settings_group.setLayout(settings_layout)
         left_panel.addWidget(settings_group)
@@ -346,12 +352,34 @@ class GODotPlotDialog(QDialog):
             vmin = None
             vmax = None
         
-        # Size 데이터 (Gene Count로 고정)
-        if StandardColumns.GENE_COUNT in df.columns:
-            sizes = df[StandardColumns.GENE_COUNT] * 5  # 스케일 조정
-            sizes = sizes.clip(lower=50, upper=500)  # 최소/최대 크기 제한
+        # Size 데이터 (Dot Size 콤보 선택에 따라)
+        size_mode = self.size_combo.currentText()
+        if size_mode == "Gene Count" and StandardColumns.GENE_COUNT in df.columns:
+            raw_sizes = df[StandardColumns.GENE_COUNT]
+            sizes = (raw_sizes * 5).clip(lower=50, upper=500)
+            size_legend_unit = "genes"
+        elif size_mode == "Gene Ratio":
+            raw_sizes = df['_gene_ratio']
+            # Gene Ratio는 0~1 사이 → 50~500 으로 정규화
+            r_min, r_max = raw_sizes.min(), raw_sizes.max()
+            if r_max > r_min:
+                sizes = 50 + (raw_sizes - r_min) / (r_max - r_min) * 450
+            else:
+                sizes = pd.Series(200, index=df.index)
+            size_legend_unit = "ratio"
+        elif size_mode == "Fold Enrichment" and StandardColumns.FOLD_ENRICHMENT in df.columns:
+            raw_sizes = pd.to_numeric(df[StandardColumns.FOLD_ENRICHMENT], errors='coerce').fillna(0)
+            fe_min, fe_max = raw_sizes.min(), raw_sizes.max()
+            if fe_max > fe_min:
+                sizes = 50 + (raw_sizes - fe_min) / (fe_max - fe_min) * 450
+            else:
+                sizes = pd.Series(200, index=df.index)
+            size_legend_unit = "x"
         else:
+            # fallback: 고정 크기
+            raw_sizes = None
             sizes = 100
+            size_legend_unit = None
         
         # Plotting
         ax = self.figure.add_subplot(111)
@@ -386,88 +414,66 @@ class GODotPlotDialog(QDialog):
             cbar = self.figure.colorbar(scatter, ax=ax, shrink=0.5, pad=0.02, anchor=(0, 1.0))
             cbar.set_label(color_label, fontsize=10)
         
-        # Size legend (Gene Count) - Colorbar 아래에 배치
-        if StandardColumns.GENE_COUNT in df.columns:
+        # Size legend - Dot Size 선택에 따라 legend 표시
+        if raw_sizes is not None and size_legend_unit is not None:
             from matplotlib.lines import Line2D
-            # 전체 데이터셋의 gene count 범위를 기준으로 bin 계산 (가능한 경우)
-            if self.dataset and self.dataset.dataframe is not None:
-                full_gene_counts = self.dataset.dataframe[StandardColumns.GENE_COUNT]
-                min_count = int(full_gene_counts.min())
-                max_count = int(full_gene_counts.max())
-            else:
-                # Dataset이 없으면 현재 표시된 데이터 사용
-                gene_counts = df[StandardColumns.GENE_COUNT]
-                min_count = int(gene_counts.min())
-                max_count = int(gene_counts.max())
-            
-            # 범주화 기준: 10, 50, 100, 200, 500, 1000...
-            def get_representative_bins(min_val, max_val):
-                """min과 max 사이에서 3개의 대표 bin 선택"""
-                bins = [10, 50, 100, 200, 500, 1000, 2000, 5000, 10000]
-                
-                # min_val보다 크거나 같고 max_val보다 작거나 같은 bins 선택
-                valid_bins = [b for b in bins if min_val <= b <= max_val]
-                
-                if len(valid_bins) == 0:
-                    # valid bins가 없으면 실제 데이터의 min, mid, max 사용
-                    mid_val = (min_val + max_val) // 2
-                    return [min_val, mid_val, max_val]
-                elif len(valid_bins) == 1:
-                    # 1개만 있으면 min, valid_bin, max (3개로 확장)
-                    bin_val = valid_bins[0]
-                    if min_val < bin_val < max_val:
-                        return [min_val, bin_val, max_val]
-                    elif bin_val == min_val:
-                        mid_val = (min_val + max_val) // 2
-                        return [min_val, mid_val, max_val]
-                    else:  # bin_val == max_val
-                        mid_val = (min_val + max_val) // 2
-                        return [min_val, mid_val, max_val]
-                elif len(valid_bins) == 2:
-                    # 2개 있으면 두 bins 사용 + max 값
-                    # 만약 max_val이 두번째 bin과 같으면 그대로, 아니면 max_val 추가
-                    if valid_bins[1] == max_val:
-                        # min, bin[0], bin[1](=max)
-                        return [min_val, valid_bins[0], valid_bins[1]]
-                    else:
-                        # bin[0], bin[1], max
-                        return [valid_bins[0], valid_bins[1], max_val]
+
+            s_vals = raw_sizes.dropna()
+            if len(s_vals) == 0:
+                s_vals = pd.Series([1.0])
+            sv_min = float(s_vals.min())
+            sv_max = float(s_vals.max())
+            sv_mid = (sv_min + sv_max) / 2
+
+            def _scatter_s(val):
+                """원래 sizes 계산과 동일한 방법으로 scatter s값 반환"""
+                if size_mode == "Gene Count":
+                    return min(max(val * 5, 50), 500)
                 else:
-                    # 3개 이상이면 첫번째, 중간, 마지막 선택
-                    mid_idx = len(valid_bins) // 2
-                    return [valid_bins[0], valid_bins[mid_idx], valid_bins[-1]]
-            
-            representative_counts = get_representative_bins(min_count, max_count)
-            # self.logger.info(f"Gene count range: {min_count}-{max_count}, selected bins: {representative_counts}")
-            
-            # Scatter plot과 동일한 크기 계산
-            def size_to_markersize(count):
-                """Gene count를 markersize로 변환 (scatter plot과 동일한 방식)"""
-                # scatter에서 s=count*5 사용하고, 50-500 범위로 제한
-                scatter_size = count * 5
-                scatter_size = min(max(scatter_size, 50), 500)
-                # markersize는 scatter size의 제곱근에 비례 (matplotlib 규칙)
-                # 하지만 legend에서는 실제 크기를 보여주기 위해 비례하게 조정
-                return np.sqrt(scatter_size) / 2  # /2는 legend 크기 조정용
-            
+                    rng = sv_max - sv_min
+                    if rng > 0:
+                        return 50 + (val - sv_min) / rng * 450
+                    return 200
+
+            def _legend_ms(val):
+                return np.sqrt(_scatter_s(val)) / 2
+
+            if size_mode == "Gene Count":
+                # 정수 bin 표시
+                def get_bins(lo, hi):
+                    bins = [10, 50, 100, 200, 500, 1000, 2000, 5000, 10000]
+                    valid = [b for b in bins if lo <= b <= hi]
+                    if not valid:
+                        mid = (lo + hi) // 2
+                        return [lo, mid, hi]
+                    if len(valid) == 1:
+                        mid = (lo + hi) // 2
+                        return [lo, mid, hi]
+                    if len(valid) == 2:
+                        return [int(lo), valid[0], valid[1]]
+                    mid_i = len(valid) // 2
+                    return [valid[0], valid[mid_i], valid[-1]]
+                rep = get_bins(int(sv_min), int(sv_max))
+                labels = [f'{int(v)} {size_legend_unit}' for v in rep]
+                markers_vals = rep
+            else:
+                # 연속형 — min / mid / max 3단계
+                rep = [sv_min, sv_mid, sv_max]
+                if size_mode == "Gene Ratio":
+                    labels = [f'{v:.3f}' for v in rep]
+                else:
+                    labels = [f'{v:.1f} {size_legend_unit}' for v in rep]
+                markers_vals = rep
+
             legend_elements = [
-                Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', 
-                      markersize=size_to_markersize(representative_counts[0]), 
-                      label=f'{representative_counts[0]} genes',
-                      markeredgecolor='black', markeredgewidth=0.5),
                 Line2D([0], [0], marker='o', color='w', markerfacecolor='gray',
-                      markersize=size_to_markersize(representative_counts[1]), 
-                      label=f'{representative_counts[1]} genes',
-                      markeredgecolor='black', markeredgewidth=0.5),
-                Line2D([0], [0], marker='o', color='w', markerfacecolor='gray',
-                      markersize=size_to_markersize(representative_counts[2]), 
-                      label=f'{representative_counts[2]} genes',
-                      markeredgecolor='black', markeredgewidth=0.5)
+                       markersize=_legend_ms(v), label=lbl,
+                       markeredgecolor='black', markeredgewidth=0.5)
+                for v, lbl in zip(markers_vals, labels)
             ]
-            # Gene count legend를 하단에 배치 (colorbar와 겹치지 않도록)
-            ax.legend(handles=legend_elements, title='Gene Count', 
-                     loc='upper left', fontsize=8, framealpha=0.9, 
-                     bbox_to_anchor=(1.02, 0.20))
+            ax.legend(handles=legend_elements, title=size_mode,
+                      loc='upper left', fontsize=8, framealpha=0.9,
+                      bbox_to_anchor=(1.02, 0.20))
         
         # Layout 조정 - tight_layout 사용하여 자동으로 여백 조정
         try:
