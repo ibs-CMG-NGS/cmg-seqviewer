@@ -720,6 +720,42 @@ class DatabaseManager:
                         df = loader._compute_fold_enrichment(df)
                     except Exception as _fe_err:
                         self.logger.warning(f"Could not compute fold_enrichment: {_fe_err}")
+
+                # direction / gene_set / ontology 복구
+                # parquet 직접 반입 등으로 이 컬럼들이 없을 수 있음
+                need_direction = StandardColumns.DIRECTION not in df.columns
+                need_gene_set  = StandardColumns.GENE_SET  not in df.columns
+                need_ontology  = StandardColumns.ONTOLOGY  not in df.columns
+
+                if need_direction or need_gene_set or need_ontology:
+                    try:
+                        from utils.go_kegg_loader import GOKEGGLoader
+                        go_loader = GOKEGGLoader()
+                        # gene_set 컬럼이 없으면 파일명(alias)에서 유추하거나 'UNKNOWN' 채움
+                        if need_gene_set:
+                            df[StandardColumns.GENE_SET] = 'UNKNOWN'
+                            self.logger.warning(
+                                f"'{metadata.alias}': gene_set column missing — "
+                                f"Gene Set filter will not work. "
+                                f"Re-import the original Excel file to enable it."
+                            )
+                        # gene_set 이 있으면 direction/ontology 추출 시도
+                        if not need_gene_set or StandardColumns.GENE_SET in df.columns:
+                            df = go_loader._extract_direction_ontology(df)
+                        # 여전히 없으면 기본값
+                        if StandardColumns.DIRECTION not in df.columns:
+                            df[StandardColumns.DIRECTION] = 'UNKNOWN'
+                        if StandardColumns.ONTOLOGY not in df.columns:
+                            df[StandardColumns.ONTOLOGY] = 'UNKNOWN'
+                        self.logger.info(
+                            f"Restored direction/ontology columns for '{metadata.alias}'"
+                        )
+                    except Exception as _dir_err:
+                        self.logger.warning(f"Could not restore direction/ontology: {_dir_err}")
+                        if StandardColumns.DIRECTION not in df.columns:
+                            df[StandardColumns.DIRECTION] = 'UNKNOWN'
+                        if StandardColumns.ONTOLOGY not in df.columns:
+                            df[StandardColumns.ONTOLOGY] = 'UNKNOWN'
             
             # Dataset 객체 생성
             dataset = Dataset(

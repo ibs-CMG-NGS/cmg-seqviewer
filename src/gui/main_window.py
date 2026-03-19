@@ -1061,9 +1061,16 @@ class MainWindow(QMainWindow):
                         filtered_df = filtered_df[filtered_df[StandardColumns.ONTOLOGY] == criteria.ontology]
                     
                     # Gene Set 필터 (UP/DOWN/TOTAL DEG로 분석한 결과)
-                    if criteria.go_direction != "All" and StandardColumns.GENE_SET in filtered_df.columns:
-                        # gene_set 컬럼의 값이 "UP", "DOWN", "TOTAL" 형식
-                        filtered_df = filtered_df[filtered_df[StandardColumns.GENE_SET] == criteria.go_direction]
+                    # gene_set 컬럼 우선, 없으면 direction 컬럼으로 fallback
+                    if criteria.go_direction != "All":
+                        if StandardColumns.GENE_SET in filtered_df.columns:
+                            filtered_df = filtered_df[
+                                filtered_df[StandardColumns.GENE_SET].str.upper() == criteria.go_direction.upper()
+                            ]
+                        elif StandardColumns.DIRECTION in filtered_df.columns:
+                            filtered_df = filtered_df[
+                                filtered_df[StandardColumns.DIRECTION].str.upper() == criteria.go_direction.upper()
+                            ]
                     
                     # 탭 이름 생성
                     filters = []
