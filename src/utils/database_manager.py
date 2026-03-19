@@ -208,6 +208,30 @@ class DatabaseManager:
                     )
                     continue
 
+                # ── GO 데이터이고 gene_set 컬럼이 없으면 표준화 파이프라인 실행 후 parquet 재저장
+                if dataset_type == DatasetType.GO_ANALYSIS and 'gene_set' not in cols:
+                    try:
+                        from utils.go_kegg_loader import GOKEGGLoader
+                        from models.standard_columns import StandardColumns as SC
+                        go_loader = GOKEGGLoader()
+                        df = go_loader._standardize_columns(df)
+                        df = go_loader._extract_direction_ontology(df)
+                        if SC.DIRECTION not in df.columns:
+                            df[SC.DIRECTION] = 'UNKNOWN'
+                        if SC.ONTOLOGY not in df.columns:
+                            df[SC.ONTOLOGY] = 'UNKNOWN'
+                        if SC.GENE_SET not in df.columns:
+                            df[SC.GENE_SET] = 'UNKNOWN'
+                        df.to_parquet(parquet_file, engine='pyarrow', index=False)
+                        cols = set(df.columns)
+                        self.logger.info(
+                            f"Re-saved '{filename}' with gene_set/direction/ontology columns added"
+                        )
+                    except Exception as _gs_err:
+                        self.logger.warning(
+                            f"Could not enrich '{filename}' with gene_set columns: {_gs_err}"
+                        )
+
                 # ── 통계 계산 ──────────────────────────────────────────────
                 row_count = len(df)
                 gene_count = 0
@@ -698,6 +722,14 @@ class DatabaseManager:
                 auto_mapping = loader._map_columns(df, metadata.dataset_type)
                 df, original_columns = loader._standardize_columns(df, auto_mapping, metadata.dataset_type)
                 self.logger.info(f"Converted legacy database columns to standard format")
+            elif metadata.dataset_type == DatasetType.GO_ANALYSIS:
+                # GO 데이터는 필수 컬럼이 있어도 Gene.Set / GO.ID 등 점 구분자 컬럼이
+                # 아직 rename 안 됐을 수 있으므로 항상 표준화 파이프라인 실행
+                from utils.go_kegg_loader import GOKEGGLoader
+                go_loader = GOKEGGLoader()
+                df = go_loader._standardize_columns(df)
+                original_columns = {}
+                self.logger.info(f"Applied GO column standardization (dot-separator rename)")
             else:
                 # 이미 표준화된 database
                 original_columns = {}
@@ -731,7 +763,7 @@ class DatabaseManager:
                     try:
                         from utils.go_kegg_loader import GOKEGGLoader
                         go_loader = GOKEGGLoader()
-                        # gene_set 컬럼이 없으면 파일명(alias)에서 유추하거나 'UNKNOWN' 채움
+                        # gene_set 컬럼이 없으면 UNKNOWN으로 채움 (스캔 단계에서 이미 재저장 시도됨)
                         if need_gene_set:
                             df[StandardColumns.GENE_SET] = 'UNKNOWN'
                             self.logger.warning(

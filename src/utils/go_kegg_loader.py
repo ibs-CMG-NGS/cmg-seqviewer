@@ -317,9 +317,33 @@ class GOKEGGLoader:
             
             # Gene Set (추가된 시트 이름 컬럼)
             'Gene Set': StandardColumns.GENE_SET,
+            'Gene.Set': StandardColumns.GENE_SET,
             'gene set': StandardColumns.GENE_SET,
+            'gene.set': StandardColumns.GENE_SET,
             'GeneSet': StandardColumns.GENE_SET,
             'geneset': StandardColumns.GENE_SET,
+
+            # Term ID (점 구분자 변형)
+            'GO.ID': StandardColumns.TERM_ID,
+            'KEGG.ID': StandardColumns.TERM_ID,
+
+            # Description (점 구분자 변형)
+            'GO.Term': StandardColumns.DESCRIPTION,
+            'KEGG.Pathway': StandardColumns.DESCRIPTION,
+
+            # Gene Symbols (점 구분자 변형)
+            'Gene.Symbols': StandardColumns.GENE_SYMBOLS,
+
+            # Statistics (점 구분자 변형)
+            'Adjusted.P-value': StandardColumns.FDR,
+            'Adjusted.P.value': StandardColumns.FDR,
+
+            # Ratios (점 구분자 변형)
+            'Gene.Ratio': StandardColumns.GENE_RATIO,
+            'Background.Ratio': StandardColumns.BG_RATIO,
+
+            # Count (점 구분자 변형)
+            'Gene.Count': StandardColumns.GENE_COUNT,
         }
         
         # 컬럼명 변경
