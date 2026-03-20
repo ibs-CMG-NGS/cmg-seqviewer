@@ -317,6 +317,20 @@ class DataLoader:
         
         # 컬럼 리네임
         df.rename(columns=mapping, inplace=True)
+
+        # 중복 컬럼 제거 (GO.ID + KEGG.ID → term_id 두 개 등)
+        if df.columns.duplicated().any():
+            dup_names = df.columns[df.columns.duplicated()].unique().tolist()
+            df = df.loc[:, ~df.columns.duplicated(keep='first')]
+            self.logger.warning(f"Removed duplicate columns after rename: {dup_names}")
+
+        # GO 데이터: 매핑되지 않고 남은 dot-separator 원본 컬럼 제거
+        # (예: GO.ID→term_id로 이미 매핑돼 KEGG.ID는 매핑 제외 → 원본명 그대로 잔존)
+        if dataset_type == DatasetType.GO_ANALYSIS:
+            dot_leftover = [c for c in df.columns if '.' in c and c not in mapping.values()]
+            if dot_leftover:
+                df.drop(columns=dot_leftover, inplace=True)
+                self.logger.info(f"Dropped unmapped dot-separator columns: {dot_leftover}")
         
         # 모든 문자열 컬럼의 앞뒤 공백 제거 (description NaN 문제 해결)
         for col in df.columns:
