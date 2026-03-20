@@ -388,6 +388,22 @@ class GODotPlotDialog(QDialog):
                            cmap=cmap, alpha=0.7, edgecolors='black', linewidth=0.5,
                            vmin=vmin, vmax=vmax)
         
+        # ── Axes 여백: dot이 경계에 잘리지 않도록 반지름 기반으로 확보 ──
+        # scatter s값은 점 넓이(pt²) 기준이므로 반지름(pt) = sqrt(s)/2
+        # 데이터 좌표 상 여백으로 변환하기 위해 figure DPI·size 사용
+        fig_w, fig_h = self.figure.get_size_inches()
+        dpi = self.figure.dpi
+        # axes 크기(pt) 근사: 전체 figure 에서 margin 제외 약 75%
+        ax_w_pt = fig_w * dpi * 0.60
+        ax_h_pt = fig_h * dpi * 0.75
+        x_range = float(x_data.max() - x_data.min()) if len(x_data) > 1 else 1.0
+        y_range = float(len(y_data) - 1) if len(y_data) > 1 else 1.0
+        max_r_pt = float(np.sqrt(float(sizes.max() if hasattr(sizes, 'max') else sizes)) / 2)
+        x_pad = max_r_pt / ax_w_pt * x_range * 1.5
+        y_pad = max_r_pt / ax_h_pt * y_range * 1.5
+        ax.set_xlim(float(x_data.min()) - x_pad, float(x_data.max()) + x_pad)
+        ax.set_ylim(-0.5 - y_pad, float(len(y_data) - 1) + 0.5 + y_pad)
+        
         # Y label 폰트 크기 동적 조정 (term 개수에 따라)
         n_terms = len(df)
         if n_terms <= 10:
@@ -418,51 +434,82 @@ class GODotPlotDialog(QDialog):
         if raw_sizes is not None and size_legend_unit is not None:
             from matplotlib.lines import Line2D
 
-            s_vals = raw_sizes.dropna()
+            s_vals = pd.to_numeric(raw_sizes, errors='coerce').dropna()
             if len(s_vals) == 0:
                 s_vals = pd.Series([1.0])
             sv_min = float(s_vals.min())
             sv_max = float(s_vals.max())
-            sv_mid = (sv_min + sv_max) / 2
 
             def _scatter_s(val):
-                """원래 sizes 계산과 동일한 방법으로 scatter s값 반환"""
+                """scatter 에서 사용한 s값 그대로 역산"""
                 if size_mode == "Gene Count":
-                    return min(max(val * 5, 50), 500)
+                    return float(min(max(val * 5, 50), 500))
                 else:
                     rng = sv_max - sv_min
-                    if rng > 0:
-                        return 50 + (val - sv_min) / rng * 450
-                    return 200
+                    return float(50 + (val - sv_min) / rng * 450) if rng > 0 else 200.0
 
             def _legend_ms(val):
                 return np.sqrt(_scatter_s(val)) / 2
 
+            # ── 모드별 스마트 범주 선택 ──────────────────────────────
             if size_mode == "Gene Count":
-                # 정수 bin 표시
-                def get_bins(lo, hi):
-                    bins = [10, 50, 100, 200, 500, 1000, 2000, 5000, 10000]
-                    valid = [b for b in bins if lo <= b <= hi]
-                    if not valid:
-                        mid = (lo + hi) // 2
-                        return [lo, mid, hi]
-                    if len(valid) == 1:
-                        mid = (lo + hi) // 2
-                        return [lo, mid, hi]
-                    if len(valid) == 2:
-                        return [int(lo), valid[0], valid[1]]
-                    mid_i = len(valid) // 2
-                    return [valid[0], valid[mid_i], valid[-1]]
-                rep = get_bins(int(sv_min), int(sv_max))
+                # percentile 기반 3단계 (데이터 분포 반영)
+                p25 = float(np.percentile(s_vals, 25))
+                p75 = float(np.percentile(s_vals, 75))
+                # 보기 좋은 정수로 반올림
+                def _nice_int(v):
+                    if v <= 0:
+                        return 1
+                    mag = 10 ** max(0, int(np.floor(np.log10(v))) - 1)
+                    return int(round(v / mag) * mag)
+                rep = sorted({_nice_int(sv_min), _nice_int(p25),
+                               _nice_int(p75), _nice_int(sv_max)})
+                # 너무 가까운 값 제거 (범위의 10% 이내)
+                filtered = [rep[0]]
+                for v in rep[1:]:
+                    if v - filtered[-1] > (sv_max - sv_min) * 0.1:
+                        filtered.append(v)
+                rep = filtered[-3:]  # 최대 3개
                 labels = [f'{int(v)} {size_legend_unit}' for v in rep]
                 markers_vals = rep
-            else:
-                # 연속형 — min / mid / max 3단계
-                rep = [sv_min, sv_mid, sv_max]
-                if size_mode == "Gene Ratio":
-                    labels = [f'{v:.3f}' for v in rep]
-                else:
-                    labels = [f'{v:.1f} {size_legend_unit}' for v in rep]
+
+            elif size_mode == "Gene Ratio":
+                # 의미 있는 소수점 구간: nice decimal steps
+                def _nice_ratio(v):
+                    """0.003 → 0.003, 0.023 → 0.02 식으로 유효숫자 1~2자리"""
+                    if v <= 0:
+                        return 0.0
+                    mag = 10 ** int(np.floor(np.log10(v)))
+                    return round(round(v / mag, 1) * mag, 6)
+                r_lo = _nice_ratio(sv_min)
+                r_hi = _nice_ratio(sv_max)
+                r_mid = _nice_ratio((sv_min + sv_max) / 2)
+                rep = sorted({r_lo, r_mid, r_hi})
+                # 중복 제거
+                rep = sorted(set(rep))[-3:]
+                labels = [f'{v:.3g}' for v in rep]
+                markers_vals = rep
+
+            else:  # Fold Enrichment
+                # 보기 좋은 반올림: 5 단위 또는 1 단위
+                def _nice_fe(v):
+                    if v < 5:
+                        return round(v, 1)
+                    elif v < 20:
+                        return round(v / 2) * 2      # 2의 배수
+                    else:
+                        return round(v / 5) * 5      # 5의 배수
+                p25 = float(np.percentile(s_vals, 25))
+                p75 = float(np.percentile(s_vals, 75))
+                rep = sorted({_nice_fe(sv_min), _nice_fe(p25),
+                               _nice_fe(p75), _nice_fe(sv_max)})
+                # 너무 가까운 값 제거
+                filtered = [rep[0]]
+                for v in rep[1:]:
+                    if v - filtered[-1] > (sv_max - sv_min) * 0.1:
+                        filtered.append(v)
+                rep = filtered[-3:]
+                labels = [f'{v:.3g} {size_legend_unit}' for v in rep]
                 markers_vals = rep
 
             legend_elements = [
