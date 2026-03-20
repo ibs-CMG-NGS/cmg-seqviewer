@@ -194,7 +194,7 @@ class MainWindow(QMainWindow):
         self.log_terminal.setSizePolicy(
             QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         )
-        self.log_terminal.setFont(QFont("Consolas", 8))  # 폰트 크기 8pt로 축소
+        self.log_terminal.setFont(QFont("Consolas", 9))  # 폰트 크기 9pt
         self.log_terminal.setStyleSheet("""
             QTextEdit {
                 background-color: #1e1e1e;
