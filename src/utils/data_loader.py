@@ -42,16 +42,17 @@ class DataLoader:
         }
         
         self.go_column_patterns = {
-            'term_id': ['term_id', 'go_id', 'kegg_id', 'pathway_id', 'id', 'go id', 'kegg id'],
-            'description': ['description', 'term', 'go_term', 'go term', 'kegg_pathway', 'kegg pathway', 'pathway', 'term_name'],
-            'gene_count': ['gene_count', 'gene count', 'count', 'size', 'n_genes'],
+            'term_id': ['term_id', 'go_id', 'kegg_id', 'pathway_id', 'id', 'go id', 'kegg id', 'go.id', 'kegg.id'],
+            'description': ['description', 'term', 'go_term', 'go term', 'kegg_pathway', 'kegg pathway', 'pathway', 'term_name', 'go.term', 'kegg.pathway'],
+            'gene_count': ['gene_count', 'gene count', 'count', 'size', 'n_genes', 'gene.count'],
             'pvalue': ['pvalue', 'p.value', 'p_value', 'p-value', 'pval'],
-            'fdr': ['fdr', 'padj', 'adj.p.value', 'adjusted p-value', 'adjusted_p-value'],
+            'fdr': ['fdr', 'padj', 'adj.p.value', 'adjusted p-value', 'adjusted_p-value',
+                    'adjusted.p-value', 'adjusted.p.value', 'adjusted.pvalue', 'adjusted p.value'],
             'qvalue': ['qvalue', 'q-value', 'q_value'],
-            'gene_symbols': ['gene_symbols', 'gene symbols', 'genes', 'gene_list', 'geneid', 'gene id'],
-            'gene_ratio': ['gene_ratio', 'gene ratio', 'generatio'],
-            'bg_ratio': ['bg_ratio', 'background_ratio', 'background ratio', 'bgratio'],
-            'gene_set': ['gene_set', 'gene set', 'geneset', 'set'],
+            'gene_symbols': ['gene_symbols', 'gene symbols', 'genes', 'gene_list', 'geneid', 'gene id', 'gene.symbols'],
+            'gene_ratio': ['gene_ratio', 'gene ratio', 'generatio', 'gene.ratio'],
+            'bg_ratio': ['bg_ratio', 'background_ratio', 'background ratio', 'bgratio', 'background.ratio'],
+            'gene_set': ['gene_set', 'gene set', 'geneset', 'set', 'gene.set'],
             'ontology': ['ontology', 'category', 'type'],
             'direction': ['direction', 'regulation', 'change'],
         }
@@ -259,14 +260,29 @@ class DataLoader:
             return mapping
         
         # 각 표준 컬럼에 대해 매칭되는 실제 컬럼 찾기
+        already_mapped = set()  # 이미 다른 표준 컬럼에 할당된 원본 컬럼 추적
         for standard_col, pattern_list in patterns.items():
             matched = False
+            # 1단계: 완전 일치 우선 (lower_col == pattern)
             for original_col, lower_col in columns_lower.items():
-                if any(pattern in lower_col for pattern in pattern_list):
+                if original_col in already_mapped:
+                    continue
+                if any(lower_col == pattern for pattern in pattern_list):
                     mapping[original_col] = standard_col
+                    already_mapped.add(original_col)
                     matched = True
                     break
-            
+            # 2단계: 완전 일치 없으면 부분 포함 매칭
+            if not matched:
+                for original_col, lower_col in columns_lower.items():
+                    if original_col in already_mapped:
+                        continue
+                    if any(pattern in lower_col for pattern in pattern_list):
+                        mapping[original_col] = standard_col
+                        already_mapped.add(original_col)
+                        matched = True
+                        break
+
             if not matched:
                 self.logger.debug(f"No match found for standard column: {standard_col}")
         
