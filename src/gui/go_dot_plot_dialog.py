@@ -388,21 +388,16 @@ class GODotPlotDialog(QDialog):
                            cmap=cmap, alpha=0.7, edgecolors='black', linewidth=0.5,
                            vmin=vmin, vmax=vmax)
         
-        # ── Axes 여백: dot이 경계에 잘리지 않도록 반지름 기반으로 확보 ──
-        # scatter s값은 점 넓이(pt²) 기준이므로 반지름(pt) = sqrt(s)/2
-        # 데이터 좌표 상 여백으로 변환하기 위해 figure DPI·size 사용
-        fig_w, fig_h = self.figure.get_size_inches()
-        dpi = self.figure.dpi
-        # axes 크기(pt) 근사: 전체 figure 에서 margin 제외 약 75%
-        ax_w_pt = fig_w * dpi * 0.60
-        ax_h_pt = fig_h * dpi * 0.75
-        x_range = float(x_data.max() - x_data.min()) if len(x_data) > 1 else 1.0
-        y_range = float(len(y_data) - 1) if len(y_data) > 1 else 1.0
-        max_r_pt = float(np.sqrt(float(sizes.max() if hasattr(sizes, 'max') else sizes)) / 2)
-        x_pad = max_r_pt / ax_w_pt * x_range * 1.5
-        y_pad = max_r_pt / ax_h_pt * y_range * 1.5
-        ax.set_xlim(float(x_data.min()) - x_pad, float(x_data.max()) + x_pad)
-        ax.set_ylim(-0.5 - y_pad, float(len(y_data) - 1) + 0.5 + y_pad)
+        # ── Axes 여백: dot이 경계에 잘리지 않도록 ──
+        # 최대 dot 반지름(pt)을 데이터 범위 비율로 환산해 margins 설정
+        max_s = float(sizes.max() if hasattr(sizes, 'max') else sizes)
+        max_r_pt = np.sqrt(max_s) / 2  # scatter s → radius(pt)
+        # canvas가 아직 렌더링 안 됐을 수 있으므로 figure 크기로 근사
+        fig_w_pt = self.figure.get_size_inches()[0] * self.figure.dpi
+        fig_h_pt = self.figure.get_size_inches()[1] * self.figure.dpi
+        x_margin = max_r_pt / (fig_w_pt * 0.55) + 0.05   # axes 너비의 약 55% 가정 + 고정 5%
+        y_margin = max_r_pt / (fig_h_pt * 0.80) + 0.05
+        ax.margins(x=x_margin, y=y_margin)
         
         # Y label 폰트 크기 동적 조정 (term 개수에 따라)
         n_terms = len(df)
@@ -524,23 +519,33 @@ class GODotPlotDialog(QDialog):
         
         # Layout 조정 - tight_layout 사용하여 자동으로 여백 조정
         try:
-            # tight_layout으로 자동 조정 시도
-            self.figure.tight_layout(rect=[0, 0, 0.85, 1])  # rect로 오른쪽 15% 공간 확보
-        except Exception as e:
-            # tight_layout 실패 시 수동 조정
-            # Y label의 최대 길이에 따라 여백 계산
+            self.figure.tight_layout(rect=(0, 0, 0.85, 1))  # 오른쪽 15% legend 공간
+        except Exception:
             if len(y_labels) > 0:
                 max_label_len = max(len(str(label)) for label in y_labels)
-                # 더 큰 비율로 조정 (최소 30%, 최대 50%)
-                # 문자 개수와 폰트 크기를 고려
                 base_margin = 0.30
-                char_factor = max_label_len * 0.004  # 문자당 0.4%
+                char_factor = max_label_len * 0.004
                 left_margin = min(0.50, base_margin + char_factor)
             else:
                 left_margin = 0.30
             self.figure.subplots_adjust(left=left_margin, right=0.85)
-        
-        self.canvas.draw()
+
+        # tight_layout 이후 실제 axes 픽셀 크기로 xlim/ylim 재보정
+        # (margins()는 tight_layout에 의해 덮어쓰여질 수 있음)
+        self.canvas.draw()  # 렌더링 트리거 → get_window_extent 정확해짐
+        renderer = self.figure.canvas.get_renderer()
+        bbox = ax.get_window_extent(renderer=renderer)   # 실제 axes 픽셀 bbox
+        ax_w_px = bbox.width
+        ax_h_px = bbox.height
+        max_s = float(sizes.max() if hasattr(sizes, 'max') else sizes)
+        max_r_px = np.sqrt(max_s) / 2  # scatter s(pt²) → radius(pt≈px at 100dpi)
+        x_range = float(x_data.max() - x_data.min()) if len(x_data) > 1 else 1.0
+        y_range = float(len(y_data) - 1) if len(y_data) > 1 else 1.0
+        x_pad = (max_r_px / ax_w_px) * x_range * 1.3 if ax_w_px > 0 else x_range * 0.05
+        y_pad = (max_r_px / ax_h_px) * y_range * 1.3 if ax_h_px > 0 else y_range * 0.05
+        ax.set_xlim(float(x_data.min()) - x_pad, float(x_data.max()) + x_pad)
+        ax.set_ylim(-0.5 - y_pad, float(len(y_data) - 1) + 0.5 + y_pad)
+        self.canvas.draw()  # xlim/ylim 반영 후 최종 렌더링
     
     def _save_figure(self):
         """Figure 저장"""
