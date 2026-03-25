@@ -976,27 +976,57 @@ class MainWindow(QMainWindow):
                 if not criteria.gene_list:
                     QMessageBox.warning(self, "Empty Gene List", "Please enter genes to filter.")
                     return
-                
-                # gene_id 또는 symbol 컬럼 찾기
-                gene_col = None
-                if 'symbol' in df.columns:
-                    gene_col = 'symbol'
-                elif 'gene_id' in df.columns:
-                    gene_col = 'gene_id'
+
+                # 현재 탭의 dataset type 확인
+                current_index = self.data_tabs.currentIndex()
+                _, tab_dataset = self.tab_data.get(current_index, (None, None))
+                tab_dataset_type = tab_dataset.dataset_type if tab_dataset else None
+
+                if tab_dataset_type == DatasetType.GO_ANALYSIS:
+                    # GO 데이터: gene_symbols 컬럼에서 부분 포함 검색
+                    import re
+                    from models.standard_columns import StandardColumns
+                    gs_col = StandardColumns.GENE_SYMBOLS
+                    if gs_col not in df.columns:
+                        QMessageBox.warning(self, "No gene_symbols Column",
+                                            "This GO dataset has no 'gene_symbols' column.")
+                        return
+
+                    query_set = {g.strip().upper() for g in criteria.gene_list if g.strip()}
+
+                    def _count_hits(cell):
+                        if not isinstance(cell, str) or not cell.strip():
+                            return 0
+                        syms = {s.strip().upper() for s in re.split(r'[,;/\s]+', cell) if s.strip()}
+                        return len(syms & query_set)
+
+                    hit_counts = df[gs_col].apply(_count_hits)
+                    filtered_df = df[hit_counts > 0].copy()
+                    filtered_df['_hit'] = hit_counts[hit_counts > 0]
+                    filtered_df = filtered_df.sort_values('_hit', ascending=False).drop(columns='_hit')
+                    new_tab_name = f"Filtered: {tab_name} - Gene Symbols ({len(criteria.gene_list)} genes)"
+
                 else:
-                    QMessageBox.warning(self, "No Gene Column", "No gene identifier column found.")
-                    return
-                
-                # 필터링 (gene list 입력 순서 유지)
-                gene_order = {g.upper(): i for i, g in enumerate(criteria.gene_list)}
-                mask = df[gene_col].astype(str).str.upper().isin(gene_order)
-                filtered_df = (
-                    df[mask]
-                    .assign(_sort_key=df.loc[mask, gene_col].astype(str).str.upper().map(gene_order))
-                    .sort_values('_sort_key')
-                    .drop(columns='_sort_key')
-                )
-                new_tab_name = f"Filtered: {tab_name} - Gene List ({len(criteria.gene_list)} genes)"
+                    # DE 데이터: gene_id 또는 symbol 컬럼 완전 일치 검색
+                    gene_col = None
+                    if 'symbol' in df.columns:
+                        gene_col = 'symbol'
+                    elif 'gene_id' in df.columns:
+                        gene_col = 'gene_id'
+                    else:
+                        QMessageBox.warning(self, "No Gene Column", "No gene identifier column found.")
+                        return
+
+                    # 필터링 (gene list 입력 순서 유지)
+                    gene_order = {g.upper(): i for i, g in enumerate(criteria.gene_list)}
+                    mask = df[gene_col].astype(str).str.upper().isin(gene_order)
+                    filtered_df = (
+                        df[mask]
+                        .assign(_sort_key=df.loc[mask, gene_col].astype(str).str.upper().map(gene_order))
+                        .sort_values('_sort_key')
+                        .drop(columns='_sort_key')
+                    )
+                    new_tab_name = f"Filtered: {tab_name} - Gene List ({len(criteria.gene_list)} genes)"
                 
             else:  # Statistical filter
                 # Current dataset type 확인

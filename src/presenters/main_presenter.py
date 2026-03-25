@@ -300,7 +300,11 @@ class MainPresenter(QObject):
                     return
                 
                 filtered_df = self._filter_by_gene_list(criteria.gene_list)
-                tab_name = f"Filtered: Gene List ({len(criteria.gene_list)} genes)"
+                # GO 데이터는 "GO terms containing X genes", DE는 기존 형식
+                if self.current_dataset.dataset_type == DatasetType.GO_ANALYSIS:
+                    tab_name = f"Filtered: Gene Symbols ({len(criteria.gene_list)} genes)"
+                else:
+                    tab_name = f"Filtered: Gene List ({len(criteria.gene_list)} genes)"
                 
             else:  # FilterMode.STATISTICAL
                 # Statistical 모드 - 데이터셋 타입에 따라 다르게 처리
@@ -389,7 +393,12 @@ class MainPresenter(QObject):
             필터링된 DataFrame (gene_list 순서대로 정렬)
         """
         df = self.current_dataset.dataframe
-        
+        dataset_type = self.current_dataset.dataset_type
+
+        # ── GO/KEGG 데이터: gene_symbols 컬럼에서 부분 포함 검색 ──
+        if dataset_type == DatasetType.GO_ANALYSIS:
+            return self._filter_go_by_gene_symbols(df, gene_list)
+
         # Symbol 컬럼 우선 사용 (DE 데이터셋), 없으면 GENE_ID 사용
         if StandardColumns.SYMBOL in df.columns:
             gene_col = StandardColumns.SYMBOL
@@ -431,6 +440,52 @@ class MainPresenter(QObject):
             f"order preserved from input list"
         )
         
+        return filtered
+
+    def _filter_go_by_gene_symbols(self, df: 'pd.DataFrame', gene_list: List[str]) -> 'pd.DataFrame':
+        """
+        GO/KEGG 데이터를 gene symbol 목록으로 필터링.
+
+        gene_symbols 컬럼에 입력 유전자 중 하나라도 포함된 row를 반환.
+        매칭은 대소문자 무시, 단어 단위 비교 (부분 문자열 오매칭 방지).
+
+        Args:
+            df: GO 데이터 DataFrame
+            gene_list: 검색할 유전자 Symbol 목록
+
+        Returns:
+            매칭된 GO term rows (gene_symbols 히트 수 내림차순 정렬)
+        """
+        import re
+
+        gs_col = StandardColumns.GENE_SYMBOLS
+        if gs_col not in df.columns:
+            self.logger.error(f"gene_symbols column not found. Available: {df.columns.tolist()}")
+            raise ValueError(
+                f"GO 데이터에 '{gs_col}' 컬럼이 없습니다. "
+                "데이터를 다시 불러오거나 컬럼 매핑을 확인하세요."
+            )
+
+        query_set = {g.upper() for g in gene_list if g.strip()}
+
+        def count_hits(cell_value) -> int:
+            """gene_symbols 셀에서 query_set에 속하는 유전자 수 반환"""
+            if not isinstance(cell_value, str) or not cell_value.strip():
+                return 0
+            # 쉼표, 슬래시, 세미콜론, 공백 등 구분자로 분리
+            symbols = {s.strip().upper() for s in re.split(r'[,;/\s]+', cell_value) if s.strip()}
+            return len(symbols & query_set)
+
+        hit_counts = df[gs_col].apply(count_hits)
+        mask = hit_counts > 0
+        filtered = df[mask].copy()
+        filtered['_hit_count'] = hit_counts[mask]
+        filtered = filtered.sort_values('_hit_count', ascending=False).drop(columns='_hit_count')
+
+        self.logger.info(
+            f"GO gene-symbol filter: {len(filtered)}/{len(df)} terms matched "
+            f"({len(query_set)} query genes)"
+        )
         return filtered
     
     def _filter_by_statistics(self, adj_pvalue_max: Optional[float] = None, 
