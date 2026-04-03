@@ -1313,7 +1313,10 @@ class GOClusteringDialog(QDialog):
             logger = logging.getLogger(__name__)
             logger.info(f"Clusters dict keys: {list(self.clusters.keys())[:10] if self.clusters else 'None'}")
             logger.info(f"Unique cluster_id values in result_df: {result_df[StandardColumns.CLUSTER_ID].unique()[:10]}")
-            
+
+            # Convert cluster_id column to object dtype so string values can be assigned
+            result_df[StandardColumns.CLUSTER_ID] = result_df[StandardColumns.CLUSTER_ID].astype(object)
+
             for idx in result_df.index:
                 cluster_id_raw = result_df.loc[idx, StandardColumns.CLUSTER_ID]
                 
