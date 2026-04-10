@@ -333,17 +333,43 @@ class GOBarChartDialog(QDialog):
     def _save_figure(self):
         """Figure 저장"""
         from PyQt6.QtWidgets import QFileDialog
+        import matplotlib
         
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Save Figure",
             f"go_bar_chart_{self.dataset.name}.png",
-            "PNG Files (*.png);;PDF Files (*.pdf);;SVG Files (*.svg);;All Files (*)"
+            "PNG Files (*.png);;PDF Files (*.pdf);;SVG Files (*.svg);;TIFF Files (*.tiff);;All Files (*)"
         )
         
-        if file_path:
-            self.figure.savefig(file_path, dpi=300, bbox_inches='tight')
+        if not file_path:
+            return
+
+        if '.' not in file_path.split('/')[-1].split('\\')[-1]:
+            file_path += '.png'
+
+        fmt = file_path.rsplit('.', 1)[-1].lower()
+        supported = self.figure.canvas.get_supported_filetypes()
+        if fmt not in supported:
+            QMessageBox.warning(
+                self, "Unsupported Format",
+                f"The format '.{fmt}' is not supported by your matplotlib {matplotlib.__version__}.\n"
+                f"Supported formats: {', '.join(sorted(supported.keys()))}"
+            )
+            return
+
+        try:
+            if fmt in ('png', 'tiff', 'tif', 'jpg', 'jpeg'):
+                self.figure.savefig(file_path, dpi=300, bbox_inches='tight')
+            else:
+                self.figure.savefig(file_path, bbox_inches='tight')
             QMessageBox.information(self, "Success", f"Figure saved to:\n{file_path}")
+        except Exception as e:
+            QMessageBox.critical(
+                self, "Save Error",
+                f"Failed to save figure:\n{str(e)}\n\n"
+                f"matplotlib version: {matplotlib.__version__}"
+            )
     
     def _export_data(self):
         """데이터 내보내기"""
