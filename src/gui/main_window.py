@@ -520,6 +520,9 @@ class MainWindow(QMainWindow):
         
         # 헤더 클릭으로 정렬 가능하도록 설정
         table.horizontalHeader().setSectionsClickable(True)
+        table.horizontalHeader().sectionClicked.connect(
+            lambda col, t=table: self._sort_table_by_column(t, col)
+        )
         table.horizontalHeader().setStyleSheet("""
             QHeaderView::section {
                 background-color: #f0f0f0;
@@ -617,13 +620,12 @@ class MainWindow(QMainWindow):
                 
                 table.setItem(i, j, item)
         
-        # 데이터 입력 완료 후 정렬 기능 활성화
-        # 시그널 차단 후 정렬 인디케이터 초기화 → setSortingEnabled 시 자동 재정렬 방지
-        header = table.horizontalHeader()
-        header.blockSignals(True)
-        header.setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
-        table.setSortingEnabled(True)
-        header.blockSignals(False)
+        # setSortingEnabled(True)를 사용하지 않음:
+        # Qt가 활성화 시 자동으로 sortItems(0, Asc)를 호출하여 입력 순서를 깨뜨림.
+        # 대신 sectionClicked 시그널에 _sort_table_by_column을 연결하여 수동 정렬.
+        
+        # 정렬 인디케이터 초기화 (화살표 없음)
+        table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
         
         # 저장된 컬럼 너비 복원
         self._restore_table_column_widths(table)
@@ -636,6 +638,23 @@ class MainWindow(QMainWindow):
             if col == StandardColumns.GENE_SYMBOLS or col.lower() == 'gene_symbols':
                 table.setColumnWidth(i, 150)  # 초기 너비를 150px로 제한
                 break
+    
+    def _sort_table_by_column(self, table: QTableWidget, col: int):
+        """헤더 클릭 시 수동 정렬 (setSortingEnabled 미사용)"""
+        header = table.horizontalHeader()
+        current_col = header.sortIndicatorSection()
+        current_order = header.sortIndicatorOrder()
+        
+        if current_col == col:
+            # 같은 컬럼 재클릭: 방향 토글
+            new_order = (Qt.SortOrder.DescendingOrder
+                         if current_order == Qt.SortOrder.AscendingOrder
+                         else Qt.SortOrder.AscendingOrder)
+        else:
+            new_order = Qt.SortOrder.AscendingOrder
+        
+        table.sortItems(col, new_order)
+        header.setSortIndicator(col, new_order)
     
     def _filter_columns(self, all_columns: List[str], dataset=None) -> List[str]:
         """
