@@ -547,6 +547,10 @@ class MainWindow(QMainWindow):
         if dataframe is None or dataframe.empty:
             return
         
+        # [DEBUG] 들어오는 DataFrame 순서 확인
+        if 'symbol' in dataframe.columns:
+            self.logger.debug(f"[populate_table] incoming symbol order: {dataframe['symbol'].tolist()[:10]}")
+        
         # 탭 인덱스 찾기 및 원본 데이터 저장 (시각화를 위해 항상 전체 데이터 저장)
         tab_index = self.data_tabs.indexOf(table)
         if tab_index >= 0:
@@ -930,7 +934,14 @@ class MainWindow(QMainWindow):
         current_tab_name = self.data_tabs.tabText(self.data_tabs.currentIndex())
         current_table = self.data_tabs.currentWidget()
         
-        # 현재 탭이 Filtered 또는 Comparison 탭인 경우, 해당 데이터를 필터링
+        # Gene List 필터는 항상 원본 데이터셋(presenter)에서 필터링
+        # (Filtered/Comparison 탭의 Qt 행 순서가 아닌 DataFrame 순서 기준)
+        from models.data_models import FilterMode
+        if criteria.mode == FilterMode.GENE_LIST:
+            self.presenter.apply_filter(criteria)
+            return
+        
+        # Statistical 필터: 현재 탭이 Filtered 또는 Comparison 탭이면 해당 데이터를 필터링
         if current_tab_name.startswith("Filtered:") or current_tab_name.startswith("Comparison:"):
             self._filter_current_tab(criteria, current_tab_name, current_table)
         else:
