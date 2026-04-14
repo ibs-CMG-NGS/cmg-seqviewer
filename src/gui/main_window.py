@@ -501,7 +501,7 @@ class MainWindow(QMainWindow):
         table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectItems)
         table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)  # 다중 선택 가능
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)  # 편집 불가 (read-only)
-        table.setSortingEnabled(True)  # 정렬 기능 활성화
+        table.setSortingEnabled(False)  # 데이터 채우기 전까지 비활성 (populate_table에서 활성화)
         
         # 선택 색상을 연한 파란색으로 설정
         table.setStyleSheet("""
@@ -613,9 +613,13 @@ class MainWindow(QMainWindow):
                 
                 table.setItem(i, j, item)
         
-        # 데이터 입력 완료 후 정렬 기능 활성화 (정렬 상태 초기화하여 입력 순서 유지)
-        table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
+        # 데이터 입력 완료 후 정렬 기능 활성화
+        # 시그널 차단 후 정렬 인디케이터 초기화 → setSortingEnabled 시 자동 재정렬 방지
+        header = table.horizontalHeader()
+        header.blockSignals(True)
+        header.setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
         table.setSortingEnabled(True)
+        header.blockSignals(False)
         
         # 저장된 컬럼 너비 복원
         self._restore_table_column_widths(table)
