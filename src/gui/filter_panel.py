@@ -306,10 +306,16 @@ class FilterPanel(QWidget):
                 new_genes.extend(gene.split(sep))
             genes = new_genes
         
-        # 공백 제거 및 중복 제거
-        genes = list(set(gene.strip() for gene in genes if gene.strip()))
+        # 공백 제거 및 중복 제거 (입력 순서 유지)
+        seen = set()
+        result = []
+        for gene in genes:
+            g = gene.strip()
+            if g and g not in seen:
+                seen.add(g)
+                result.append(g)
         
-        return genes
+        return result
     
     def set_gene_list(self, genes: List[str]):
         """유전자 리스트 설정"""
