@@ -365,8 +365,6 @@ class MainPresenter(QObject):
             self.fsm.trigger(Event.FILTER_SUCCESS)
             
             # Signal 방출 (GUI에서 탭 생성 처리)
-            if 'symbol' in filtered_df.columns:
-                self.logger.info(f"[apply_filter] emit order: {filtered_df['symbol'].tolist()[:10]}")
             self.filter_completed.emit(filtered_df, tab_name)
             
             # Audit log

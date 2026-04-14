@@ -550,10 +550,6 @@ class MainWindow(QMainWindow):
         if dataframe is None or dataframe.empty:
             return
         
-        # [DEBUG] 들어오는 DataFrame 순서 확인
-        if 'symbol' in dataframe.columns:
-            self.logger.debug(f"[populate_table] incoming symbol order: {dataframe['symbol'].tolist()[:10]}")
-        
         # 탭 인덱스 찾기 및 원본 데이터 저장 (시각화를 위해 항상 전체 데이터 저장)
         tab_index = self.data_tabs.indexOf(table)
         if tab_index >= 0:
