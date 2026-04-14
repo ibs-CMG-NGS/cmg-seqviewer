@@ -613,7 +613,8 @@ class MainWindow(QMainWindow):
                 
                 table.setItem(i, j, item)
         
-        # 데이터 입력 완료 후 정렬 기능 활성화
+        # 데이터 입력 완료 후 정렬 기능 활성화 (정렬 상태 초기화하여 입력 순서 유지)
+        table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
         table.setSortingEnabled(True)
         
         # 저장된 컬럼 너비 복원
