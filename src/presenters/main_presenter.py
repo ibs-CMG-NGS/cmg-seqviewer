@@ -408,32 +408,18 @@ class MainPresenter(QObject):
             self.logger.error(f"Available columns: {df.columns.tolist()}")
             raise ValueError(f"Neither '{StandardColumns.SYMBOL}' nor '{StandardColumns.GENE_ID}' column found in dataset")
         
-        # 대소문자 무시 매칭을 위한 딕셔너리
-        # {소문자 유전자명: 원본 행 인덱스들}
-        gene_to_indices = {}
-        for idx, gene in enumerate(df[gene_col]):
-            gene_lower = str(gene).lower()
-            if gene_lower not in gene_to_indices:
-                gene_to_indices[gene_lower] = []
-            gene_to_indices[gene_lower].append(idx)
-        
-        # gene_list 순서대로 행 수집
-        matched_indices = []
-        for gene in gene_list:
-            gene_lower = gene.lower()
-            if gene_lower in gene_to_indices:
-                matched_indices.extend(gene_to_indices[gene_lower])
-        
-        # 중복 제거 (순서 유지)
-        seen = set()
-        ordered_indices = []
-        for idx in matched_indices:
-            if idx not in seen:
-                seen.add(idx)
-                ordered_indices.append(idx)
-        
-        # DataFrame 재구성 (순서 유지)
-        filtered = df.iloc[ordered_indices].copy()
+        # gene_list 입력 순서를 정렬 키로 사용
+        gene_order = {g.strip().lower(): i for i, g in enumerate(gene_list)}
+
+        # 대소문자 무시 매칭 후 sort_key 부여
+        mask = df[gene_col].astype(str).str.strip().str.lower().isin(gene_order)
+        filtered = (
+            df[mask]
+            .assign(_sort_key=df.loc[mask, gene_col].astype(str).str.strip().str.lower().map(gene_order))
+            .sort_values('_sort_key')
+            .drop(columns='_sort_key')
+            .copy()
+        )
         
         self.logger.info(
             f"Gene list filter: {len(filtered)}/{len(df)} rows matched, "
