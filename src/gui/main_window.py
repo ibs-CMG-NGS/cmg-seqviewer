@@ -1385,10 +1385,24 @@ class MainWindow(QMainWindow):
                         'symbol': symbol if symbol else ''
                     }
         
-        # 2. 결과 DataFrame 생성
+        # 2. 결과 DataFrame 생성 (gene_list 입력 순서 기준으로 정렬)
         result_rows = []
-        # 타입 혼합 문제 방지를 위해 문자열로 변환 후 정렬
-        for identifier in sorted(gene_mapping.keys(), key=str):
+        # gene_list 입력 순서대로 identifier를 순회
+        ordered_identifiers = []
+        seen_ids = set()
+        for g in gene_list:
+            g_upper = g.strip().upper()
+            for identifier in gene_mapping:
+                if str(identifier).upper() == g_upper and identifier not in seen_ids:
+                    ordered_identifiers.append(identifier)
+                    seen_ids.add(identifier)
+                    break
+        # gene_list에 없던 항목은 뒤에 추가 (안전 처리)
+        for identifier in gene_mapping:
+            if identifier not in seen_ids:
+                ordered_identifiers.append(identifier)
+
+        for identifier in ordered_identifiers:
             row = {}
             
             # gene_id와 symbol 설정
