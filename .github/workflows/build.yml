@@ -10,18 +10,18 @@ permissions:
   contents: write  # Required for creating releases
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  PYTHON_VERSION: '3.11'
 
 jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v6.0.2
       
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6.2.0
         with:
-          python-version: '3.11'
+          python-version: ${{ env.PYTHON_VERSION }}
       
       - name: Install dependencies
         run: |
@@ -36,7 +36,7 @@ jobs:
           pyinstaller --clean --noconfirm rna-seq-viewer.spec
       
       - name: Upload artifact
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: CMG-SeqViewer-Windows
           path: dist\CMG-SeqViewer\
@@ -44,12 +44,12 @@ jobs:
   build-macos:
     runs-on: macos-latest  # Use latest macOS for faster build availability
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v6.0.2
       
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6.2.0
         with:
-          python-version: '3.11'
+          python-version: ${{ env.PYTHON_VERSION }}
       
       - name: Install dependencies
         run: |
@@ -139,7 +139,7 @@ jobs:
           ls -lh CMG-SeqViewer-macOS.dmg
       
       - name: Upload artifact
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: CMG-SeqViewer-macOS
           path: CMG-SeqViewer-macOS.dmg
@@ -150,7 +150,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Download Windows artifact
-        uses: actions/download-artifact@v4.3.0
+        uses: actions/download-artifact@v8.0.1
         with:
           name: CMG-SeqViewer-Windows
           path: CMG-SeqViewer-Windows   # 폴더로 받기
@@ -161,7 +161,7 @@ jobs:
           zip -r ../CMG-SeqViewer-Windows.zip .
 
       - name: Download macOS artifact
-        uses: actions/download-artifact@v4.3.0
+        uses: actions/download-artifact@v8.0.1
         with:
           name: CMG-SeqViewer-macOS
       
