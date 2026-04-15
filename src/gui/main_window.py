@@ -9,9 +9,9 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QTextEdit, QMenuBar, QMenu, QToolBar, QStatusBar,
                             QLabel, QPushButton, QFileDialog, QMessageBox,
                             QProgressBar, QInputDialog, QLineEdit, QHeaderView,
-                            QSizePolicy)
+                            QSizePolicy, QDialog)
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
-from PyQt6.QtGui import QAction, QIcon, QFont, QActionGroup
+from PyQt6.QtGui import QAction, QIcon, QFont, QActionGroup, QPixmap
 import logging
 from pathlib import Path
 from typing import Optional, List, Dict
@@ -317,7 +317,14 @@ class MainWindow(QMainWindow):
         self.filter_go_action = QAction("🧬 Filter GO/KEGG Results...", self)
         self.filter_go_action.triggered.connect(self._on_filter_go_results)
         analysis_menu.addAction(self.filter_go_action)
-        
+
+        analysis_menu.addSeparator()
+
+        # Multi-Group 분석
+        self.multi_heatmap_action = QAction("🌡️ Multi-Group Heatmap...", self)
+        self.multi_heatmap_action.triggered.connect(self._on_multi_group_heatmap)
+        analysis_menu.addAction(self.multi_heatmap_action)
+
         # View 메뉴
         view_menu = menubar.addMenu("&View")
         
@@ -420,7 +427,7 @@ class MainWindow(QMainWindow):
         self.go_network_action = QAction("🧬 GO/KEGG Network Chart", self)
         self.go_network_action.triggered.connect(lambda: self._on_go_visualization("network"))
         viz_menu.addAction(self.go_network_action)
-        
+
         # Help 메뉴
         help_menu = menubar.addMenu("&Help")
         
@@ -1830,12 +1837,45 @@ class MainWindow(QMainWindow):
     
     def _on_about(self):
         """About 다이얼로그"""
-        QMessageBox.about(
-            self, "About RNA-Seq Data Analyzer",
-            "<h2>CMG-SeqViewer</h2>"
-            "<p><b>Version 1.1.2</b></p>"
-            "<p>A comprehensive tool for RNA-Seq data analysis and visualization.</p>"
-            "<br>"
+        dlg = QDialog(self)
+        dlg.setWindowTitle("About CMG-SeqViewer")
+        dlg.setFixedWidth(520)
+
+        root = QVBoxLayout(dlg)
+        root.setContentsMargins(24, 24, 24, 16)
+        root.setSpacing(12)
+
+        # --- logo + title row ---
+        top_row = QHBoxLayout()
+        top_row.setSpacing(16)
+
+        logo_label = QLabel()
+        logo_path = Path(__file__).parent.parent.parent / "CMG.png"
+        if logo_path.exists():
+            pm = QPixmap(str(logo_path)).scaledToHeight(
+                90, Qt.TransformationMode.SmoothTransformation
+            )
+            logo_label.setPixmap(pm)
+        logo_label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignHCenter)
+        top_row.addWidget(logo_label)
+
+        title_label = QLabel(
+            "<h2 style='margin:0;'>CMG-SeqViewer</h2>"
+            "<p style='margin:2px 0;'><b>Version 1.1.5</b></p>"
+            "<p style='margin:2px 0; color:#555;'>RNA-Seq Data Analysis &amp; Visualization</p>"
+        )
+        title_label.setWordWrap(True)
+        title_label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        top_row.addWidget(title_label, 1)
+        root.addLayout(top_row)
+
+        # --- feature text ---
+        from PyQt6.QtWidgets import QTextBrowser
+        body = QTextBrowser()
+        body.setOpenExternalLinks(True)
+        body.setReadOnly(True)
+        body.setMaximumHeight(320)
+        body.setHtml(
             "<p><b>Key Features:</b></p>"
             "<ul>"
             "<li><b>Data Management:</b> Multi-dataset loading, Parquet database, Import Folder</li>"
@@ -1843,27 +1883,37 @@ class MainWindow(QMainWindow):
             "<li><b>Statistical Analysis:</b> Fisher's Exact Test, GSEA Lite</li>"
             "<li><b>Visualizations:</b> Volcano plots, Heatmaps, PCA Plot, P-adj Histograms</li>"
             "<li><b>Comparison Tools:</b> Venn diagrams (2-3 datasets), Dataset statistics comparison</li>"
+            "<li><b>🌡️ Multi-Group Heatmap:</b> LRT omnibus result → Z-score clustermap with "
+            "group colour bars, gene cluster cutting, and CSV/Parquet export</li>"
             "</ul>"
-            "<br>"
             "<p><b>Advanced Features:</b></p>"
             "<ul>"
+            "<li>Multi-Group: auto-detected from LRT CSV; gene-list filtering creates child sheets "
+            "passable directly into the heatmap dialog</li>"
             "<li>PCA Plot — sample-level expression PCA (Ctrl+P)</li>"
             "<li>Import Folder — one-click pipeline output merging</li>"
             "<li>merge_db.py — CLI batch-merge tool</li>"
-            "<li>Auto-registration of orphan parquet files</li>"
-            "<li>Sig. Genes: padj &lt; 0.05 AND |log2FC| &gt; 1 (auto-migrated on startup)</li>"
+            "<li>Sig. Genes: padj &lt; 0.05 AND |log2FC| &gt; 1</li>"
             "<li>GO Clustering — grid-cell layout for readability</li>"
             "<li>Interactive tooltips with boundary detection</li>"
-            "<li>Customizable plot titles, labels, and color schemes</li>"
-            "<li>Heatmap clustering (Padj, Log2FC, Hierarchical)</li>"
-            "<li>Adjustable colorbar ranges for heatmaps</li>"
             "<li>Cell-level selection and clipboard support (Ctrl+C/V)</li>"
             "<li>Column display levels (Basic, DE Analysis, Full)</li>"
             "</ul>"
-            "<br>"
-            "<p><b>Developed with:</b> Python, PyQt6, Pandas, Matplotlib, NumPy</p>"
-            "<p>© 2025 ibs CMG NGS core</p>"
+            "<p><b>Developed with:</b> Python, PyQt6, Pandas, Matplotlib, Seaborn, SciPy, NumPy</p>"
+            "<p style='color:#777;'>&copy; 2025 ibs CMG NGS core</p>"
         )
+        root.addWidget(body)
+
+        # --- close button ---
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        close_btn = QPushButton("Close")
+        close_btn.setFixedWidth(80)
+        close_btn.clicked.connect(dlg.accept)
+        btn_row.addWidget(close_btn)
+        root.addLayout(btn_row)
+
+        dlg.exec()
     
     def _on_help_documentation(self):
         """Help documentation dialog"""
@@ -1967,6 +2017,30 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Visualization Error", 
                                f"Failed to create visualization:\n{str(e)}")
     
+    def _on_multi_group_heatmap(self):
+        """Multi-Group Heatmap 다이얼로그 열기"""
+        try:
+            current_index = self.data_tabs.currentIndex()
+            if current_index < 0 or current_index not in self.tab_data:
+                QMessageBox.warning(self, "No Data", "Please load a dataset first.")
+                return
+            _, dataset = self.tab_data[current_index]
+            from models.data_models import DatasetType as _DT
+            if dataset is None or dataset.dataset_type != _DT.MULTI_GROUP:
+                QMessageBox.warning(
+                    self, "Multi-Group Dataset Required",
+                    "Multi-Group Heatmap is only available for Multi-Group datasets.\n"
+                    "Load a multi_group_result.csv (LRT omnibus result) file first."
+                )
+                return
+            from gui.multi_group_heatmap_dialog import MultiGroupHeatmapDialog
+            dialog = MultiGroupHeatmapDialog(dataset, parent=self)
+            dialog.exec()
+            self.logger.info("Visualization opened: multi_heatmap")
+        except Exception as e:
+            self.logger.error(f"Multi-Group Heatmap failed: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to open Multi-Group Heatmap:\n{str(e)}")
+
     def _on_dotplot_requested(self):
         """Dot Plot 시각화 (Comparison Data)"""
         # 현재 탭이 Comparison sheet인지 확인
@@ -2865,7 +2939,7 @@ class MainWindow(QMainWindow):
                 dataset_type=dataset_type,  # 현재 dataset type 유지
                 dataframe=filtered_df,
                 original_columns={},
-                metadata={}
+                metadata=current_dataset.metadata.copy() if current_dataset else {}
             )
             
             # 테이블에 데이터 채우기

@@ -101,7 +101,7 @@ class MainPresenter(QObject):
         데이터셋 로드 (비동기)
         
         Args:
-            file_path: Excel 파일 경로
+            file_path: Excel / CSV / Parquet 파일 경로
             dataset_name: 데이터셋 이름 (None이면 파일명 사용) - deprecated, use custom_name
             custom_name: 사용자 지정 이름 (우선순위 최상위)
         """
@@ -123,113 +123,92 @@ class MainPresenter(QObject):
         )
         
         try:
-            # 먼저 파일 타입을 빠르게 감지 (첫 번째 시트만 확인)
+            file_path = Path(file_path)
+            suffix = file_path.suffix.lower()
+
+            # ── CSV / Parquet: MultiGroupLoader 로 빠른 감지 ──────────────────
+            if suffix in ('.csv', '.parquet'):
+                try:
+                    import pandas as pd
+                    peek = pd.read_csv(file_path, nrows=5) if suffix == '.csv' \
+                           else pd.read_parquet(file_path)
+
+                    from utils.multi_group_loader import MultiGroupLoader
+                    if MultiGroupLoader.is_multi_group_dataframe(peek):
+                        loader = MultiGroupLoader()
+                        dataset = loader.load(file_path, final_name or file_path.stem)
+                        self._store_and_signal_dataset(dataset, start_time)
+                        return
+                except Exception as e:
+                    self.logger.warning(f"MultiGroup quick detection failed: {e}, falling through")
+
+            # ── Excel: GO/KEGG 또는 DE 감지 ──────────────────────────────────
             try:
-                test_df = pd.read_excel(file_path, nrows=10)  # 첫 10행만 읽어서 타입 감지
+                test_df = pd.read_excel(file_path, nrows=10)
                 detected_type = self.data_loader._detect_dataset_type(test_df)
-                self.logger.debug(f"Quick type detection: {detected_type.value}")  # debug로 변경
+                self.logger.debug(f"Quick type detection: {detected_type.value}")
                 
-                # GO/KEGG 타입이면 전용 로더 사용
                 if detected_type == DatasetType.GO_ANALYSIS:
                     from utils.go_kegg_loader import GOKEGGLoader
                     loader = GOKEGGLoader()
                     dataset = loader.load_from_excel(file_path, final_name or file_path.stem)
-                    
-                    # 데이터셋 저장
-                    unique_name = self.view.dataset_manager._generate_unique_name(dataset.name)
-                    dataset.name = unique_name
-                    self.datasets[unique_name] = dataset
-                    self.current_dataset = dataset
-                    
-                    # 상태 전환
-                    self.fsm.trigger(Event.DATA_LOAD_SUCCESS)
-                    
-                    # Signal 방출
-                    self.dataset_loaded.emit(dataset.name, dataset)
-                    
-                    # GUI 업데이트
-                    self._update_view_with_dataset(dataset)
-                    self.view._update_comparison_panel_datasets()
-                    
-                    # Audit log
-                    duration = time.time() - start_time
-                    summary = dataset.get_summary()
-                    self.audit_logger.log_action(
-                        "Dataset Loaded",
-                        details={
-                            'rows': summary.get('row_count', 0),
-                            'type': dataset.dataset_type.value
-                        },
-                        duration=duration
-                    )
-                    
-                    self.logger.info(f"GO/KEGG dataset '{dataset.name}' loaded successfully with {len(dataset.dataframe) if dataset.dataframe is not None else 0} terms")
+                    self._store_and_signal_dataset(dataset, start_time)
                     return
             except Exception as e:
                 self.logger.warning(f"Quick type detection failed: {e}, using standard loader")
             
-            # DE 데이터셋은 기존 로더 사용
-            # 컬럼 매핑 콜백 함수
+            # ── 기본: DE 데이터셋 로더 ────────────────────────────────────────
             def column_mapper_callback(df, dataset_type, auto_mapping):
                 from gui.column_mapper_dialog import ColumnMapperDialog
                 dialog = ColumnMapperDialog(df, dataset_type, auto_mapping, self.view)
-                
                 if dialog.exec():
                     mapping = dialog.get_mapping()
-                    
-                    # 사용자가 저장 옵션을 선택한 경우
                     if dialog.should_save_mapping():
                         self.data_loader.save_custom_mapping(dataset_type, mapping)
-                        self.logger.debug("User mapping saved for future use")  # debug로 변경
-                    
+                        self.logger.debug("User mapping saved for future use")
                     return mapping
-                else:
-                    return None
+                return None
             
-            # 동기 방식으로 로드 (나중에 Worker로 변경 가능)
             dataset = self.data_loader.load_from_excel(
-                file_path, 
-                final_name,  # custom_name 또는 dataset_name 사용
+                file_path,
+                final_name,
                 column_mapper_callback=column_mapper_callback
             )
-            
-            # 데이터셋 저장 (고유 이름 생성)
-            unique_name = self.view.dataset_manager._generate_unique_name(dataset.name)
-            dataset.name = unique_name
-            self.datasets[unique_name] = dataset
-            self.current_dataset = dataset
-            
-            # 상태 전환
-            self.fsm.trigger(Event.DATA_LOAD_SUCCESS)
-            
-            # Signal 방출
-            self.dataset_loaded.emit(dataset.name, dataset)
-            
-            # GUI 업데이트
-            self._update_view_with_dataset(dataset)
-            
-            # Comparison panel 업데이트
-            self.view._update_comparison_panel_datasets()
-            
-            # Audit log
-            duration = time.time() - start_time
-            summary = dataset.get_summary()
-            self.audit_logger.log_action(
-                "Dataset Loaded",
-                details={
-                    'rows': summary.get('row_count', 0),
-                    'type': dataset.dataset_type.value
-                },
-                duration=duration
-            )
-            
-            self.logger.info(f"Dataset '{dataset.name}' loaded successfully")
+            self._store_and_signal_dataset(dataset, start_time)
             
         except Exception as e:
             self.logger.error(f"Failed to load dataset: {e}", exc_info=True)
             self.fsm.trigger(Event.DATA_LOAD_FAILED)
             self.error_occurred.emit(f"Failed to load dataset: {str(e)}")
-    
+
+    def _store_and_signal_dataset(self, dataset: Dataset, start_time: float):
+        """데이터셋 저장, 상태 전환, Signal 방출 공통 처리"""
+        import time
+        unique_name = self.view.dataset_manager._generate_unique_name(dataset.name)
+        dataset.name = unique_name
+        self.datasets[unique_name] = dataset
+        self.current_dataset = dataset
+        
+        self.fsm.trigger(Event.DATA_LOAD_SUCCESS)
+        self.dataset_loaded.emit(dataset.name, dataset)
+        self._update_view_with_dataset(dataset)
+        self.view._update_comparison_panel_datasets()
+        
+        duration = time.time() - start_time
+        summary = dataset.get_summary()
+        self.audit_logger.log_action(
+            "Dataset Loaded",
+            details={
+                'rows': summary.get('row_count', 0),
+                'type': dataset.dataset_type.value
+            },
+            duration=duration
+        )
+        self.logger.info(
+            f"Dataset '{dataset.name}' loaded successfully "
+            f"({summary.get('row_count',0)} rows, type={dataset.dataset_type.value})"
+        )
+
     def load_gene_list(self, file_path: Path):
         """유전자 리스트 파일 로드"""
         try:
@@ -317,7 +296,7 @@ class MainPresenter(QObject):
                         log2fc_min=criteria.log2fc_min,
                         fdr_max=None  # DE에서는 사용 안함
                     )
-                    tab_name = f"Filtered: p≤{criteria.adj_pvalue_max}, |FC|≥{criteria.log2fc_min}"
+                    tab_name = f"Filtered: p≤{criteria.adj_pvalue_max:.3g}, |FC|≥{criteria.log2fc_min:.3g}"
                 
                 elif dataset_type == DatasetType.GO_ANALYSIS:
                     # GO 데이터: fdr, ontology, direction 사용
@@ -341,7 +320,15 @@ class MainPresenter(QObject):
                     if criteria.go_direction != "All":
                         filters.append(criteria.go_direction)
                     tab_name = f"Filtered: {', '.join(filters)}"
-                
+
+                elif dataset_type == DatasetType.MULTI_GROUP:
+                    # Multi-Group 데이터: padj와 baseMean 사용
+                    filtered_df = self._filter_mg_by_statistics(
+                        padj_max=criteria.mg_padj_max,
+                        basemean_min=criteria.mg_basemean_min,
+                    )
+                    tab_name = f"Filtered: padj≤{criteria.mg_padj_max:.3g}, baseMean≥{criteria.mg_basemean_min:.3g}"
+
                 else:
                     self.error_occurred.emit(f"Unsupported dataset type: {dataset_type.value}")
                     self.fsm.trigger(Event.FILTER_FAILED)
@@ -399,14 +386,16 @@ class MainPresenter(QObject):
         if dataset_type == DatasetType.GO_ANALYSIS:
             return self._filter_go_by_gene_symbols(df, gene_list)
 
-        # Symbol 컬럼 우선 사용 (DE 데이터셋), 없으면 GENE_ID 사용
+        # Symbol 컬럼 우선 사용 (DE 데이터셋), 없으면 gene_symbol (MULTI_GROUP), 없으면 GENE_ID 사용
         if StandardColumns.SYMBOL in df.columns:
             gene_col = StandardColumns.SYMBOL
+        elif 'gene_symbol' in df.columns:  # MULTI_GROUP 데이터셋
+            gene_col = 'gene_symbol'
         elif StandardColumns.GENE_ID in df.columns:
             gene_col = StandardColumns.GENE_ID
         else:
             self.logger.error(f"Available columns: {df.columns.tolist()}")
-            raise ValueError(f"Neither '{StandardColumns.SYMBOL}' nor '{StandardColumns.GENE_ID}' column found in dataset")
+            raise ValueError(f"Neither '{StandardColumns.SYMBOL}' nor 'gene_symbol' nor '{StandardColumns.GENE_ID}' column found in dataset")
         
         # gene_list 입력 순서를 정렬 키로 사용
         gene_order = {g.strip().lower(): i for i, g in enumerate(gene_list)}
@@ -550,7 +539,35 @@ class MainPresenter(QObject):
             raise ValueError(f"Cannot filter dataset type: {dataset_type.value}")
         
         return filtered
-    
+
+    def _filter_mg_by_statistics(self, padj_max: float, basemean_min: float) -> pd.DataFrame:
+        """
+        Multi-Group 데이터를 padj / baseMean 기준으로 필터링.
+
+        Args:
+            padj_max: 최대 adjusted p-value (LRT padj)
+            basemean_min: 최소 평균 발현량
+
+        Returns:
+            필터링된 DataFrame
+        """
+        df = self.current_dataset.dataframe.copy()
+        col_lower = {c.lower(): c for c in df.columns}
+
+        padj_col = col_lower.get('padj') or col_lower.get('adj_pvalue') or col_lower.get('p_adj')
+        basemean_col = col_lower.get('basemean') or col_lower.get('base_mean')
+
+        if padj_col:
+            df = df[df[padj_col] <= padj_max]
+        if basemean_col and basemean_min > 0:
+            df = df[df[basemean_col] >= basemean_min]
+
+        self.logger.info(
+            f"Multi-Group filter: {len(df)}/{len(self.current_dataset.dataframe)} rows "
+            f"(padj≤{padj_max}, baseMean≥{basemean_min})"
+        )
+        return df
+
     def run_analysis(self, analysis_type: str, gene_list: List[str], 
                      adj_pvalue_cutoff: float = 0.05, log2fc_cutoff: float = 1.0):
         """

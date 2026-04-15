@@ -92,11 +92,12 @@ class HelpDialog(QDialog):
             "5. GO/KEGG Analysis",
             "6. Statistical Analysis",
             "7. Visualization",
-            "8. PCA Plot",
-            "9. Dataset Comparison",
-            "10. Gene Annotation",
-            "11. Export & Clipboard",
-            "12. Tips & Shortcuts"
+            "8. Multi-Group Heatmap",
+            "9. PCA Plot",
+            "10. Dataset Comparison",
+            "11. Gene Annotation",
+            "12. Export & Clipboard",
+            "13. Tips & Shortcuts"
         ]
         
         for item_text in toc_items:
@@ -115,6 +116,7 @@ class HelpDialog(QDialog):
             self._get_go_kegg_analysis(),
             self._get_statistical_analysis(),
             self._get_visualization(),
+            self._get_multi_group_heatmap(),
             self._get_pca_plot(),
             self._get_comparison(),
             self._get_gene_annotation(),
@@ -159,7 +161,8 @@ class HelpDialog(QDialog):
         if an operation cannot be performed in the current context.</p>
         <ul>
             <li><b>File:</b> Open datasets, database browser, recent files, export data</li>
-            <li><b>Analysis:</b> Filtering, Fisher's Exact Test, GSEA, dataset comparison</li>
+            <li><b>Analysis:</b> Filtering, Fisher's Exact Test, GSEA, dataset comparison,
+                <b>🌡️ Multi-Group Heatmap</b></li>
             <li><b>View:</b> Column display level, decimal precision</li>
             <li><b>Visualization:</b> Volcano plots, histograms, heatmaps, PCA plots, dot plots, Venn diagrams</li>
             <li><b>Help:</b> About dialog and user documentation</li>
@@ -559,11 +562,148 @@ pipeline_run_2026-03-12/
             <li><b>Matplotlib toolbar:</b> Pan, zoom, home, back, forward, save image</li>
         </ul>
         """
-    
+
+    def _get_multi_group_heatmap(self):
+        """Multi-Group Heatmap section"""
+        return """
+        <h1>8. Multi-Group Heatmap</h1>
+
+        <h2>Overview</h2>
+        <p>The Multi-Group Heatmap visualises LRT (Likelihood Ratio Test) omnibus results as a
+        Z-score hierarchical clustermap. It is designed for experiments with &ge;3 conditions
+        (e.g. HP1hr, HP4hr, HPctrl) where a single fold-change is not sufficient to capture
+        expression dynamics.</p>
+
+        <p><b>Input file format</b> — CSV with columns:</p>
+        <pre style="background:#f4f4f4; padding:8px; border-radius:4px; font-size:11px;">
+"","gene_symbol","baseMean","stat","pvalue","padj","HP1hr1","HP1hr2",...,"HPctrl3","HPctrl4"</pre>
+        <p>The first unnamed column is treated as Ensembl gene ID.
+        Sample columns are detected automatically by excluding known statistics columns
+        (<code>baseMean, stat, pvalue, padj, log2FC, lfcSE</code> etc.).</p>
+
+        <h2>Loading a Multi-Group Dataset</h2>
+        <ol>
+            <li><b>File &rarr; Open Dataset</b> (Ctrl+O) and select the CSV/Parquet file</li>
+            <li>The app auto-detects it as a Multi-Group dataset
+                (presence of <code>padj</code> column + no <code>log2FoldChange</code> + &ge;3 numeric sample columns)</li>
+            <li>The dataset opens in the <b>Whole Dataset</b> tab</li>
+        </ol>
+
+        <h2>Filtering a Multi-Group Sheet by Gene List</h2>
+        <p>You can filter the multi-group sheet to a specific set of genes before heatmap visualisation:</p>
+        <ol>
+            <li>Enter gene symbols in the <b>Gene List</b> tab of the Filter Panel (one per line)</li>
+            <li>Click <b>Apply Filter</b> — a new tab <em>"Filtered: Gene List (N genes)"</em> is created</li>
+            <li>This child sheet retains all original metadata (sample columns, groups)</li>
+            <li>Open the heatmap from the child sheet — statistical filters are auto-relaxed
+                (<code>padj&nbsp;&le;&nbsp;1.0</code>, <code>baseMean&nbsp;&ge;&nbsp;0</code>)
+                so all N genes pass through</li>
+        </ol>
+
+        <h2>Opening the Heatmap</h2>
+        <ol>
+            <li>Make sure a Multi-Group tab (Whole Dataset or Filtered child) is active</li>
+            <li>Go to <b>Analysis &rarr; 🌡️ Multi-Group Heatmap...</b></li>
+        </ol>
+
+        <h2>Control Panel — Left Side</h2>
+
+        <h3>Title</h3>
+        <p>Type a custom title. Leave empty for an auto-generated title:
+        <em>dataset | Z-score | padj&le;X, baseMean&ge;Y, n=N</em>.
+        Click <b>↺</b> to reset to auto.</p>
+
+        <h3>Data Filter</h3>
+        <table border="1" cellpadding="5" cellspacing="0" width="100%">
+            <tr style="background:#f0f0f0;"><th>Control</th><th>Default</th><th>Description</th></tr>
+            <tr><td>padj &le;</td><td>0.05 (1.0 if pre-filtered)</td>
+                <td>LRT adjusted p-value cutoff. Genes above this threshold are excluded.</td></tr>
+            <tr><td>baseMean &ge;</td><td>10 (0 if pre-filtered)</td>
+                <td>Minimum mean expression. Removes very low-expression genes.</td></tr>
+            <tr><td>Top N</td><td>200</td>
+                <td>Maximum number of genes to display, sorted by padj ascending.</td></tr>
+            <tr><td>Shown</td><td>–</td><td>Actual count of genes after filtering.</td></tr>
+        </table>
+        <p><em>When opening from a Filtered child sheet, a blue notice confirms
+        "⚡ Pre-filtered — filters relaxed".</em></p>
+
+        <h3>Clustering</h3>
+        <table border="1" cellpadding="5" cellspacing="0" width="100%">
+            <tr style="background:#f0f0f0;"><th>Control</th><th>Default</th><th>Description</th></tr>
+            <tr><td>Linkage</td><td>ward</td><td>ward / average / complete / single</td></tr>
+            <tr><td>Metric</td><td>euclidean</td><td>euclidean / correlation / cosine
+                (ward always uses euclidean)</td></tr>
+            <tr><td>Cluster genes (rows)</td><td>✔</td><td>Hierarchical clustering on rows</td></tr>
+            <tr><td>Cluster samples (cols)</td><td>✘</td><td>Uncheck to preserve original sample order</td></tr>
+        </table>
+
+        <h3>Gene Clusters</h3>
+        <p>Cut the row dendrogram into <em>k</em> clusters using scipy <code>fcluster</code>:</p>
+        <ol>
+            <li>Check <b>Cut dendrogram into clusters</b></li>
+            <li>Set <b>k</b> (2–20)</li>
+            <li>Click <b>▶ Refresh Plot</b></li>
+            <li>A colour bar appears on the left of the heatmap; sizes are shown next to <em>Sizes:</em></li>
+            <li>The <b>🔬 GO Enrichment (per cluster)...</b> button becomes active (Stage 2, coming soon)</li>
+        </ol>
+
+        <h3>Display</h3>
+        <table border="1" cellpadding="5" cellspacing="0" width="100%">
+            <tr style="background:#f0f0f0;"><th>Control</th><th>Description</th></tr>
+            <tr><td>Color map</td><td>RdBu_r / coolwarm / bwr / PiYG / vlag / seismic</td></tr>
+            <tr><td>Groups: swatches</td><td>Colour swatch per sample group — click to open colour picker
+                (any colour; not limited to preset palette)</td></tr>
+            <tr><td>Show gene labels</td><td>Toggle Y-axis gene name labels (disable for >300 genes)</td></tr>
+            <tr><td>Gene label size</td><td>Font size for gene labels (4–14 pt)</td></tr>
+            <tr><td>Show sample labels</td><td>Toggle X-axis sample name labels</td></tr>
+        </table>
+
+        <h3>Color Scale</h3>
+        <table border="1" cellpadding="5" cellspacing="0" width="100%">
+            <tr style="background:#f0f0f0;"><th>Control</th><th>Default</th><th>Description</th></tr>
+            <tr><td>Auto scale</td><td>✔</td><td>Let seaborn choose vmin/vmax from the data</td></tr>
+            <tr><td>Z min / Z max</td><td>−2.0 / 2.0</td>
+                <td>Manual colour scale limits (enabled only when Auto scale is off)</td></tr>
+        </table>
+
+        <h3>Figure Size</h3>
+        <p><b>Width</b> and <b>Height</b> (inches) on one row. Default 14 × 10.</p>
+
+        <h2>Buttons</h2>
+        <ul>
+            <li><b>▶ Refresh Plot</b> — regenerate the heatmap with current settings</li>
+            <li><b>💾 Save Figure...</b> — export as PNG / SVG / PDF</li>
+            <li><b>📄 Export Data (CSV)...</b> — export Z-score matrix; includes a
+                <code>gene_cluster</code> column when clusters are active</li>
+            <li><b>🗄 Export to Parquet...</b> — save for database import</li>
+        </ul>
+
+        <h2>Typical Workflow</h2>
+        <ol>
+            <li>Load <code>multi_group_result.csv</code> (Ctrl+O)</li>
+            <li>Optionally: enter gene symbols in Gene List filter → Apply Filter
+                to create a focused child sheet</li>
+            <li>Go to <b>Analysis &rarr; 🌡️ Multi-Group Heatmap...</b></li>
+            <li>Adjust padj/baseMean filters and Top N</li>
+            <li>Choose colour map and group colours</li>
+            <li>Enable gene clusters (k=3–5) to identify co-expression modules</li>
+            <li>▶ Refresh Plot</li>
+            <li>Save figure or export CSV</li>
+        </ol>
+
+        <h2>Notes</h2>
+        <ul>
+            <li>Z-score is computed row-wise (per gene across all samples)</li>
+            <li>Genes with constant expression (std = 0) are kept but shown as 0</li>
+            <li>The colour bar is placed in the lower-left of the figure to avoid
+                overlap with the row dendrogram</li>
+        </ul>
+        """
+
     def _get_pca_plot(self):
         """PCA Plot section"""
         return """
-        <h1>8. PCA Plot</h1>
+        <h1>10. PCA Plot</h1>
 
         <h2>Overview</h2>
         <p>Principal Component Analysis (PCA) reduces the high-dimensional
@@ -706,7 +846,7 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
     def _get_comparison(self):
         """Comparison section"""
         return """
-        <h1>9. Dataset Comparison</h1>
+        <h1>10. Dataset Comparison</h1>
         
         <h2>Comparison Panel </h2>
         <p>Located in the left panel below the Filter Panel:</p>
@@ -796,7 +936,7 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
     def _get_gene_annotation(self):
         """Gene Annotation section"""
         return """
-        <h1>10. Gene Annotation</h1>
+        <h1>11. Gene Annotation</h1>
         
         <h2>Overview</h2>
         <p>CMG-SeqViewer provides quick access to external gene annotation databases 
@@ -1012,7 +1152,7 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
     def _get_export(self):
         """Export section"""
         return """
-        <h1>11. Export &amp; Clipboard</h1>
+        <h1>12. Export &amp; Clipboard</h1>
         
         <h2>Exporting Data</h2>
         <p>Export any tab's data to file:</p>
@@ -1072,7 +1212,7 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
     def _get_tips(self):
         """Tips and Shortcuts section"""
         return """
-        <h1>12. Tips &amp; Shortcuts</h1>
+        <h1>13. Tips &amp; Shortcuts</h1>
         
         <h2>Keyboard Shortcuts</h2>
         <table border="1" cellpadding="5" cellspacing="0">
@@ -1135,6 +1275,10 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
         
         <h2>New Features Summary</h2>
         <ul>
+            <li><b>🌡️ Multi-Group Heatmap:</b> LRT omnibus result CSV → interactive Z-score clustermap
+                with group color bars, gene cluster cutting, and CSV export</li>
+            <li><b>Gene List Filtering on Multi-Group:</b> Filter by gene symbol on multi-group sheets;
+                child filtered sheets can be directly passed to the heatmap dialog</li>
             <li><b>Dataset Database:</b> Parquet-based DB for instant dataset loading</li>
             <li><b>📥 Import Folder:</b> Merge pipeline output folders into the DB in one click</li>
             <li><b>merge_db.py:</b> CLI tool for batch-merging multiple pipeline runs</li>
