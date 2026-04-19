@@ -1,6 +1,38 @@
 # Recent Updates & New Features
 
-## 2026-01-01: v1.0.11 - Cross-Platform Stability & UI Improvements
+## 2026-04-19: v1.1.6 - GO Term Comparison & Dot Plot Legend Improvements
+
+### NEW: GO Term List Filtering
+- Enter `GO:XXXXXXX` IDs (one per line) in the **Filter Panel → Gene List** tab while a GO/KEGG dataset is active
+- Click **Apply Filter** → new tab *"Filtered: GO Term List (N terms)"*
+- Matches against `term_id` / `go_id` column; non-GO IDs trigger a warning
+
+### NEW: GO Term Comparison
+- Compare enriched GO/KEGG terms across ≥2 datasets side by side
+- **Requirement**: GO term IDs entered in Filter Panel (used as the comparison term set)
+- **Workflow**: Comparison Panel → select GO datasets → Comparison Type: *GO Term Comparison* → Apply
+- Result tab *"Comparison: GO Terms"* — wide-format table with per-dataset FDR, gene count, fold enrichment
+- Terms not found in a dataset shown as `NaN`
+
+### NEW: GO Term Comparison Dot Plot
+- Available on *"Comparison: GO Terms"* tab via **Visualization → GO/KEGG Dot Plot**
+- X = Datasets, Y = GO Terms (or transposed)
+- Dot color = FDR; Dot size = Gene Count or Fold Enrichment (selectable)
+- 3-tier size legend with consistent area→diameter scaling
+
+### IMPROVED: Dot Plot Size Legend
+- 3-tier biologically meaningful reference markers (small / medium / large) derived from fixed typical ranges — consistent across sessions and datasets
+- Correct area→diameter formula: `2 * sqrt(s / π)` instead of `sqrt(s) / 2`
+- Dynamic legend spacing, bold title, professional appearance (`fancybox=False`)
+
+### IMPROVED: Comparison Panel UI
+- Dedicated left-panel `ComparisonPanel` widget with *GO Term Comparison* mode
+- Cleaner dataset selection list with Select All / Clear helpers
+
+---
+
+## 2026-04-01: v1.1.5 - Multi-Group Heatmap & Gene List Order Preservation
+
 
 ### 🎨 Unified UI Theme
 - **Forced Light Theme**: Consistent, readable UI across all macOS system appearance settings

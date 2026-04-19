@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![PyQt6](https://img.shields.io/badge/PyQt-6-green.svg)](https://www.riverbankcomputing.com/software/pyqt/)
-[![Release](https://img.shields.io/badge/release-v1.1.4-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
+[![Release](https://img.shields.io/badge/release-v1.1.6-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
 
 ---
 
@@ -13,14 +13,19 @@
 
 ---
 
-## Latest Update: v1.1.4 (Mar 2026)
+## Latest Update: v1.1.6 (Apr 2026)
 
-- [NEW] **GO Term Search by Gene Symbol**: Gene List tab now filters GO terms whose `gene_symbols` column contains any of the input genes -- results sorted by hit count (most overlapping terms first)
-- [NEW] **GO Dot Plot Dot Size**: Added Dot Size selector (Gene Count / Gene Ratio / Fold Enrichment) with smart legend bins
-- [FIX] **Dot-separator Column Mapping**: Parquet files with `Gene.Set`, `GO.ID`, `Adjusted.P-value` etc. now correctly mapped
-- [FIX] **gene_set Column Position**: Moved to second position in GO table (after ontology) for quicker scan
-- [FIX] **Dot Occlusion Fix**: GO Dot Plot edge dots no longer clipped
-- [FIX] **Leftover Column Cleanup**: `KEGG.ID` / `KEGG.Pathway` residual columns removed from table view
+- [NEW] **GO Term List Filtering**: Paste `GO:XXXXXXX` IDs into the Filter Panel to filter any GO/KEGG dataset to a specific set of terms; results in a new *"Filtered: GO Term List"* tab
+- [NEW] **GO Term Comparison**: Compare enriched GO/KEGG terms across ≥2 datasets side by side — union of terms collected, per-dataset FDR / gene count / fold enrichment in wide-format table
+- [NEW] **GO Term Comparison Dot Plot**: Interactive dot plot for GO comparison results (X = datasets, Y = terms; dot size = Gene Count or Fold Enrichment; dot color = FDR)
+- [IMPROVED] **Dot Plot Size Legend**: 3-tier biologically meaningful reference markers with correct area→diameter formula; consistent across sessions
+- [IMPROVED] **Comparison Panel**: Dedicated left-panel UI with *GO Term Comparison* mode
+
+### Previous: v1.1.5 (Apr 2026)
+
+- [NEW] Multi-Group Heatmap (LRT omnibus result → Z-score clustermap with group colour bars and gene cluster cutting)
+- [NEW] Gene List Filtering on Multi-Group sheets
+- [FIX] Gene list order preservation, cluster_id dtype, save figure error handling
 
 [Full Release Notes](docs/RECENT_UPDATES.md)
 
@@ -62,13 +67,16 @@
 ### GO/KEGG Analysis
 - **Clustering**: Jaccard similarity, Kappa statistic, hierarchical clustering (average/complete/single/ward)
 - **Network Visualization**: Color-coded clusters, convex hulls, hover tooltips, pan/zoom
-- **Dot Plot**: Configurable dot size (Gene Count / Gene Ratio / Fold Enrichment) and color (FDR / p-value)
+- **Dot Plot**: Configurable dot size (Gene Count / Gene Ratio / Fold Enrichment) and color (FDR / p-value); 3-tier size legend with consistent area→diameter scaling
 - **Bar Chart**: Top enriched terms
 - **Cluster Management**: Min/max size filters, singleton handling, representative term selection, export with `cluster_id`
+- **GO Term List Filtering**: Filter GO datasets to a predefined set of `GO:XXXXXXX` IDs
+- **GO Term Comparison**: Compare terms across ≥2 GO datasets with wide-format FDR / gene count / fold enrichment table and companion dot plot
 
 ### Multi-dataset Comparison
 - **Gene List Comparison**: Wide-format table showing log2FC and padj across datasets
 - **Statistics Comparison**: Common/Unique DEG identification with |log2FC| >= threshold and padj <= threshold
+- **GO Term Comparison**: Side-by-side GO/KEGG enrichment comparison across multiple datasets
 - **Venn Diagrams**: 2-3 dataset overlap visualization
 
 ### Visualizations
@@ -202,16 +210,31 @@ Additional controls: gene count range, description keyword search, case-sensitiv
 7. Click "Apply" to create a "Clustered:" tab
 ```
 
-### 4. Visualizations
+### 4. GO Term Comparison
+
+```
+1. Load ≥2 GO/KEGG datasets (e.g. Ctrl_GO, KO_GO, OE_GO)
+2. Enter GO term IDs in Filter Panel -> Gene List (one per line):
+     GO:0006915
+     GO:0007049
+3. Open Comparison Panel (left panel)
+4. Select the GO datasets to compare
+5. Set Comparison Type: "GO Term Comparison"
+6. Click "Apply"
+   -> New tab: "Comparison: GO Terms"
+7. Visualization -> GO/KEGG Dot Plot  (opens comparison dot plot)
+```
+
+### 5. Visualizations
 
 ```
 Visualization -> Volcano Plot          (Ctrl+V)   DE data
-Visualization -> GO/KEGG Dot Plot                 GO data
+Visualization -> GO/KEGG Dot Plot                 GO data / Comparison: GO Terms tab
 Visualization -> GO/KEGG Network Chart            Clustered GO data
 Visualization -> Heatmap                          DE data
 ```
 
-### 5. Export
+### 6. Export
 
 ```
 File -> Export Current Tab  (Ctrl+E)
@@ -284,17 +307,19 @@ cmg-seqviewer/
 |   |   |-- data_models.py           # Dataset, DatasetType classes
 |   |   +-- standard_columns.py      # Column name standardization
 |   |-- gui/
-|   |   |-- main_window.py           # Main window
-|   |   |-- filter_panel.py          # Filter controls
-|   |   |-- dataset_manager.py       # Dataset switching/renaming
-|   |   |-- go_clustering_dialog.py  # GO clustering UI
-|   |   |-- go_dot_plot_dialog.py    # GO dot plot
-|   |   |-- go_bar_chart_dialog.py   # GO bar chart
-|   |   |-- go_network_dialog.py     # GO network chart
-|   |   |-- go_filter_dialog.py      # Advanced GO filter
-|   |   |-- visualization_dialog.py  # Volcano, Heatmap, P-adj plots
-|   |   |-- help_dialog.py           # F1 help system
-|   |   +-- workers.py               # Async QThread workers
+|   |   |-- main_window.py                  # Main window
+|   |   |-- filter_panel.py                 # Filter controls
+|   |   |-- comparison_panel.py             # Dataset/GO comparison panel
+|   |   |-- dataset_manager.py              # Dataset switching/renaming
+|   |   |-- go_clustering_dialog.py         # GO clustering UI
+|   |   |-- go_dot_plot_dialog.py           # GO dot plot
+|   |   |-- go_comparison_dot_plot_dialog.py # GO Term Comparison dot plot
+|   |   |-- go_bar_chart_dialog.py          # GO bar chart
+|   |   |-- go_network_dialog.py            # GO network chart
+|   |   |-- go_filter_dialog.py             # Advanced GO filter
+|   |   |-- visualization_dialog.py         # Volcano, Heatmap, P-adj plots
+|   |   |-- help_dialog.py                  # F1 help system
+|   |   +-- workers.py                      # Async QThread workers
 |   |-- presenters/
 |   |   +-- main_presenter.py        # Business logic (MVP pattern)
 |   +-- utils/
@@ -413,7 +438,7 @@ MIT License -- see [LICENSE](LICENSE).
   title   = {CMG-SeqViewer: RNA-Seq Data Analysis and Visualization Tool},
   year    = {2026},
   url     = {https://github.com/ibs-CMG-NGS/cmg-seqviewer},
-  version = {1.1.4}
+  version = {1.1.6}
 }
 ```
 
