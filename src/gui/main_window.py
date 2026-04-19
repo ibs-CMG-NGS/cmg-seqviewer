@@ -956,10 +956,31 @@ class MainWindow(QMainWindow):
         current_tab_name = self.data_tabs.tabText(self.data_tabs.currentIndex())
         current_table = self.data_tabs.currentWidget()
         
+        from models.data_models import FilterMode, DatasetType
+        import re
+
         # Gene List 필터는 항상 원본 데이터셋(presenter)에서 필터링
-        # (Filtered/Comparison 탭의 Qt 행 순서가 아닌 DataFrame 순서 기준)
-        from models.data_models import FilterMode
         if criteria.mode == FilterMode.GENE_LIST:
+            # GO_ANALYSIS + Gene Symbol 모드인데 입력이 GO/KEGG ID 패턴이면 경고
+            if (dataset_type == DatasetType.GO_ANALYSIS
+                    and criteria.gene_list
+                    and not criteria.term_id_list):
+                term_id_pattern = re.compile(
+                    r'^GO:\d+$|^R-[A-Z]+-\d+$|^[a-z]{3}\d+$|^path:[a-z]{3}\d+$',
+                    re.IGNORECASE
+                )
+                matches = sum(1 for g in criteria.gene_list if term_id_pattern.match(g.strip()))
+                if matches >= max(1, len(criteria.gene_list) // 2):
+                    QMessageBox.warning(
+                        self,
+                        "GO Term ID Detected",
+                        "입력값이 GO/KEGG Term ID 패턴(GO:XXXXXXX)으로 보입니다.\n\n"
+                        "Gene Symbol 모드에서는 GO term의 gene_symbols 컬럼을 검색합니다.\n\n"
+                        "GO Term ID로 검색하려면:\n"
+                        "  ● Gene Symbol → ○ GO Term ID 를 선택하고 다시 Apply Filter를 눌러주세요."
+                    )
+                    return
+
             self.presenter.apply_filter(criteria)
             return
         
@@ -1204,9 +1225,26 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(self, "No Results", "No data matches the filter criteria.")
                 return
             
+            # 현재 탭의 dataset 정보 가져오기 (GO visualization 등에서 dataset type 필요)
+            current_index = self.data_tabs.currentIndex()
+            _, current_dataset = self.tab_data.get(current_index, (None, None))
+            
+            # 필터링된 데이터로 Dataset 객체 생성
+            from models.data_models import Dataset
+            if current_dataset is not None:
+                filtered_dataset = Dataset(
+                    name=new_tab_name,
+                    dataset_type=current_dataset.dataset_type,
+                    dataframe=filtered_df,
+                    original_columns=current_dataset.original_columns,
+                    metadata=current_dataset.metadata.copy() if current_dataset.metadata else {}
+                )
+            else:
+                filtered_dataset = None
+            
             # 새 탭 생성
             new_table = self._create_data_tab(new_tab_name)
-            self.populate_table(new_table, filtered_df)
+            self.populate_table(new_table, filtered_df, filtered_dataset)
             self.logger.info(f"Filtered current tab: {len(filtered_df)} rows from {row_count} rows")
             
         except Exception as e:
@@ -1254,6 +1292,8 @@ class MainWindow(QMainWindow):
                 self._compare_gene_list(datasets)
             elif comparison_type == "statistics":
                 self._compare_statistics(datasets)
+            elif comparison_type == "go_term":
+                self._compare_go_terms(datasets)
             else:
                 QMessageBox.information(self, "Feature Moved", 
                                       "Visualization features (Venn, Scatter, Heatmap, Correlation) "
@@ -1455,7 +1495,178 @@ class MainWindow(QMainWindow):
         table = self._create_data_tab(comparison_tab_name)
         self.populate_table(table, result_df)
         self.logger.info(f"Gene list comparison completed: {len(result_df)} genes across {len(datasets)} datasets")
-    
+
+    def _compare_go_terms(self, datasets):
+        """GO Term Comparison — Union 방식으로 여러 GO 데이터셋 비교"""
+        from models.data_models import DatasetType, Dataset
+        from models.standard_columns import StandardColumns
+
+        # 모든 dataset이 GO_ANALYSIS 타입인지 확인
+        non_go = [d.name for d in datasets if d.dataset_type != DatasetType.GO_ANALYSIS]
+        if non_go:
+            QMessageBox.warning(
+                self,
+                "Invalid Dataset Type",
+                "GO Term Comparison requires all selected datasets to be GO/KEGG type.\n\n"
+                f"Non-GO datasets selected:\n" + "\n".join(f"  • {n}" for n in non_go)
+            )
+            return
+
+        tid_col  = StandardColumns.TERM_ID        # 'term_id'
+        desc_col = StandardColumns.DESCRIPTION    # 'description'
+        fe_col   = StandardColumns.FOLD_ENRICHMENT
+        fdr_col  = StandardColumns.FDR
+        gc_col   = StandardColumns.GENE_COUNT
+        ont_col  = StandardColumns.ONTOLOGY
+
+        # dataset 이름 → safe column prefix (공백 → '_', 중복 시 suffix)
+        def _make_safe_names(names):
+            seen = {}
+            result = []
+            for name in names:
+                safe = name.replace(' ', '_').replace('-', '_')
+                # 중복 처리
+                if safe in seen:
+                    seen[safe] += 1
+                    safe = f"{safe}_{seen[safe]}"  
+                else:
+                    seen[safe] = 0
+                result.append(safe)
+            return result
+
+        dataset_names = [d.name for d in datasets]
+        safe_names    = _make_safe_names(dataset_names)
+
+        # ── 필터 패널에서 GO Term ID 목록 읽기 ────────────────────────────
+        criteria = self.filter_panel.get_filter_criteria()
+        requested_ids = None
+
+        if criteria.term_id_list:
+            # GO Term ID 모드로 입력된 ID 목록
+            requested_ids = [t.strip().upper() for t in criteria.term_id_list if t.strip()]
+        elif criteria.gene_list:
+            # Gene Symbol 모드이지만 GO ID 패턴일 수 있음 — 그대로 사용
+            import re
+            term_pattern = re.compile(
+                r'^GO:\d+$|^R-[A-Z]+-\d+$|^[a-z]{3}\d+$|^path:[a-z]{3}\d+$',
+                re.IGNORECASE
+            )
+            go_ids = [g.strip() for g in criteria.gene_list
+                      if term_pattern.match(g.strip())]
+            if go_ids:
+                requested_ids = [g.upper() for g in go_ids]
+
+        if not requested_ids:
+            QMessageBox.information(
+                self,
+                "GO Term ID List Required",
+                "Please enter GO/KEGG Term IDs in the Gene List tab (GO Term ID mode) "
+                "before running GO Term Comparison.\n\n"
+                "Example IDs: GO:0006955, hsa04110, R-HSA-168928"
+            )
+            return
+
+        # Union: 전체 term_id 수집, description/ontology는 첫 발견 기준
+        # requested_ids 목록에 있는 term_id만 포함
+        term_meta = {}  # term_id → {'description': ..., 'ontology': ...}
+        for ds in datasets:
+            df = ds.dataframe
+            if df is None or tid_col not in df.columns:
+                continue
+            for _, row in df.iterrows():
+                tid = str(row[tid_col]).strip()
+                if not tid or tid == 'nan':
+                    continue
+                # requested_ids 필터 적용
+                if tid.upper() not in requested_ids:
+                    continue
+                if tid not in term_meta:
+                    term_meta[tid] = {
+                        'description': str(row[desc_col]) if desc_col in df.columns else tid,
+                        'ontology':    str(row[ont_col])  if ont_col  in df.columns else ''
+                    }
+
+        if not term_meta:
+            found_any = False
+            for ds in datasets:
+                df = ds.dataframe
+                if df is not None and tid_col in df.columns:
+                    tids_in_ds = set(df[tid_col].astype(str).str.strip().str.upper())
+                    if any(r in tids_in_ds for r in requested_ids):
+                        found_any = True
+                        break
+            if not found_any:
+                QMessageBox.warning(
+                    self, "No Matching Terms",
+                    f"None of the {len(requested_ids)} requested term IDs were found "
+                    "in any of the selected datasets.\n\n"
+                    "Check that the term IDs match the format in your datasets."
+                )
+            else:
+                QMessageBox.warning(self, "No Terms",
+                                    "No GO/KEGG terms found in selected datasets.")
+            return
+
+        # Wide-format DataFrame 조립
+        rows = []
+        for tid, meta in term_meta.items():
+            row = {'term_id': tid, 'description': meta['description'],
+                   'ontology': meta['ontology']}
+            for ds, safe in zip(datasets, safe_names):
+                df = ds.dataframe
+                if df is None or tid_col not in df.columns:
+                    row[f"{safe}_fe"]         = None
+                    row[f"{safe}_fdr"]        = None
+                    row[f"{safe}_gene_count"] = None
+                    continue
+                match = df[df[tid_col].astype(str).str.strip() == tid]
+                if match.empty:
+                    row[f"{safe}_fe"]         = None
+                    row[f"{safe}_fdr"]        = None
+                    row[f"{safe}_gene_count"] = None
+                else:
+                    first = match.iloc[0]
+                    row[f"{safe}_fe"]         = first[fe_col]  if fe_col  in df.columns else None
+                    row[f"{safe}_fdr"]        = first[fdr_col] if fdr_col in df.columns else None
+                    row[f"{safe}_gene_count"] = first[gc_col]  if gc_col  in df.columns else None
+            rows.append(row)
+
+        result_df = pd.DataFrame(rows)
+
+        # 컬럼 순서 정렬
+        base_cols = ['term_id', 'description', 'ontology']
+        ds_cols   = []
+        for safe in safe_names:
+            ds_cols += [f"{safe}_fe", f"{safe}_fdr", f"{safe}_gene_count"]
+        result_df = result_df[[c for c in base_cols + ds_cols if c in result_df.columns]]
+
+        # Dataset 객체 생성 (is_go_comparison 플래그)
+        tab_name = f"Comparison: GO Terms ({len(datasets)} datasets)"
+        comp_dataset = Dataset(
+            name=tab_name,
+            dataset_type=DatasetType.GO_ANALYSIS,
+            dataframe=result_df,
+            original_columns={},
+            metadata={
+                'is_go_comparison': True,
+                'dataset_names':    dataset_names,
+                'safe_names':       safe_names,
+                'n_terms_total':    len(result_df)
+            }
+        )
+
+        table = self._create_data_tab(tab_name)
+        self.populate_table(table, result_df, comp_dataset)
+
+        # 비교 탭으로 자동 이동
+        new_tab_index = self.data_tabs.indexOf(table)
+        if new_tab_index >= 0:
+            self.data_tabs.setCurrentIndex(new_tab_index)
+
+        self.logger.info(
+            f"GO term comparison: {len(result_df)} terms across {len(datasets)} datasets"
+        )
+
     def _compare_statistics(self, datasets):
         """Statistics 필터링 비교 - Common/Unique 표시"""
         criteria = self.filter_panel.get_filter_criteria()
@@ -1755,7 +1966,29 @@ class MainWindow(QMainWindow):
                 if dataset is not None:
                     self.presenter.current_dataset = dataset
                     self.logger.info(f"Tab changed to index {index}: current_dataset updated to '{dataset.name}'")
+
+            # GO_ANALYSIS 데이터일 때만 Gene List 탭에 모드 토글 표시
+            self._update_filter_panel_go_mode(index)
     
+    def _update_filter_panel_go_mode(self, tab_index: int):
+        """
+        현재 탭의 dataset type이 GO_ANALYSIS이면 FilterPanel Gene List 탭에
+        GO Term ID 모드 토글을 표시하고, 그 외에는 숨긴다.
+        Gene Symbol 모드로 초기화하지 않아 사용자의 선택을 유지한다.
+        """
+        from models.data_models import DatasetType
+        is_go = False
+        if tab_index in self.tab_data:
+            _, dataset = self.tab_data[tab_index]
+            if dataset is not None and dataset.dataset_type == DatasetType.GO_ANALYSIS:
+                is_go = True
+
+        if hasattr(self.filter_panel, 'go_mode_widget'):
+            self.filter_panel.go_mode_widget.setVisible(is_go)
+            # GO 탭이 아니면 항상 Gene Symbol 모드로 복귀
+            if not is_go and hasattr(self.filter_panel, 'gene_symbol_radio'):
+                self.filter_panel.gene_symbol_radio.setChecked(True)
+
     def _on_clear_log(self):
         """로그 지우기"""
         self.log_terminal.clear()
@@ -2046,6 +2279,16 @@ class MainWindow(QMainWindow):
         # 현재 탭이 Comparison sheet인지 확인
         current_index = self.data_tabs.currentIndex()
         current_tab_name = self.data_tabs.tabText(current_index)
+
+        # GO Term Comparison 탭이면 GO/KEGG Dot Plot으로 안내
+        if current_tab_name.startswith("Comparison: GO Terms"):
+            QMessageBox.information(
+                self,
+                "Use GO/KEGG Dot Plot",
+                "This tab contains GO Term Comparison data.\n\n"
+                "Please use:  Visualization → 🧬 GO/KEGG Dot Plot"
+            )
+            return
         
         if not (current_tab_name.startswith("Comparison: Statistics") or 
                 current_tab_name.startswith("Comparison: Gene List")):
@@ -2851,13 +3094,14 @@ class MainWindow(QMainWindow):
         # 현재 탭의 필터링된 데이터를 반영하기 위해 dataset의 dataframe을 업데이트
         if dataset:
             from models.data_models import Dataset
-            # Dataset 복사본 생성하여 현재 탭의 dataframe 사용
+            # metadata를 사본(섯할로 복사)하여 원본 dict 변이 방지
+            meta_copy = dict(dataset.metadata)
             filtered_dataset = Dataset(
                 name=dataset.name,
                 dataset_type=dataset.dataset_type,
                 dataframe=dataframe,  # 현재 탭의 필터링된 dataframe 사용
                 original_columns=dataset.original_columns,
-                metadata=dataset.metadata
+                metadata=meta_copy
             )
             dataset = filtered_dataset
         
@@ -2883,8 +3127,18 @@ class MainWindow(QMainWindow):
         try:
             # 시각화 다이얼로그 열기
             if plot_type == "dotplot":
-                from gui.go_dot_plot_dialog import GODotPlotDialog
-                dialog = GODotPlotDialog(dataset, self)
+                # GO Term Comparison 탭인 경우 Comparison Dot Plot
+                is_comparison = (
+                    dataset is not None
+                    and isinstance(getattr(dataset, 'metadata', None), dict)
+                    and dataset.metadata.get('is_go_comparison', False)
+                )
+                if is_comparison:
+                    from gui.go_comparison_dot_plot_dialog import GOComparisonDotPlotDialog
+                    dialog = GOComparisonDotPlotDialog(dataset, self)
+                else:
+                    from gui.go_dot_plot_dialog import GODotPlotDialog
+                    dialog = GODotPlotDialog(dataset, self)
                 dialog.exec()
                 
             elif plot_type == "barplot":

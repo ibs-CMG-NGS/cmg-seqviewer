@@ -272,18 +272,23 @@ class MainPresenter(QObject):
         try:
             # 필터링 모드에 따라 다르게 처리
             if criteria.mode == FilterMode.GENE_LIST:
-                # Gene List 모드
-                if not criteria.gene_list:
+                # GO Term ID 모드 (term_id_list가 있을 때)
+                if criteria.term_id_list:
+                    filtered_df = self._filter_go_by_term_ids(criteria.term_id_list)
+                    tab_name = f"Filtered: GO Term IDs ({len(criteria.term_id_list)} terms)"
+
+                # Gene Symbol/ID 모드
+                elif criteria.gene_list:
+                    filtered_df = self._filter_by_gene_list(criteria.gene_list)
+                    if self.current_dataset.dataset_type == DatasetType.GO_ANALYSIS:
+                        tab_name = f"Filtered: Gene Symbols ({len(criteria.gene_list)} genes)"
+                    else:
+                        tab_name = f"Filtered: Gene List ({len(criteria.gene_list)} genes)"
+
+                else:
                     self.error_occurred.emit("Gene list is empty")
                     self.fsm.trigger(Event.FILTER_FAILED)
                     return
-                
-                filtered_df = self._filter_by_gene_list(criteria.gene_list)
-                # GO 데이터는 "GO terms containing X genes", DE는 기존 형식
-                if self.current_dataset.dataset_type == DatasetType.GO_ANALYSIS:
-                    tab_name = f"Filtered: Gene Symbols ({len(criteria.gene_list)} genes)"
-                else:
-                    tab_name = f"Filtered: Gene List ({len(criteria.gene_list)} genes)"
                 
             else:  # FilterMode.STATISTICAL
                 # Statistical 모드 - 데이터셋 타입에 따라 다르게 처리
@@ -462,8 +467,48 @@ class MainPresenter(QObject):
             f"({len(query_set)} query genes)"
         )
         return filtered
-    
-    def _filter_by_statistics(self, adj_pvalue_max: Optional[float] = None, 
+
+    def _filter_go_by_term_ids(self, term_id_list: List[str]) -> 'pd.DataFrame':
+        """
+        GO/KEGG 데이터를 term_id 목록으로 필터링.
+
+        term_id 컬럼과 정확히 일치하는 rows를 반환 (대소문자 무시).
+        입력 리스트의 순서를 유지하여 정렬.
+
+        Args:
+            term_id_list: 검색할 GO/KEGG Term ID 목록 (예: ['GO:0006955', 'hsa04110'])
+
+        Returns:
+            매칭된 rows (term_id_list 입력 순서대로 정렬)
+        """
+        df = self.current_dataset.dataframe
+
+        tid_col = StandardColumns.TERM_ID
+        if tid_col not in df.columns:
+            self.logger.error(f"term_id column not found. Available: {df.columns.tolist()}")
+            raise ValueError(
+                f"GO 데이터에 '{tid_col}' 컬럼이 없습니다. "
+                "데이터를 다시 불러오거나 컬럼 매핑을 확인하세요."
+            )
+
+        # 입력 순서를 정렬 키로 사용
+        id_order = {tid.strip().upper(): i for i, tid in enumerate(term_id_list) if tid.strip()}
+        mask = df[tid_col].astype(str).str.strip().str.upper().isin(id_order)
+        filtered = (
+            df[mask]
+            .assign(_sort_key=df.loc[mask, tid_col].astype(str).str.strip().str.upper().map(id_order))
+            .sort_values('_sort_key')
+            .drop(columns='_sort_key')
+            .copy()
+        )
+
+        self.logger.info(
+            f"GO term-id filter: {len(filtered)}/{len(df)} terms matched "
+            f"({len(id_order)} query IDs)"
+        )
+        return filtered
+
+    def _filter_by_statistics(self, adj_pvalue_max: Optional[float] = None,
                                log2fc_min: Optional[float] = None, 
                                fdr_max: Optional[float] = None,
                                ontology: Optional[str] = None,
@@ -759,9 +804,11 @@ class MainPresenter(QObject):
         """
         if dataset.dataframe is not None:
             # "Whole Dataset" 탭 찾기 및 업데이트
+            whole_dataset_index = 0
             for i in range(self.view.data_tabs.count()):
                 tab_name = self.view.data_tabs.tabText(i)
                 if tab_name == "Whole Dataset":
+                    whole_dataset_index = i
                     table = self.view.data_tabs.widget(i)
                     if table:
                         self.view.populate_table(table, dataset.dataframe, dataset)
@@ -771,7 +818,12 @@ class MainPresenter(QObject):
                 table = self.view.data_tabs.widget(0)
                 if table:
                     self.view.populate_table(table, dataset.dataframe, dataset)
-            
+
+            # FilterPanel GO mode 토글 업데이트
+            # (탭 인덱스가 변하지 않아 _on_tab_changed가 발화하지 않는 경우를 커버)
+            if hasattr(self.view, '_update_filter_panel_go_mode'):
+                self.view._update_filter_panel_go_mode(whole_dataset_index)
+
             # Dataset manager 업데이트 (신규 로드 시에만)
             if add_to_manager:
                 metadata = {

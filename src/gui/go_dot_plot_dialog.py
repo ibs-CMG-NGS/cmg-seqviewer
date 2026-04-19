@@ -352,34 +352,31 @@ class GODotPlotDialog(QDialog):
             vmin = None
             vmax = None
         
-        # Size 데이터 (Dot Size 콤보 선택에 따라)
+        # Size 데이터 (고정 생물학적 기준 범위로 정규화 - 데이터셋 간 일관성 유지)
         size_mode = self.size_combo.currentText()
+        # (norm_max, [(val, label), ...]) — legend 3단계 고정
+        _SIZE_NORM = {
+            "Gene Count":      (100.0, [(10, "10 genes"), (30, "30 genes"), (80, "≥80 genes")]),
+            "Gene Ratio":      (0.40,  [(0.03, "0.03"),   (0.12, "0.12"),  (0.35, "≥0.35")]),
+            "Fold Enrichment": (20.0,  [(2.0,  "2×"),     (5.0,  "5×"),    (15.0, "≥15×")]),
+        }
+        _S_MIN, _S_MAX = 50, 500
+
         if size_mode == "Gene Count" and StandardColumns.GENE_COUNT in df.columns:
-            raw_sizes = df[StandardColumns.GENE_COUNT]
-            sizes = (raw_sizes * 5).clip(lower=50, upper=500)
-            size_legend_unit = "genes"
+            raw_sizes = pd.to_numeric(df[StandardColumns.GENE_COUNT], errors='coerce').fillna(0)
         elif size_mode == "Gene Ratio":
-            raw_sizes = df['_gene_ratio']
-            # Gene Ratio는 0~1 사이 → 50~500 으로 정규화
-            r_min, r_max = raw_sizes.min(), raw_sizes.max()
-            if r_max > r_min:
-                sizes = 50 + (raw_sizes - r_min) / (r_max - r_min) * 450
-            else:
-                sizes = pd.Series(200, index=df.index)
-            size_legend_unit = "ratio"
+            raw_sizes = pd.to_numeric(df['_gene_ratio'], errors='coerce').fillna(0)
         elif size_mode == "Fold Enrichment" and StandardColumns.FOLD_ENRICHMENT in df.columns:
             raw_sizes = pd.to_numeric(df[StandardColumns.FOLD_ENRICHMENT], errors='coerce').fillna(0)
-            fe_min, fe_max = raw_sizes.min(), raw_sizes.max()
-            if fe_max > fe_min:
-                sizes = 50 + (raw_sizes - fe_min) / (fe_max - fe_min) * 450
-            else:
-                sizes = pd.Series(200, index=df.index)
-            size_legend_unit = "x"
         else:
-            # fallback: 고정 크기
             raw_sizes = None
-            sizes = 100
-            size_legend_unit = None
+
+        if raw_sizes is not None and size_mode in _SIZE_NORM:
+            _norm_max, _size_rep = _SIZE_NORM[size_mode]
+            sizes = _S_MIN + np.clip(raw_sizes / _norm_max, 0, 1) * (_S_MAX - _S_MIN)
+        else:
+            _norm_max, _size_rep = None, None
+            sizes = pd.Series(100, index=df.index) if raw_sizes is None else raw_sizes * 0 + 100
         
         # Plotting
         ax = self.figure.add_subplot(111)
@@ -425,96 +422,23 @@ class GODotPlotDialog(QDialog):
             cbar = self.figure.colorbar(scatter, ax=ax, shrink=0.5, pad=0.02, anchor=(0, 1.0))
             cbar.set_label(color_label, fontsize=10)
         
-        # Size legend - Dot Size 선택에 따라 legend 표시
-        if raw_sizes is not None and size_legend_unit is not None:
+        # Size legend (고정 3단계 - 생물학적 기준값 사용)
+        if _size_rep is not None and _norm_max is not None:
             from matplotlib.lines import Line2D
 
-            s_vals = pd.to_numeric(raw_sizes, errors='coerce').dropna()
-            if len(s_vals) == 0:
-                s_vals = pd.Series([1.0])
-            sv_min = float(s_vals.min())
-            sv_max = float(s_vals.max())
-
-            def _scatter_s(val):
-                """scatter 에서 사용한 s값 그대로 역산"""
-                if size_mode == "Gene Count":
-                    return float(min(max(val * 5, 50), 500))
-                else:
-                    rng = sv_max - sv_min
-                    return float(50 + (val - sv_min) / rng * 450) if rng > 0 else 200.0
-
             def _legend_ms(val):
-                return np.sqrt(_scatter_s(val)) / 2
-
-            # ── 모드별 스마트 범주 선택 ──────────────────────────────
-            if size_mode == "Gene Count":
-                # percentile 기반 3단계 (데이터 분포 반영)
-                p25 = float(np.percentile(s_vals, 25))
-                p75 = float(np.percentile(s_vals, 75))
-                # 보기 좋은 정수로 반올림
-                def _nice_int(v):
-                    if v <= 0:
-                        return 1
-                    mag = 10 ** max(0, int(np.floor(np.log10(v))) - 1)
-                    return int(round(v / mag) * mag)
-                rep = sorted({_nice_int(sv_min), _nice_int(p25),
-                               _nice_int(p75), _nice_int(sv_max)})
-                # 너무 가까운 값 제거 (범위의 10% 이내)
-                filtered = [rep[0]]
-                for v in rep[1:]:
-                    if v - filtered[-1] > (sv_max - sv_min) * 0.1:
-                        filtered.append(v)
-                rep = filtered[-3:]  # 최대 3개
-                labels = [f'{int(v)} {size_legend_unit}' for v in rep]
-                markers_vals = rep
-
-            elif size_mode == "Gene Ratio":
-                # 의미 있는 소수점 구간: nice decimal steps
-                def _nice_ratio(v):
-                    """0.003 → 0.003, 0.023 → 0.02 식으로 유효숫자 1~2자리"""
-                    if v <= 0:
-                        return 0.0
-                    mag = 10 ** int(np.floor(np.log10(v)))
-                    return round(round(v / mag, 1) * mag, 6)
-                r_lo = _nice_ratio(sv_min)
-                r_hi = _nice_ratio(sv_max)
-                r_mid = _nice_ratio((sv_min + sv_max) / 2)
-                rep = sorted({r_lo, r_mid, r_hi})
-                # 중복 제거
-                rep = sorted(set(rep))[-3:]
-                labels = [f'{v:.3g}' for v in rep]
-                markers_vals = rep
-
-            else:  # Fold Enrichment
-                # 보기 좋은 반올림: 5 단위 또는 1 단위
-                def _nice_fe(v):
-                    if v < 5:
-                        return round(v, 1)
-                    elif v < 20:
-                        return round(v / 2) * 2      # 2의 배수
-                    else:
-                        return round(v / 5) * 5      # 5의 배수
-                p25 = float(np.percentile(s_vals, 25))
-                p75 = float(np.percentile(s_vals, 75))
-                rep = sorted({_nice_fe(sv_min), _nice_fe(p25),
-                               _nice_fe(p75), _nice_fe(sv_max)})
-                # 너무 가까운 값 제거
-                filtered = [rep[0]]
-                for v in rep[1:]:
-                    if v - filtered[-1] > (sv_max - sv_min) * 0.1:
-                        filtered.append(v)
-                rep = filtered[-3:]
-                labels = [f'{v:.3g} {size_legend_unit}' for v in rep]
-                markers_vals = rep
+                s = _S_MIN + np.clip(val / _norm_max, 0, 1) * (_S_MAX - _S_MIN)
+                return 2.0 * np.sqrt(s / np.pi)  # scatter s(면적 pt²) → Line2D markersize(지름 pt)
 
             legend_elements = [
                 Line2D([0], [0], marker='o', color='w', markerfacecolor='gray',
                        markersize=_legend_ms(v), label=lbl,
                        markeredgecolor='black', markeredgewidth=0.5)
-                for v, lbl in zip(markers_vals, labels)
+                for v, lbl in _size_rep
             ]
             ax.legend(handles=legend_elements, title=size_mode,
                       loc='upper left', fontsize=8, framealpha=0.9,
+                      labelspacing=1.8, handlelength=0, handletextpad=1.0,
                       bbox_to_anchor=(1.02, 0.20))
         
         # Layout 조정 - tight_layout 사용하여 자동으로 여백 조정
