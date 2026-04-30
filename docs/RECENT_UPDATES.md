@@ -1,5 +1,57 @@
 # Recent Updates & New Features
 
+## 2026-04-30: v1.2.0 - ATAC-seq Differential Accessibility Support
+
+### NEW: ATAC-seq DA Data Loading
+- **File → Open ATAC-seq Dataset…** — dedicated menu item for ATAC-seq Excel/Parquet files
+- Auto-detected from `peak_id` column (HOMER-annotated DESeq2 output format)
+- Supports 14 standard columns: `peak_id`, `chromosome`, `peak_start/end`, `nearest_gene`, `gene_id`, `annotation`, `distance_to_tss`, `base_mean`, `log2fc`, `lfcse`, `pvalue`, `adj_pvalue`, `direction`
+- `peak_width` automatically computed as `peak_end − peak_start`
+- Also loads from Database Browser (Parquet cache)
+
+### NEW: ATAC-seq Filters
+Three new controls in the Statistical Filter tab (visible only when ATAC-seq tab is active):
+- **Annot:** filter by broad annotation category (Intergenic, Intron, Promoter-TSS, Exon, TTS, …) — populated dynamically from the loaded dataset
+- **|TSS| ≤:** keep peaks within N bp of the nearest TSS
+- **Peak Width:** minimum and/or maximum peak width in bp
+
+### NEW: Genomic Distribution Plot
+- Pie chart of ATAC-seq peak annotation categories
+- HOMER annotation strings auto-normalized to broad categories (e.g. `"intron (ENSMUSG..., intron 2 of 4)"` → `"Intron"`)
+- Shows peak count and percentage per category; top 9 + Others grouping
+
+### NEW: TSS Distance Plot
+- Histogram of distance from each peak center to the nearest TSS
+- Default range ±50 kb; user-adjustable range and bin count
+- Reference lines at TSS (0 bp), ±2 kb, ±5 kb
+- Summary: % peaks within ≤2 kb and ≤5 kb
+
+### NEW: MA Plot
+- X axis: log₂(base mean accessibility); Y axis: log₂FC
+- Points colored Up / Down / NS by adj. p-value and |log2FC| thresholds
+- Gene label modes: Top N by |log2FC|, or custom gene list from file
+- Hover tooltip: nearest_gene, log2FC, base mean, adj. p-value
+- Same settings panel layout as Volcano Plot (Plot Settings / Customization / Gene Annotation)
+
+### IMPROVED: Column Display Level → Basic / Stat / Full
+- Renamed from "Basic (Gene ID + Abundance) / DE Analysis / Full" for clarity
+- **Basic**: peak_id, chromosome, coordinates, nearest_gene (ATAC) or gene_id, symbol (DE)
+- **Stat**: Basic + base_mean, log2fc, pvalue, adj_pvalue, direction
+- **Full**: Stat + lfcse, annotation, distance_to_tss, gene_id, peak_width
+
+### FIX: ATAC-seq UI not activating on initial load
+- Fixed `_update_view_with_dataset` to call `_update_atac_ui` alongside `_update_filter_panel_go_mode`
+- ATAC filter section and Visualization menu items now activate immediately on file load or database load
+
+### FIX: Volcano plot unavailable on filtered ATAC tab
+- Root cause: `removeTab()` shifts Qt tab indices synchronously, but `tab_data` dict keys were not updated before the signal fired
+- Fixed with `_remove_tab_safely()`: updates `tab_data` keys before calling `removeTab()`
+
+### FIX: ATAC gene list filtering
+- Gene list filter on ATAC-seq data now correctly uses `nearest_gene` (gene symbol) column, not `gene_id` (ENSEMBL ID)
+
+---
+
 ## 2026-04-19: v1.1.6 - GO Term Comparison & Dot Plot Legend Improvements
 
 ### NEW: GO Term List Filtering

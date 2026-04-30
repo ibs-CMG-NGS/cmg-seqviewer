@@ -91,6 +91,7 @@ class HelpDialog(QDialog):
             "4. Data Filtering",
             "5. GO/KEGG Analysis",
             "5b. GO Term Comparison",
+            "5c. ATAC-seq Analysis",
             "6. Statistical Analysis",
             "7. Visualization",
             "8. Multi-Group Heatmap",
@@ -116,6 +117,7 @@ class HelpDialog(QDialog):
             self._get_filtering(),
             self._get_go_kegg_analysis(),
             self._get_go_term_comparison(),
+            self._get_atac_seq_analysis(),
             self._get_statistical_analysis(),
             self._get_visualization(),
             self._get_multi_group_heatmap(),
@@ -135,13 +137,16 @@ class HelpDialog(QDialog):
         <h1>1. Getting Started</h1>
         
         <h2>Overview</h2>
-        <p>CMG-SeqViewer is a comprehensive tool for analyzing and visualizing 
-        RNA-Seq differential expression data. This application provides:</p>
+        <p>CMG-SeqViewer is a comprehensive tool for analyzing and visualizing
+        genomic sequencing data. This application provides:</p>
         <ul>
             <li>Multi-dataset management and comparison</li>
-            <li>Flexible filtering options</li>
+            <li>Flexible filtering options (statistical, gene list, annotation-based)</li>
             <li>Statistical analysis tools (Fisher's Exact, GSEA)</li>
-            <li>Interactive visualizations (Volcano, Heatmap, Dot Plot, Venn)</li>
+            <li>Interactive visualizations (Volcano, MA Plot, Heatmap, Dot Plot, Venn)</li>
+            <li><b>RNA-seq</b> differential expression (DE) analysis results</li>
+            <li><b>ATAC-seq</b> differential accessibility (DA) analysis results</li>
+            <li><b>GO/KEGG</b> enrichment analysis results</li>
         </ul>
         
         <h2>Main Interface</h2>
@@ -231,10 +236,11 @@ class HelpDialog(QDialog):
         <h2>Column Display Levels</h2>
         <p>Control which columns are displayed via <b>View &rarr;Column Display Level:</b></p>
         <ul>
-            <li><b>Basic:</b> Gene ID, Symbol, and Abundance columns only</li>
-            <li><b>DE Analysis:</b> Basic + log2FC and padj columns</li>
+            <li><b>Basic:</b> Key identifier columns (Gene ID / peak_id, Symbol / nearest_gene, coordinates)</li>
+            <li><b>Stat:</b> Basic + statistical columns (log2FC, padj, base_mean, direction)</li>
             <li><b>Full:</b> All columns in the dataset</li>
         </ul>
+        <p><i>Works for both RNA-seq (DE) and ATAC-seq (DA) data types.</i></p>
         
         <h2>Decimal Precision</h2>
         <p>Adjust number display precision via <b>View &rarr;Decimal Precision</b>:</p>
@@ -443,6 +449,103 @@ pipeline_run_2026-03-12/
         </ul>
         """
     
+    def _get_atac_seq_analysis(self):
+        """ATAC-seq Analysis section"""
+        return """
+        <h1>5c. ATAC-seq Analysis</h1>
+
+        <p>CMG-SeqViewer supports ATAC-seq Differential Accessibility (DA) results
+        in addition to RNA-seq DE data. The application automatically detects ATAC-seq
+        data on load based on the presence of a <code>peak_id</code> column.</p>
+
+        <h2>Loading ATAC-seq Data</h2>
+        <p>Use <b>File &rarr; Open ATAC-seq Dataset&hellip;</b> or drag-and-drop an Excel/Parquet file.
+        Supported formats match the standard DESeq2 DA output (HOMER-annotated):</p>
+        <table border="1" cellpadding="4" cellspacing="0" style="border-collapse:collapse;">
+            <tr style="background:#f0f0f0;"><th>Standard column</th><th>Accepted input names</th></tr>
+            <tr><td>peak_id</td><td>peak_id, peakid, peak_name, interval</td></tr>
+            <tr><td>chromosome</td><td>chr, chromosome, seqnames</td></tr>
+            <tr><td>peak_start / peak_end</td><td>start / end, startpos / endpos</td></tr>
+            <tr><td>nearest_gene</td><td>gene_name, nearest_gene, symbol</td></tr>
+            <tr><td>annotation</td><td>annotation, peak_annotation, feature</td></tr>
+            <tr><td>distance_to_tss</td><td>distancetotss, distance_to_tss, distance.to.tss</td></tr>
+            <tr><td>base_mean</td><td>baseMean, base_mean, conc</td></tr>
+            <tr><td>log2fc</td><td>log2FoldChange, log2fc, logFC</td></tr>
+            <tr><td>adj_pvalue</td><td>padj, adj_pvalue, FDR</td></tr>
+            <tr><td>direction</td><td>direction, regulation</td></tr>
+        </table>
+        <p>A <code>peak_width</code> column is automatically calculated as
+        <code>peak_end &minus; peak_start</code>.</p>
+
+        <h2>Column Display Levels</h2>
+        <p>Use <b>View &rarr; Column Display Level</b> to adjust visible columns:</p>
+        <ul>
+            <li><b>Basic:</b> peak_id, chromosome, peak_start, peak_end, nearest_gene</li>
+            <li><b>Stat:</b> Basic + base_mean, log2fc, pvalue, adj_pvalue, direction</li>
+            <li><b>Full:</b> Stat + lfcse, annotation, distance_to_tss, gene_id, peak_width</li>
+        </ul>
+
+        <h2>ATAC-seq Filtering (Statistical tab)</h2>
+        <p>When an ATAC-seq dataset is active, the <b>ATAC-seq Filtering</b> section
+        becomes visible below the standard DE filters:</p>
+        <ul>
+            <li><b>Annot:</b> Filter by genomic annotation category
+                (e.g., Intergenic, Intron, Promoter-TSS). Categories are populated
+                automatically from the loaded data.</li>
+            <li><b>|TSS| &le;:</b> Keep only peaks whose absolute distance to the nearest
+                TSS is within the specified number of base pairs.</li>
+            <li><b>Peak Width:</b> Filter by minimum and/or maximum peak width (bp).</li>
+        </ul>
+        <p>Statistical filters (adj. p-value, |log2FC|, direction) also apply to ATAC-seq data.</p>
+
+        <h2>Gene List Filtering</h2>
+        <p>Paste <b>gene symbols</b> (nearest gene names) into the Gene List tab, one per line.
+        The filter matches against the <code>nearest_gene</code> column.</p>
+
+        <h2>ATAC-seq Visualizations</h2>
+        <p>When an ATAC-seq tab is active, three dedicated plots are available under
+        <b>Visualization</b>:</p>
+
+        <h3>Genomic Distribution</h3>
+        <ul>
+            <li>Pie chart of peak annotation categories (Intergenic, Intron, Promoter-TSS, Exon, TTS, &hellip;)</li>
+            <li>HOMER/ChIPseeker annotation strings are normalized to broad categories automatically</li>
+            <li>Shows peak count and percentage per category</li>
+        </ul>
+
+        <h3>TSS Distance Plot</h3>
+        <ul>
+            <li>Histogram of peak distances to the nearest TSS</li>
+            <li>Default range: &plusmn;50,000 bp; configurable with Range and Bins controls</li>
+            <li>Reference lines at 0 bp (TSS), &plusmn;2 kb, &plusmn;5 kb</li>
+            <li>Summary bar: % peaks within &le;2 kb and &le;5 kb from TSS</li>
+        </ul>
+
+        <h3>MA Plot</h3>
+        <ul>
+            <li>X axis: log&#8322;(base mean accessibility); Y axis: log&#8322; fold change</li>
+            <li>Points colored by regulation direction (Up / Down / Not Significant)</li>
+            <li>Configurable adj. p-value and |log2FC| thresholds</li>
+            <li>Gene label annotation: Top N by |log2FC|, or custom gene list</li>
+            <li>Hover tooltip shows nearest_gene, log2FC, base mean, adj. p-value</li>
+        </ul>
+
+        <p>The standard <b>Volcano Plot</b> also works with ATAC-seq data
+        (uses log2fc and adj_pvalue columns).</p>
+
+        <h2>Annotation Column Explained</h2>
+        <p>ATAC-seq peaks are annotated with a genomic context string (HOMER format):</p>
+        <ul>
+            <li><code>annotation</code> — the gene body that the peak <b>physically overlaps</b>
+                (e.g., &ldquo;intron (ENSMUSG00000097836, intron 2 of 4)&rdquo;)</li>
+            <li><code>nearest_gene</code> + <code>gene_id</code> — the gene whose
+                <b>TSS is closest</b> to the peak center (used for regulatory interpretation)</li>
+        </ul>
+        <p>These can differ: a peak may overlap an intron of a large gene (annotation) while
+        the nearest TSS belongs to a different gene (nearest_gene). For downstream analysis
+        (e.g., gene list filtering), <code>nearest_gene</code> is used.</p>
+        """
+
     def _get_statistical_analysis(self):
         """Statistical Analysis section"""
         return """
