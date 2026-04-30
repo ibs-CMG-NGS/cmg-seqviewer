@@ -44,7 +44,19 @@ class StandardColumns:
     
     # Clustering Analysis 컬럼
     CLUSTER_ID = 'cluster_id'     # Cluster ID (숫자, 'Small', 'Singleton', 또는 빈 값)
-    
+
+    # === ATAC-seq 전용 컬럼 ===
+
+    PEAK_ID = 'peak_id'                   # Peak 식별자 (예: Interval_40044)
+    CHROMOSOME = 'chromosome'             # 염색체 (예: chr1, 1)
+    PEAK_START = 'peak_start'             # Peak 시작 위치 (bp)
+    PEAK_END = 'peak_end'                 # Peak 끝 위치 (bp)
+    NEAREST_GENE = 'nearest_gene'         # 가장 가까운 유전자 심볼
+    ANNOTATION = 'annotation'             # Genomic annotation (Promoter / Enhancer / Intergenic 등)
+    DISTANCE_TO_TSS = 'distance_to_tss'   # TSS까지 거리 (bp, 음수=upstream)
+    PEAK_WIDTH = 'peak_width'             # Peak 너비 (peak_end - peak_start, 계산 컬럼)
+    # base_mean, log2fc, lfcse, pvalue, adj_pvalue, direction → 기존 DE 컬럼 재사용
+
     # 하위 호환성을 위한 별칭 (deprecated)
     GO_TERM = DESCRIPTION         # GO term 설명
     GO_GENE_COUNT = GENE_COUNT    # 유전자 개수
@@ -137,6 +149,26 @@ class StandardColumns:
         ]
     
     @classmethod
+    def get_atac_required(cls) -> list[str]:
+        """ATAC-seq DA 분석에 최소 필수인 컬럼"""
+        return [cls.PEAK_ID, cls.LOG2FC, cls.ADJ_PVALUE]
+
+    @classmethod
+    def get_atac_basic(cls) -> list[str]:
+        """ATAC basic 표시 수준: 위치 + 대표 유전자"""
+        return [cls.PEAK_ID, cls.CHROMOSOME, cls.PEAK_START, cls.PEAK_END, cls.NEAREST_GENE]
+
+    @classmethod
+    def get_atac_stat(cls) -> list[str]:
+        """ATAC stat 표시 수준: basic + 통계 컬럼"""
+        return cls.get_atac_basic() + [cls.BASE_MEAN, cls.LOG2FC, cls.PVALUE, cls.ADJ_PVALUE, cls.DIRECTION]
+
+    @classmethod
+    def get_atac_all(cls) -> list[str]:
+        """ATAC full 표시 수준: stat + 어노테이션 컬럼"""
+        return cls.get_atac_stat() + [cls.LFCSE, cls.ANNOTATION, cls.DISTANCE_TO_TSS, cls.GENE_ID, cls.PEAK_WIDTH]
+
+    @classmethod
     def is_statistics_column(cls, column_name: str) -> bool:
         """
         주어진 컬럼이 통계 컬럼인지 확인
@@ -166,17 +198,28 @@ class StandardColumns:
         """
         display_names = {
             cls.GENE_ID: 'Gene ID',
+            cls.SYMBOL: 'Symbol',
             cls.LOG2FC: 'Log2 Fold Change',
             cls.PVALUE: 'P-value',
             cls.ADJ_PVALUE: 'Adjusted P-value',
             cls.BASE_MEAN: 'Base Mean',
             cls.LFCSE: 'LFC Std Error',
             cls.STAT: 'Statistic',
+            cls.DIRECTION: 'Direction',
             cls.GO_TERM: 'GO Term',
             cls.GO_TERM_ID: 'GO ID',
             cls.GO_GENE_COUNT: 'Gene Count',
             cls.GO_FDR: 'FDR',
             cls.GO_PVALUE: 'P-value',
             cls.GO_GENES: 'Genes',
+            # ATAC-seq
+            cls.PEAK_ID: 'Peak ID',
+            cls.CHROMOSOME: 'Chr',
+            cls.PEAK_START: 'Start',
+            cls.PEAK_END: 'End',
+            cls.NEAREST_GENE: 'Nearest Gene',
+            cls.ANNOTATION: 'Annotation',
+            cls.DISTANCE_TO_TSS: 'Distance to TSS',
+            cls.PEAK_WIDTH: 'Peak Width (bp)',
         }
         return display_names.get(column_name, column_name)

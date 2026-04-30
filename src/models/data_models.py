@@ -15,7 +15,16 @@ class DatasetType(Enum):
     """데이터셋 타입"""
     DIFFERENTIAL_EXPRESSION = "differential_expression"
     GO_ANALYSIS = "go_analysis"
+    MULTI_GROUP = "multi_group"
+    ATAC_SEQ = "atac_seq"
     UNKNOWN = "unknown"
+
+
+class NormalizationType(Enum):
+    """발현량 정규화 방법"""
+    NORMALIZED_COUNT = "normalized_count"  # DESeq2 normalized counts (기본값)
+    VST = "vst"                            # Variance Stabilizing Transformation
+    TPM = "tpm"                            # Transcripts Per Million (추후 지원)
 
 
 class FilterMode(Enum):
@@ -123,8 +132,17 @@ class Dataset:
         # 타입별 필수 컬럼 검사 (표준 컬럼명 사용)
         if self.dataset_type == DatasetType.DIFFERENTIAL_EXPRESSION:
             required = ['gene_id', 'log2fc', 'adj_pvalue']
+        elif self.dataset_type == DatasetType.ATAC_SEQ:
+            required = ['peak_id', 'log2fc', 'adj_pvalue']
         elif self.dataset_type == DatasetType.GO_ANALYSIS:
             required = ['term', 'gene_count', 'fdr']
+        elif self.dataset_type == DatasetType.MULTI_GROUP:
+            # gene_id + padj + 3개 이상의 샘플 컬럼
+            stat_cols = {'gene_id', 'basemean', 'stat', 'pvalue', 'padj', 'gene_symbol'}
+            df_cols_lower = {c.lower() for c in self.dataframe.columns}
+            has_padj = 'padj' in df_cols_lower
+            sample_cols = self.metadata.get('sample_columns', [])
+            return has_padj and len(sample_cols) >= 3
         else:
             return True
         
@@ -216,12 +234,23 @@ class Dataset:
                     summary['upregulated'] = len(sig_genes[sig_genes['log2fc'] > 0])
                     summary['downregulated'] = len(sig_genes[sig_genes['log2fc'] < 0])
             
+            elif self.dataset_type == DatasetType.ATAC_SEQ:
+                if 'adj_pvalue' in self.dataframe.columns and 'log2fc' in self.dataframe.columns:
+                    sig_peaks = self.dataframe[
+                        (self.dataframe['adj_pvalue'] < 0.05) &
+                        (abs(self.dataframe['log2fc']) > 1.0)
+                    ]
+                    summary['total_peaks'] = len(self.dataframe)
+                    summary['significant_peaks'] = len(sig_peaks)
+                    summary['up_peaks'] = len(sig_peaks[sig_peaks['log2fc'] > 0])
+                    summary['down_peaks'] = len(sig_peaks[sig_peaks['log2fc'] < 0])
+
             elif self.dataset_type == DatasetType.GO_ANALYSIS:
                 if 'fdr' in self.dataframe.columns:
                     sig_terms = self.dataframe[self.dataframe['fdr'] < 0.05]
                     summary['total_terms'] = len(self.dataframe)
                     summary['significant_terms'] = len(sig_terms)
-        
+
         return summary
 
 
@@ -246,9 +275,20 @@ class FilterCriteria:
     fold_enrichment_min: float = 0.0
     ontology: str = "All"  # "All", "BP", "MF", "CC", "KEGG"
     go_direction: str = "All"  # "All", "UP", "DOWN", "TOTAL"
-    
+
+    # Statistical 모드용 (Multi-Group)
+    mg_padj_max: float = 0.05
+    mg_basemean_min: float = 10.0
+
+    # Statistical 모드용 (ATAC-seq)
+    atac_annotation: str = "All"                   # "All" / "Promoter" / "Enhancer" / "Intergenic" 등
+    atac_distance_max: Optional[int] = None        # |distance_to_tss| <= N bp (None = 제한 없음)
+    atac_peak_width_min: Optional[int] = None      # peak_width >= N bp
+    atac_peak_width_max: Optional[int] = None      # peak_width <= N bp
+
     # Gene List 모드용
     gene_list: Optional[List[str]] = None
+    term_id_list: Optional[List[str]] = None  # GO Term ID 리스트 (GO:0006955 형식)
     
     def to_dict(self) -> Dict[str, Any]:
         """딕셔너리로 변환"""
@@ -257,11 +297,18 @@ class FilterCriteria:
             'adj_pvalue_max': self.adj_pvalue_max,
             'log2fc_min': self.log2fc_min,
             'gene_list': self.gene_list,
+            'term_id_list': self.term_id_list,
             'fdr_max': self.fdr_max,
             'fold_enrichment_min': self.fold_enrichment_min,
             'regulation_direction': self.regulation_direction,
             'ontology': self.ontology,
             'go_direction': self.go_direction,
+            'mg_padj_max': self.mg_padj_max,
+            'mg_basemean_min': self.mg_basemean_min,
+            'atac_annotation': self.atac_annotation,
+            'atac_distance_max': self.atac_distance_max,
+            'atac_peak_width_min': self.atac_peak_width_min,
+            'atac_peak_width_max': self.atac_peak_width_max,
         }
     
     @classmethod
@@ -318,6 +365,10 @@ class PreloadedDatasetMetadata:
     file_path: str = ""                  # 저장된 파일 경로 (parquet)
     notes: str = ""                      # 사용자 메모
     tags: List[str] = field(default_factory=list)  # 태그 (검색용)
+
+    # ATAC-seq 전용 메타데이터
+    genome_build: str = ""               # 참조 게놈 (예: mm10, hg38)
+    peak_caller: str = ""                # Peak caller (예: MACS2, HOMER)
     
     def to_dict(self) -> Dict[str, Any]:
         """딕셔너리로 변환 (JSON 저장용)"""
@@ -331,13 +382,15 @@ class PreloadedDatasetMetadata:
             'organism': self.organism,
             'tissue': self.tissue,
             'timepoint': self.timepoint,
-            'row_count': int(self.row_count),  # numpy int64 -> Python int
-            'gene_count': int(self.gene_count),  # numpy int64 -> Python int
-            'significant_genes': int(self.significant_genes),  # numpy int64 -> Python int
+            'row_count': int(self.row_count),
+            'gene_count': int(self.gene_count),
+            'significant_genes': int(self.significant_genes),
             'import_date': self.import_date,
             'file_path': self.file_path,
             'notes': self.notes,
-            'tags': self.tags
+            'tags': self.tags,
+            'genome_build': self.genome_build,
+            'peak_caller': self.peak_caller,
         }
     
     @staticmethod
@@ -359,5 +412,7 @@ class PreloadedDatasetMetadata:
             import_date=data.get('import_date', ''),
             file_path=data.get('file_path', ''),
             notes=data.get('notes', ''),
-            tags=data.get('tags', [])
+            tags=data.get('tags', []),
+            genome_build=data.get('genome_build', ''),
+            peak_caller=data.get('peak_caller', ''),
         )

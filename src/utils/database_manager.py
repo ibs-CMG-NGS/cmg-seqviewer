@@ -193,18 +193,22 @@ class DatabaseManager:
 
                 cols = set(df.columns)
 
-                # DE/GO 자동 판별
+                # ATAC / DE / GO 자동 판별
+                from utils.atac_seq_loader import ATACSeqLoader
+                atac_required = {'peak_id', 'log2fc', 'adj_pvalue'}
                 de_required = {'gene_id', 'log2fc', 'adj_pvalue'}
                 go_required = {'term_id', 'description', 'fdr'}
 
-                if de_required.issubset(cols):
+                if ATACSeqLoader.is_atac_dataframe(df) or atac_required.issubset(cols):
+                    dataset_type = DatasetType.ATAC_SEQ
+                elif de_required.issubset(cols):
                     dataset_type = DatasetType.DIFFERENTIAL_EXPRESSION
                 elif go_required.issubset(cols):
                     dataset_type = DatasetType.GO_ANALYSIS
                 else:
                     self.logger.warning(
                         f"Cannot determine type of '{filename}' "
-                        f"(no DE or GO standard columns found). Skipping."
+                        f"(no ATAC, DE or GO standard columns found). Skipping."
                     )
                     continue
 
@@ -237,7 +241,20 @@ class DatabaseManager:
                 gene_count = 0
                 significant_genes = 0
 
-                if dataset_type == DatasetType.DIFFERENTIAL_EXPRESSION:
+                if dataset_type == DatasetType.ATAC_SEQ:
+                    gene_count = row_count  # ATAC에서는 peak_count 의미
+                    if 'adj_pvalue' in cols:
+                        try:
+                            padj_ok = pd.to_numeric(df['adj_pvalue'], errors='coerce') < 0.05
+                            if 'log2fc' in cols:
+                                lfc_ok = pd.to_numeric(df['log2fc'], errors='coerce').abs() > 1
+                                significant_genes = int((padj_ok & lfc_ok).sum())
+                            else:
+                                significant_genes = int(padj_ok.sum())
+                        except Exception:
+                            significant_genes = 0
+
+                elif dataset_type == DatasetType.DIFFERENTIAL_EXPRESSION:
                     gene_count = row_count
                     if 'adj_pvalue' in cols:
                         try:
@@ -611,8 +628,8 @@ class DatabaseManager:
             metadata.row_count = len(dataset.dataframe)
             metadata.gene_count = len(dataset.get_genes())
             
-            # 유의미한 유전자 수 계산 (padj < 0.05 AND |log2FC| > 1)
-            if dataset.dataset_type == DatasetType.DIFFERENTIAL_EXPRESSION:
+            # 유의미한 유전자/peak 수 계산 (padj < 0.05 AND |log2FC| > 1)
+            if dataset.dataset_type in (DatasetType.DIFFERENTIAL_EXPRESSION, DatasetType.ATAC_SEQ):
                 df = dataset.dataframe
                 if df is not None and 'adj_pvalue' in df.columns:
                     try:
@@ -707,11 +724,11 @@ class DatabaseManager:
             
             # 데이터셋 타입에 따라 필수 컬럼 확인
             if metadata.dataset_type == DatasetType.DIFFERENTIAL_EXPRESSION:
-                # DE 데이터: gene_id, log2fc, adj_pvalue
                 required_standard_cols = [StandardColumns.GENE_ID, StandardColumns.LOG2FC, StandardColumns.ADJ_PVALUE]
             elif metadata.dataset_type == DatasetType.GO_ANALYSIS:
-                # GO 데이터: term_id, description, fdr
                 required_standard_cols = [StandardColumns.TERM_ID, StandardColumns.DESCRIPTION, StandardColumns.FDR]
+            elif metadata.dataset_type == DatasetType.ATAC_SEQ:
+                required_standard_cols = [StandardColumns.PEAK_ID, StandardColumns.LOG2FC, StandardColumns.ADJ_PVALUE]
             else:
                 required_standard_cols = []
             
@@ -789,22 +806,35 @@ class DatabaseManager:
                         if StandardColumns.ONTOLOGY not in df.columns:
                             df[StandardColumns.ONTOLOGY] = 'UNKNOWN'
             
+            # ATAC 데이터의 경우 annotation_categories 복원
+            atac_annotation_categories = []
+            if metadata.dataset_type == DatasetType.ATAC_SEQ:
+                if StandardColumns.ANNOTATION in df.columns:
+                    from utils.atac_seq_loader import ATACSeqLoader
+                    raw_cats = df[StandardColumns.ANNOTATION].dropna().unique().tolist()
+                    atac_annotation_categories = ATACSeqLoader()._normalize_annotation_categories(raw_cats)
+                    self.logger.debug(f"Restored annotation_categories: {atac_annotation_categories}")
+
             # Dataset 객체 생성
+            dataset_meta = {
+                'experiment_condition': metadata.experiment_condition,
+                'cell_type': metadata.cell_type,
+                'organism': metadata.organism,
+                'tissue': metadata.tissue,
+                'timepoint': metadata.timepoint,
+                'import_date': metadata.import_date,
+                'notes': metadata.notes,
+                'tags': metadata.tags,
+            }
+            if atac_annotation_categories:
+                dataset_meta['annotation_categories'] = atac_annotation_categories
+
             dataset = Dataset(
                 name=metadata.alias,
                 dataset_type=metadata.dataset_type,
                 dataframe=df,
-                original_columns=original_columns,  # 원본 컬럼명 참고용
-                metadata={
-                    'experiment_condition': metadata.experiment_condition,
-                    'cell_type': metadata.cell_type,
-                    'organism': metadata.organism,
-                    'tissue': metadata.tissue,
-                    'timepoint': metadata.timepoint,
-                    'import_date': metadata.import_date,
-                    'notes': metadata.notes,
-                    'tags': metadata.tags
-                }
+                original_columns=original_columns,
+                metadata=dataset_meta,
             )
             
             self.logger.info(f"Loaded dataset from database: {metadata.alias} ({len(df)} rows)")

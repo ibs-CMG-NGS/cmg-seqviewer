@@ -19,6 +19,8 @@ a = Analysis(
         ('database', 'database'),
         # Include entire src package
         ('src', 'src'),
+        # Logo image for About dialog
+        ('CMG.png', '.'),
     ],
     hiddenimports=[
         # PyQt6

@@ -90,6 +90,7 @@ class HelpDialog(QDialog):
             "3. Dataset Database",
             "4. Data Filtering",
             "5. GO/KEGG Analysis",
+            "5b. GO Term Comparison",
             "6. Statistical Analysis",
             "7. Visualization",
             "8. Multi-Group Heatmap",
@@ -114,6 +115,7 @@ class HelpDialog(QDialog):
             self._get_dataset_database(),
             self._get_filtering(),
             self._get_go_kegg_analysis(),
+            self._get_go_term_comparison(),
             self._get_statistical_analysis(),
             self._get_visualization(),
             self._get_multi_group_heatmap(),
@@ -1284,6 +1286,8 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
             <li><b>merge_db.py:</b> CLI tool for batch-merging multiple pipeline runs</li>
             <li><b>Auto-Register:</b> Drop parquet files and click Refresh — no metadata editing</li>
             <li><b>🔵 PCA Plot:</b> Sample-level PCA from abundance columns (Ctrl+P)</li>
+            <li><b>🔍 GO Term List Filtering:</b> Paste GO:XXXXXXX IDs into the Filter Panel to filter GO datasets to specific terms</li>
+            <li><b>📊 GO Term Comparison:</b> Compare enriched GO/KEGG terms across multiple datasets side by side with an interactive dot plot</li>
             <li><b>Window Icons:</b> Each window has a unique icon for easy identification in taskbar</li>
             <li><b>Dataset Rename:</b> Change dataset names anytime - updates everywhere automatically</li>
             <li><b>Recent Files:</b> Quick access to your 10 most recent files with path preview</li>
@@ -1402,6 +1406,33 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
             <li>Export clustered results</li>
         </ol>
         
+        <h2>GO Term List Filtering</h2>
+        <p>Filter a GO/KEGG dataset to a specific set of GO term IDs — useful when you already know
+        which terms you want to compare across datasets.</p>
+
+        <h3>How to use</h3>
+        <ol>
+            <li>Make sure a <b>GO/KEGG dataset tab</b> is active</li>
+            <li>Open the <b>Filter Panel</b> and select the <b>Gene List</b> tab</li>
+            <li>Enter GO term IDs (one per line) — e.g.:
+                <pre style="background:#f4f4f4; padding:6px; border-radius:4px; font-size:11px;">GO:0006915
+GO:0007049
+GO:0008150</pre>
+            </li>
+            <li>Click <b>Apply Filter</b></li>
+            <li>A new tab appears: <em>"Filtered: GO Term List (N terms)"</em></li>
+        </ol>
+
+        <h3>Notes</h3>
+        <ul>
+            <li>GO term IDs must follow the <code>GO:XXXXXXX</code> or <code>KEGG:xxxXXXXX</code> format</li>
+            <li>If the active dataset is not a GO/KEGG type, or if non-GO IDs are entered into
+                Gene Symbol mode, the app shows a warning and aborts</li>
+            <li>The filter matches against the <code>term_id</code> / <code>go_id</code> column
+                of the GO dataset</li>
+            <li>Filtered results can be passed directly to the GO Term Comparison workflow</li>
+        </ul>
+
         <h2>Best Practices</h2>
         <ul>
             <li>Filter to meaningful FDR before clustering (&lt; 1e-5 recommended)</li>
@@ -1409,6 +1440,123 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
             <li>Start with 0.3 similarity threshold, increase for fewer clusters</li>
             <li>Focus on representative terms for biological interpretation</li>
             <li>Re-filter Filtered tabs to narrow down results further</li>
+        </ul>
+        """
+
+    def _get_go_term_comparison(self):
+        """GO Term Comparison section"""
+        return """
+        <h1>5b. GO Term Comparison</h1>
+
+        <h2>Overview</h2>
+        <p>GO Term Comparison lets you compare enriched GO/KEGG terms <b>across multiple datasets</b>
+        side by side. It collects a union of terms from all selected datasets and builds
+        a comparison table with FDR, gene count, and fold enrichment per dataset — then
+        optionally visualizes the result as an interactive dot plot.</p>
+
+        <h2>Requirements</h2>
+        <ul>
+            <li>At least <b>2 GO/KEGG datasets</b> loaded in the session</li>
+            <li>A <b>GO term ID list</b> entered in the Filter Panel (Gene List input area) —
+                the comparison is scoped to these terms only</li>
+        </ul>
+        <p><em>If no GO term IDs are provided, the app shows an error and cancels.</em></p>
+
+        <h2>Step-by-Step Workflow</h2>
+        <ol>
+            <li>Load 2 or more GO/KEGG datasets (e.g., Ctrl_GO, KO_GO, OE_GO)</li>
+            <li>Enter the GO term IDs you want to compare in the <b>Filter Panel → Gene List</b>:
+                <pre style="background:#f4f4f4; padding:6px; border-radius:4px; font-size:11px;">GO:0006915
+GO:0007049
+GO:0008150</pre>
+            </li>
+            <li>Open the <b>Comparison Panel</b> (left panel, below Filter Panel)</li>
+            <li>Select the GO datasets to compare</li>
+            <li>Set <b>Comparison Type</b> to <em>GO Term Comparison</em></li>
+            <li>Click <b>Apply</b></li>
+            <li>A new tab appears: <em>"Comparison: GO Terms"</em></li>
+        </ol>
+
+        <h2>Comparison Results Table</h2>
+        <p>The result tab contains one row per GO term with columns for each dataset:</p>
+        <table border="1" cellpadding="5" cellspacing="0" width="100%">
+            <tr style="background:#f0f0f0;">
+                <th>Column</th><th>Description</th>
+            </tr>
+            <tr><td><code>term_id</code></td><td>GO/KEGG term identifier (e.g., GO:0006915)</td></tr>
+            <tr><td><code>description</code></td><td>Term name / description</td></tr>
+            <tr><td><code>ontology</code></td><td>BP / MF / CC / KEGG</td></tr>
+            <tr><td><code>&lt;Dataset&gt;_fdr</code></td><td>Adjusted p-value (FDR) for each dataset</td></tr>
+            <tr><td><code>&lt;Dataset&gt;_gene_count</code></td><td>Number of enriched genes</td></tr>
+            <tr><td><code>&lt;Dataset&gt;_fold_enrichment</code></td><td>Fold enrichment score</td></tr>
+            <tr><td><code>found_in</code></td><td>Comma-separated list of datasets where the term is significant</td></tr>
+        </table>
+        <p>Terms not found in a dataset receive <code>NaN</code> for that dataset's columns.</p>
+
+        <h2>GO Term Comparison Dot Plot</h2>
+        <p>After running a GO Term Comparison, visualize the result as a dot plot:</p>
+        <ol>
+            <li>Switch to the <em>"Comparison: GO Terms"</em> tab</li>
+            <li>Click <b>Visualization → GO/KEGG Dot Plot</b></li>
+        </ol>
+
+        <h3>Plot Layout</h3>
+        <ul>
+            <li><b>X-axis:</b> Datasets (one column per dataset)</li>
+            <li><b>Y-axis:</b> GO terms</li>
+            <li><b>Dot color:</b> FDR value (color scale: low FDR = deep color)</li>
+            <li><b>Dot size:</b> Gene Count or Fold Enrichment (selectable)</li>
+        </ul>
+
+        <h3>Dot Plot Controls</h3>
+        <table border="1" cellpadding="5" cellspacing="0" width="100%">
+            <tr style="background:#f0f0f0;"><th>Control</th><th>Description</th></tr>
+            <tr><td><b>Dot Size Metric</b></td>
+                <td>Choose what determines dot area:
+                    <ul>
+                        <li><b>Gene Count</b> — absolute number of enriched genes</li>
+                        <li><b>Fold Enrichment</b> — enrichment score relative to background</li>
+                        <li><b>Gene Ratio</b> — fraction of genes in the term (if available)</li>
+                    </ul>
+                </td>
+            </tr>
+            <tr><td><b>Top N Terms</b></td>
+                <td>Limit the plot to the N most significant GO terms (ranked by minimum FDR across datasets)</td>
+            </tr>
+            <tr><td><b>Transpose</b></td>
+                <td>Swap axes: X = GO Terms, Y = Datasets</td>
+            </tr>
+            <tr><td><b>Color Map</b></td>
+                <td>Matplotlib colormap for FDR values (default: <em>RdYlBu_r</em>)</td>
+            </tr>
+            <tr><td><b>FDR range</b></td>
+                <td>Min/max FDR cutoff for the color scale</td>
+            </tr>
+            <tr><td><b>Figure Size</b></td>
+                <td>Width and height in inches</td>
+            </tr>
+        </table>
+
+        <h3>Legend</h3>
+        <p>The dot size legend uses <b>three biologically meaningful reference values</b>
+        (small / medium / large) derived from the chosen metric's typical range,
+        so dot sizes are consistent across different datasets and plots.</p>
+
+        <h3>Export</h3>
+        <ul>
+            <li><b>💾 Save Figure</b> — PNG / SVG / PDF</li>
+            <li>Right-click the comparison result table to copy or export as CSV</li>
+        </ul>
+
+        <h2>Tips</h2>
+        <ul>
+            <li>Pre-filter each GO dataset by FDR before running comparison —
+                this reduces noise in the result table</li>
+            <li>Enter only biologically relevant GO term IDs (e.g., terms from a published
+                pathway list) to keep the comparison focused</li>
+            <li>Use <b>Transpose</b> when you have many datasets but few terms</li>
+            <li>Terms with <code>NaN</code> FDR appear as empty (no dot) in the plot —
+                this visually highlights dataset-specific enrichment</li>
         </ul>
         """
 

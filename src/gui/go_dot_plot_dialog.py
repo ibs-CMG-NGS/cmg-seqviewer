@@ -426,20 +426,31 @@ class GODotPlotDialog(QDialog):
         if _size_rep is not None and _norm_max is not None:
             from matplotlib.lines import Line2D
 
+            _leg_fontsize = 8
+
             def _legend_ms(val):
                 s = _S_MIN + np.clip(val / _norm_max, 0, 1) * (_S_MAX - _S_MIN)
                 return 2.0 * np.sqrt(s / np.pi)  # scatter s(면적 pt²) → Line2D markersize(지름 pt)
 
+            # 최대 원 지름 기준으로 labelspacing 동적 계산 (겁침 방지)
+            _max_diam = max(_legend_ms(v) for v, _ in _size_rep)
+            _labelspacing = _max_diam / _leg_fontsize + 0.5
+
             legend_elements = [
-                Line2D([0], [0], marker='o', color='w', markerfacecolor='gray',
-                       markersize=_legend_ms(v), label=lbl,
-                       markeredgecolor='black', markeredgewidth=0.5)
+                Line2D([0], [0], marker='o', color='none',
+                       markerfacecolor='#808080', markeredgecolor='#333333',
+                       markeredgewidth=0.8, markersize=_legend_ms(v), label=lbl)
                 for v, lbl in _size_rep
             ]
-            ax.legend(handles=legend_elements, title=size_mode,
-                      loc='upper left', fontsize=8, framealpha=0.9,
-                      labelspacing=1.8, handlelength=0, handletextpad=1.0,
-                      bbox_to_anchor=(1.02, 0.20))
+            leg = ax.legend(handles=legend_elements, title=size_mode,
+                            loc='upper left', fontsize=_leg_fontsize,
+                            title_fontsize=_leg_fontsize,
+                            labelspacing=_labelspacing,
+                            handlelength=0, handletextpad=1.2,
+                            borderpad=0.9, framealpha=0.95,
+                            edgecolor='#bbbbbb', fancybox=False,
+                            bbox_to_anchor=(1.02, 0.20))
+            leg.get_title().set_fontweight('bold')
         
         # Layout 조정 - tight_layout 사용하여 자동으로 여백 조정
         try:

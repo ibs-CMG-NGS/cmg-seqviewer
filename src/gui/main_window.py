@@ -244,7 +244,12 @@ class MainWindow(QMainWindow):
         self.open_go_kegg_action.setShortcut("Ctrl+G")
         self.open_go_kegg_action.triggered.connect(self._on_open_go_kegg_results)
         file_menu.addAction(self.open_go_kegg_action)
-        
+
+        self.open_atac_action = QAction("Open ATAC-seq Dataset...", self)
+        self.open_atac_action.setShortcut("Ctrl+A")
+        self.open_atac_action.triggered.connect(self._on_open_atac_dataset)
+        file_menu.addAction(self.open_atac_action)
+
         file_menu.addSeparator()
         
         # Database 서브메뉴
@@ -334,20 +339,20 @@ class MainWindow(QMainWindow):
         self.column_level_group = QActionGroup(self)
         self.column_level_group.setExclusive(True)
         
-        basic_action = QAction("Basic (Gene ID + Abundance)", self, checkable=True)
+        basic_action = QAction("Basic", self, checkable=True)
         basic_action.setData("basic")
         basic_action.setChecked(True)  # 기본값: Basic
         basic_action.triggered.connect(lambda: self._on_column_level_changed("basic"))
         self.column_level_group.addAction(basic_action)
         column_level_menu.addAction(basic_action)
-        
-        de_action = QAction("DE Analysis (+ log2FC, padj)", self, checkable=True)
+
+        de_action = QAction("Stat", self, checkable=True)
         de_action.setData("de")
         de_action.triggered.connect(lambda: self._on_column_level_changed("de"))
         self.column_level_group.addAction(de_action)
         column_level_menu.addAction(de_action)
-        
-        full_action = QAction("Full (All Columns)", self, checkable=True)
+
+        full_action = QAction("Full", self, checkable=True)
         full_action.setData("full")
         full_action.triggered.connect(lambda: self._on_column_level_changed("full"))
         self.column_level_group.addAction(full_action)
@@ -427,6 +432,24 @@ class MainWindow(QMainWindow):
         self.go_network_action = QAction("🧬 GO/KEGG Network Chart", self)
         self.go_network_action.triggered.connect(lambda: self._on_go_visualization("network"))
         viz_menu.addAction(self.go_network_action)
+
+        viz_menu.addSeparator()
+
+        # ATAC-seq 전용 시각화 (ATAC 탭 활성 시에만 활성화)
+        self.genomic_dist_action = QAction("🧬 Genomic Distribution (ATAC)", self)
+        self.genomic_dist_action.triggered.connect(lambda: self._on_atac_visualization("genomic_distribution"))
+        self.genomic_dist_action.setEnabled(False)
+        viz_menu.addAction(self.genomic_dist_action)
+
+        self.tss_distance_action = QAction("📏 TSS Distance Plot (ATAC)", self)
+        self.tss_distance_action.triggered.connect(lambda: self._on_atac_visualization("tss_distance"))
+        self.tss_distance_action.setEnabled(False)
+        viz_menu.addAction(self.tss_distance_action)
+
+        self.ma_plot_action = QAction("📈 MA Plot (ATAC)", self)
+        self.ma_plot_action.triggered.connect(lambda: self._on_atac_visualization("ma_plot"))
+        self.ma_plot_action.setEnabled(False)
+        viz_menu.addAction(self.ma_plot_action)
 
         # Help 메뉴
         help_menu = menubar.addMenu("&Help")
@@ -711,12 +734,34 @@ class MainWindow(QMainWindow):
                     seen.add(col)
             return ordered
         
+        # ATAC-seq 데이터인 경우
+        if dataset and dataset.dataset_type == DatasetType.ATAC_SEQ:
+            if self.column_display_level == "full":
+                level_cols = StandardColumns.get_atac_all()
+            elif self.column_display_level == "de":   # 'de' 레벨 → ATAC의 stat 수준
+                level_cols = StandardColumns.get_atac_stat()
+            else:  # "basic"
+                level_cols = StandardColumns.get_atac_basic()
+
+            # 정의된 순서 우선, 나머지 컬럼은 full에만 추가
+            ordered = []
+            seen = set()
+            for col in level_cols:
+                if col in all_columns and col not in internal_columns:
+                    ordered.append(col)
+                    seen.add(col)
+            if self.column_display_level == "full":
+                for col in all_columns:
+                    if col not in seen and col not in internal_columns:
+                        ordered.append(col)
+            return ordered if ordered else [col for col in all_columns if col not in internal_columns]
+
         # DE 데이터인 경우 (기존 로직)
         if self.column_display_level == "full":
             return [col for col in all_columns if col not in internal_columns]
-        
+
         columns_to_show = []
-        
+
         # Basic 레벨: gene_id + symbol + base_mean + 샘플 count 컬럼만
         if self.column_display_level == "basic":
             # 1. 기본 컬럼 추가 (gene_id, symbol, base_mean)
@@ -826,6 +871,27 @@ class MainWindow(QMainWindow):
                 self._add_recent_file(file_path)
             # Cancel 버튼 누르면 아무것도 안함
     
+    def _on_open_atac_dataset(self):
+        """ATAC-seq DA 데이터셋 열기"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open ATAC-seq Dataset", "",
+            "ATAC-seq Files (*.xlsx *.xls *.parquet);;Excel Files (*.xlsx *.xls);;Parquet Files (*.parquet);;All Files (*)"
+        )
+        if not file_path:
+            return
+
+        default_name = Path(file_path).stem
+        dataset_name, ok = QInputDialog.getText(
+            self, "Dataset Name", "Enter a name for this ATAC-seq dataset:",
+            QLineEdit.EchoMode.Normal, default_name
+        )
+        if not ok:
+            return
+
+        name = dataset_name.strip() or default_name
+        self._add_recent_file(file_path)
+        self.presenter.load_dataset(Path(file_path), custom_name=name)
+
     def _on_add_dataset(self):
         """추가 데이터셋 로드"""
         file_path, _ = QFileDialog.getOpenFileName(
@@ -1941,14 +2007,31 @@ class MainWindow(QMainWindow):
             if isinstance(current_tab, QTableWidget):
                 self.presenter.export_data(Path(file_path), current_tab)
     
+    def _remove_tab_safely(self, index: int):
+        """
+        탭 제거 + tab_data 인덱스 재정렬.
+
+        removeTab()이 currentChanged를 동기적으로 발화하기 때문에,
+        tab_data를 먼저 정리한 뒤 실제 탭을 제거해야 _on_tab_changed가
+        올바른 데이터를 읽을 수 있다.
+        """
+        # 1. 제거 대상 삭제
+        if index in self.tab_data:
+            del self.tab_data[index]
+
+        # 2. index보다 큰 키를 1씩 당김 (removeTab 후 탭 shift 반영)
+        shifted: dict = {}
+        for key, value in self.tab_data.items():
+            shifted[key - 1 if key > index else key] = value
+        self.tab_data = shifted
+
+        # 3. 실제 탭 제거 (currentChanged 신호 발화)
+        self.data_tabs.removeTab(index)
+
     def _on_tab_close_requested(self, index: int):
         """탭 닫기 요청"""
         if index > 0:  # 첫 번째 탭(Whole Dataset)은 닫지 않음
-            self.data_tabs.removeTab(index)
-            # 탭 데이터도 제거
-            if index in self.tab_data:
-                del self.tab_data[index]
-            # 메뉴 상태 업데이트
+            self._remove_tab_safely(index)
             self._update_menu_states(self.presenter.fsm.current_state)
     
     def _on_tab_changed(self, index: int):
@@ -1969,6 +2052,9 @@ class MainWindow(QMainWindow):
 
             # GO_ANALYSIS 데이터일 때만 Gene List 탭에 모드 토글 표시
             self._update_filter_panel_go_mode(index)
+
+            # ATAC-seq 필터 섹션 및 전용 시각화 메뉴 업데이트
+            self._update_atac_ui(index)
     
     def _update_filter_panel_go_mode(self, tab_index: int):
         """
@@ -1988,6 +2074,33 @@ class MainWindow(QMainWindow):
             # GO 탭이 아니면 항상 Gene Symbol 모드로 복귀
             if not is_go and hasattr(self.filter_panel, 'gene_symbol_radio'):
                 self.filter_panel.gene_symbol_radio.setChecked(True)
+
+    def _update_atac_ui(self, tab_index: int):
+        """
+        현재 탭이 ATAC_SEQ 데이터셋이면:
+          - FilterPanel의 ATAC 섹션 표시 및 annotation 드롭다운 갱신
+          - Visualization 메뉴의 ATAC 전용 항목 활성화
+        그 외에는 ATAC 섹션을 숨기고 메뉴 비활성화.
+        """
+        from models.data_models import DatasetType
+        dataset = None
+        if tab_index in self.tab_data:
+            _, dataset = self.tab_data[tab_index]
+
+        is_atac = (dataset is not None and
+                   dataset.dataset_type == DatasetType.ATAC_SEQ)
+
+        # FilterPanel 갱신
+        if hasattr(self.filter_panel, 'update_for_dataset'):
+            self.filter_panel.update_for_dataset(dataset if is_atac else None)
+
+        # Visualization 메뉴 활성화
+        if hasattr(self, 'genomic_dist_action'):
+            self.genomic_dist_action.setEnabled(is_atac)
+        if hasattr(self, 'tss_distance_action'):
+            self.tss_distance_action.setEnabled(is_atac)
+        if hasattr(self, 'ma_plot_action'):
+            self.ma_plot_action.setEnabled(is_atac)
 
     def _on_clear_log(self):
         """로그 지우기"""
@@ -3061,11 +3174,50 @@ class MainWindow(QMainWindow):
         dialog = GOFilterDialog(self.presenter.current_dataset, self)
         dialog.exec()
     
+    def _on_atac_visualization(self, plot_type: str):
+        """ATAC-seq 전용 시각화"""
+        from PyQt6.QtWidgets import QMessageBox
+        from models.data_models import DatasetType, Dataset
+
+        current_index = self.data_tabs.currentIndex()
+        if current_index < 0 or current_index not in self.tab_data:
+            QMessageBox.warning(self, "No Data", "Please load an ATAC-seq dataset first.")
+            return
+
+        dataframe, dataset = self.tab_data[current_index]
+        if dataset is None or dataset.dataset_type != DatasetType.ATAC_SEQ:
+            QMessageBox.warning(self, "Invalid Dataset",
+                                "This visualization is only available for ATAC-seq datasets.")
+            return
+
+        # 현재 탭의 필터링된 dataframe 사용
+        meta_copy = dict(dataset.metadata) if dataset.metadata else {}
+        filtered_dataset = Dataset(
+            name=dataset.name,
+            dataset_type=dataset.dataset_type,
+            dataframe=dataframe,
+            original_columns=dataset.original_columns,
+            metadata=meta_copy,
+        )
+
+        if plot_type == "genomic_distribution":
+            from gui.genomic_distribution_dialog import GenomicDistributionDialog
+            dialog = GenomicDistributionDialog(filtered_dataset, self)
+            dialog.exec()
+        elif plot_type == "tss_distance":
+            from gui.tss_distance_dialog import TSSDistanceDialog
+            dialog = TSSDistanceDialog(filtered_dataset, self)
+            dialog.exec()
+        elif plot_type == "ma_plot":
+            from gui.ma_plot_dialog import MAPlotDialog
+            dialog = MAPlotDialog(filtered_dataset, self)
+            dialog.exec()
+
     def _on_go_visualization(self, plot_type: str):
         """GO/KEGG 시각화"""
         from PyQt6.QtWidgets import QMessageBox
         from models.data_models import DatasetType
-        
+
         # 현재 탭 확인
         current_index = self.data_tabs.currentIndex()
         if current_index < 0:
@@ -3174,10 +3326,10 @@ class MainWindow(QMainWindow):
                 if current_name == tab_name:
                     existing_indices.append(i)
             
-            # 기존 동일 이름 탭 제거 (역순으로 제거하여 인덱스 문제 방지)
+            # 기존 동일 이름 탭 제거 (역순 처리 + tab_data 재정렬)
             if existing_indices:
                 for idx in reversed(existing_indices):
-                    self.data_tabs.removeTab(idx)
+                    self._remove_tab_safely(idx)
             
             # 새 탭 생성
             table = self._create_data_tab(tab_name)

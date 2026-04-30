@@ -68,13 +68,6 @@ class ComparisonPanel(QWidget):
         self.comparison_type.currentIndexChanged.connect(self._on_comparison_type_changed)
         comparison_layout.addWidget(self.comparison_type)
         
-        # 비교 타입 설명
-        self.comparison_desc = QLabel()
-        self.comparison_desc.setWordWrap(True)
-        self.comparison_desc.setStyleSheet("color: #666; font-size: 10pt;")
-        self._update_comparison_description()
-        comparison_layout.addWidget(self.comparison_desc)
-        
         comparison_group.setLayout(comparison_layout)
         layout.addWidget(comparison_group)
         
@@ -150,18 +143,7 @@ class ComparisonPanel(QWidget):
     
     def _on_comparison_type_changed(self):
         """비교 타입 변경 시"""
-        self._update_comparison_description()
         self._update_status()
-    
-    def _update_comparison_description(self):
-        """비교 타입 설명 업데이트"""
-        descriptions = {
-            0: "Apply the same gene list filter to multiple datasets and compare results side by side.",
-            1: "Apply the same statistical criteria (log2FC, p-value) to multiple datasets and compare.",
-            2: "Find GO/KEGG terms across multiple GO datasets (union) and compare Fold Enrichment / FDR."
-        }
-        current_index = self.comparison_type.currentIndex()
-        self.comparison_desc.setText(descriptions.get(current_index, ""))
     
     def _update_status(self):
         """상태 업데이트"""

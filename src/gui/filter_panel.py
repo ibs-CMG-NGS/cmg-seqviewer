@@ -69,25 +69,41 @@ class FilterPanel(QWidget):
         gene_layout = QVBoxLayout(gene_tab)
         gene_layout.setContentsMargins(10, 10, 10, 10)
         
-        # 유전자 리스트 텍스트 입력
-        gene_layout.addWidget(QLabel("Gene List:"))
-        self.gene_input = QTextEdit()
-        self.gene_input.setPlaceholderText(
-            "Enter gene IDs (one per line)\n"
-            "or paste from Excel (Ctrl+V)\n"
-            "or drag & drop a gene list file\n\n"
-            "── DE data ──────────────────\n"
-            "Filters rows where gene ID / symbol\n"
-            "exactly matches the list.\n\n"
-            "── GO/KEGG data ─────────────\n"
-            "Filters GO terms that contain\n"
-            "any of the listed genes in\n"
-            "their gene_symbols column.\n\n"
-            "Example:\n"
-            "BRCA1\n"
-            "TP53\n"
-            "EGFR"
+        # === GO Term ID 모드 토글 (GO_ANALYSIS dataset일 때만 표시) ===
+        self.go_mode_widget = QWidget()
+        go_mode_layout = QHBoxLayout(self.go_mode_widget)
+        go_mode_layout.setContentsMargins(0, 0, 0, 4)
+        go_mode_layout.addWidget(QLabel("Filter by:"))
+
+        self.gene_list_mode_btn = QButtonGroup(self)
+        self.gene_symbol_radio = QRadioButton("Gene Symbol")
+        self.gene_symbol_radio.setChecked(True)
+        self.gene_symbol_radio.setToolTip(
+            "Filter GO terms that contain any of the listed gene symbols\n"
+            "(searches the gene_symbols column)"
         )
+        self.go_term_id_radio = QRadioButton("GO Term ID")
+        self.go_term_id_radio.setToolTip(
+            "Filter GO terms whose term_id exactly matches\n"
+            "any of the listed IDs (e.g. GO:0006955)"
+        )
+        self.gene_list_mode_btn.addButton(self.gene_symbol_radio, 0)
+        self.gene_list_mode_btn.addButton(self.go_term_id_radio, 1)
+        go_mode_layout.addWidget(self.gene_symbol_radio)
+        go_mode_layout.addWidget(self.go_term_id_radio)
+        go_mode_layout.addStretch()
+
+        # 라디오 버튼 변경 시 placeholder 업데이트 (양쪽 모두 연결)
+        self.gene_symbol_radio.toggled.connect(self._update_gene_input_placeholder)
+        self.go_term_id_radio.toggled.connect(self._update_gene_input_placeholder)
+
+        self.go_mode_widget.setVisible(False)  # 기본 숨김; MainWindow에서 제어
+        gene_layout.addWidget(self.go_mode_widget)
+
+        # 유전자 리스트 텍스트 입력
+        self._input_label = QLabel("Gene List:")
+        gene_layout.addWidget(self._input_label)
+        self.gene_input = QTextEdit()
         self.gene_input.setMaximumHeight(200)
         self.gene_input.textChanged.connect(self._update_gene_count)
         
@@ -101,9 +117,12 @@ class FilterPanel(QWidget):
         
         gene_layout.addWidget(self.gene_input)
         
-        # 유전자 개수 라벨
+        # 입력 개수 라벨
         self.gene_count_label = QLabel("Genes: 0")
         gene_layout.addWidget(self.gene_count_label)
+        
+        # gene_count_label 생성 이후에 placeholder 초기화
+        self._update_gene_input_placeholder()
         
         # 파일에서 로드 버튼
         load_file_layout = QHBoxLayout()
@@ -255,7 +274,70 @@ class FilterPanel(QWidget):
         self.advanced_go_filter_btn.setToolTip("Open advanced GO/KEGG filtering dialog")
         self.advanced_go_filter_btn.clicked.connect(lambda: self.analysis_requested.emit("go_advanced_filter"))
         stats_layout.addWidget(self.advanced_go_filter_btn)
-        
+
+        # === ATAC-seq Filtering Section ===
+        self.atac_filter_widget = QWidget()
+        atac_outer_layout = QVBoxLayout(self.atac_filter_widget)
+        atac_outer_layout.setContentsMargins(0, 0, 0, 0)
+        atac_outer_layout.setSpacing(4)
+
+        atac_sep = QLabel()
+        atac_sep.setStyleSheet("border-top: 2px solid #cccccc; margin: 10px 0px;")
+        atac_sep.setFixedHeight(2)
+        atac_outer_layout.addWidget(atac_sep)
+
+        atac_label = QLabel("<b>ATAC-seq Filtering:</b>")
+        atac_outer_layout.addWidget(atac_label)
+
+        # Annotation + Distance to TSS 한 줄 배치
+        atac_row1_layout = QHBoxLayout()
+        atac_row1_layout.setSpacing(6)
+
+        atac_row1_layout.addWidget(QLabel("Annot:"))
+        self.atac_annotation_combo = QComboBox()
+        self.atac_annotation_combo.addItem("All")
+        self.atac_annotation_combo.setToolTip(
+            "Filter peaks by genomic annotation category.\n"
+            "Categories are populated from the loaded dataset."
+        )
+        self.atac_annotation_combo.setFixedWidth(100)
+        atac_row1_layout.addWidget(self.atac_annotation_combo)
+
+        atac_row1_layout.addSpacing(8)
+        atac_row1_layout.addWidget(QLabel("|TSS| ≤"))
+        self.atac_distance_input = QLineEdit()
+        self.atac_distance_input.setPlaceholderText("bp")
+        self.atac_distance_input.setFixedWidth(70)
+        self.atac_distance_input.setToolTip(
+            "Filter peaks by absolute distance to TSS (bp).\n"
+            "Leave blank to disable this filter."
+        )
+        atac_row1_layout.addWidget(self.atac_distance_input)
+        atac_row1_layout.addWidget(QLabel("bp"))
+        atac_row1_layout.addStretch()
+        atac_outer_layout.addLayout(atac_row1_layout)
+
+        # Peak Width 필터
+        atac_width_layout = QHBoxLayout()
+        atac_width_layout.addWidget(QLabel("Peak Width:"))
+        self.atac_width_min_input = QLineEdit()
+        self.atac_width_min_input.setPlaceholderText("min bp")
+        self.atac_width_min_input.setFixedWidth(70)
+        self.atac_width_min_input.setToolTip("Minimum peak width in bp (blank = no limit)")
+        atac_width_layout.addWidget(self.atac_width_min_input)
+        atac_width_layout.addWidget(QLabel("–"))
+        self.atac_width_max_input = QLineEdit()
+        self.atac_width_max_input.setPlaceholderText("max bp")
+        self.atac_width_max_input.setFixedWidth(70)
+        self.atac_width_max_input.setToolTip("Maximum peak width in bp (blank = no limit)")
+        atac_width_layout.addWidget(self.atac_width_max_input)
+        atac_width_layout.addWidget(QLabel("bp"))
+        atac_width_layout.addStretch()
+        atac_outer_layout.addLayout(atac_width_layout)
+
+        stats_layout.addWidget(self.atac_filter_widget)
+        self.atac_filter_widget.setVisible(False)  # 기본 숨김; update_for_dataset에서 제어
+
         stats_layout.addStretch()
         self.filter_tabs.addTab(stats_tab, "📊 Statistical")
         
@@ -287,10 +369,49 @@ class FilterPanel(QWidget):
         # Stretch
         layout.addStretch()
     
+    def _update_gene_input_placeholder(self):
+        """모드에 따라 gene_input의 placeholder 텍스트 업데이트"""
+        if hasattr(self, 'go_term_id_radio') and self.go_term_id_radio.isChecked():
+            self._input_label.setText("GO Term ID List:")
+            self.gene_input.setPlaceholderText(
+                "Enter GO/KEGG Term IDs (one per line)\n"
+                "or drag & drop a text file\n\n"
+                "Filters GO terms whose term_id\n"
+                "exactly matches the listed IDs.\n\n"
+                "Example:\n"
+                "GO:0006955\n"
+                "GO:0002376\n"
+                "hsa04110"
+            )
+            self.gene_count_label.setText("IDs: 0")
+        else:
+            self._input_label.setText("Gene List:")
+            self.gene_input.setPlaceholderText(
+                "Enter gene IDs (one per line)\n"
+                "or paste from Excel (Ctrl+V)\n"
+                "or drag & drop a gene list file\n\n"
+                "── DE data ──────────────────\n"
+                "Filters rows where gene ID / symbol\n"
+                "exactly matches the list.\n\n"
+                "── GO/KEGG data ─────────────\n"
+                "Filters GO terms that contain\n"
+                "any of the listed genes in\n"
+                "their gene_symbols column.\n\n"
+                "Example:\n"
+                "BRCA1\n"
+                "TP53\n"
+                "EGFR"
+            )
+            self.gene_count_label.setText("Genes: 0")
+        self._update_gene_count()
+
     def _update_gene_count(self):
-        """유전자 개수 업데이트"""
-        genes = self.get_gene_list()
-        self.gene_count_label.setText(f"Genes: {len(genes)}")
+        """입력 개수 업데이트"""
+        items = self.get_gene_list()
+        if hasattr(self, 'go_term_id_radio') and self.go_term_id_radio.isChecked():
+            self.gene_count_label.setText(f"IDs: {len(items)}")
+        else:
+            self.gene_count_label.setText(f"Genes: {len(items)}")
     
     def get_gene_list(self) -> List[str]:
         """입력된 유전자 리스트 반환"""
@@ -433,13 +554,17 @@ class FilterPanel(QWidget):
         # 현재 선택된 탭 확인 (0: Gene List, 1: Statistical)
         current_tab = self.filter_tabs.currentIndex()
         mode = FilterMode.GENE_LIST if current_tab == 0 else FilterMode.STATISTICAL
-        
-        # 유전자 리스트 (Gene List 탭일 때만)
+
+        # Gene List 탭: GO Term ID 모드인지 Gene Symbol 모드인지 구분
         gene_list = None
+        term_id_list = None
         if mode == FilterMode.GENE_LIST:
-            genes = self.get_gene_list()
-            gene_list = genes if genes else None
-        
+            items = self.get_gene_list()
+            if hasattr(self, 'go_term_id_radio') and self.go_term_id_radio.isChecked():
+                term_id_list = items if items else None
+            else:
+                gene_list = items if items else None
+
         # Regulation direction 결정
         regulation_direction = "both"  # 기본값
         if hasattr(self, 'regulation_group'):
@@ -448,17 +573,24 @@ class FilterPanel(QWidget):
                 regulation_direction = "up"
             elif checked_button_id == 2:  # Down
                 regulation_direction = "down"
-        
+
         return FilterCriteria(
             mode=mode,
             adj_pvalue_max=self.adj_pvalue_input.value(),
             log2fc_min=self.log2fc_input.value(),
             gene_list=gene_list,
+            term_id_list=term_id_list,
             fdr_max=self._get_go_fdr_value(),
             fold_enrichment_min=self.go_fe_input.value(),
             regulation_direction=regulation_direction,
             ontology=self.ontology_combo.currentText(),
             go_direction=self.go_direction_combo.currentText(),
+            mg_padj_max=0.05,
+            mg_basemean_min=10.0,
+            atac_annotation=self.atac_annotation_combo.currentText(),
+            atac_distance_max=self._get_atac_int(self.atac_distance_input),
+            atac_peak_width_min=self._get_atac_int(self.atac_width_min_input),
+            atac_peak_width_max=self._get_atac_int(self.atac_width_max_input),
         )
     
     def _get_go_fdr_value(self) -> float:
@@ -491,17 +623,67 @@ class FilterPanel(QWidget):
             self.set_gene_list(criteria.gene_list)
     
     def get_go_filter_criteria(self):
-        """
-        GO/KEGG 필터링 기준 반환
-        
-        Returns:
-            dict: FDR, Ontology, Direction 정보
-        """
+        """GO/KEGG 필터링 기준 반환"""
         return {
             'fdr_max': self._get_go_fdr_value(),
             'ontology': self.ontology_combo.currentText(),
             'direction': self.go_direction_combo.currentText(),
         }
+
+    def _get_atac_int(self, line_edit) -> 'int | None':
+        """QLineEdit에서 정수값 파싱. 비어있거나 유효하지 않으면 None 반환."""
+        text = line_edit.text().strip()
+        if not text:
+            return None
+        try:
+            val = int(text)
+            return val if val >= 0 else None
+        except ValueError:
+            return None
+
+    def update_for_dataset(self, dataset) -> None:
+        """
+        현재 탭의 데이터셋 타입에 따라 ATAC 필터 섹션을 표시/숨김하고
+        annotation 드롭다운을 해당 데이터셋의 카테고리로 채웁니다.
+
+        Args:
+            dataset: Dataset 객체 (None이면 ATAC 섹션 숨김)
+        """
+        from models.data_models import DatasetType
+        is_atac = (dataset is not None and
+                   dataset.dataset_type == DatasetType.ATAC_SEQ)
+        self.atac_filter_widget.setVisible(is_atac)
+
+        if not is_atac:
+            return
+
+        # annotation 드롭다운 갱신
+        categories = []
+        if dataset.metadata:
+            categories = dataset.metadata.get('annotation_categories', [])
+
+        self.atac_annotation_combo.blockSignals(True)
+        current = self.atac_annotation_combo.currentText()
+        self.atac_annotation_combo.clear()
+        self.atac_annotation_combo.addItem("All")
+        for cat in categories:
+            self.atac_annotation_combo.addItem(cat)
+        # 이전 선택 복원 (없으면 "All" 유지)
+        idx = self.atac_annotation_combo.findText(current)
+        if idx >= 0:
+            self.atac_annotation_combo.setCurrentIndex(idx)
+        self.atac_annotation_combo.blockSignals(False)
+
+        # peak_width 컬럼 유무에 따라 필드 활성화/비활성화
+        has_width = (dataset.dataframe is not None and
+                     'peak_width' in dataset.dataframe.columns)
+        self.atac_width_min_input.setEnabled(has_width)
+        self.atac_width_max_input.setEnabled(has_width)
+
+        # distance_to_tss 컬럼 유무에 따라 필드 활성화/비활성화
+        has_dist = (dataset.dataframe is not None and
+                    'distance_to_tss' in dataset.dataframe.columns)
+        self.atac_distance_input.setEnabled(has_dist)
     
     def _gene_drag_enter(self, event: QDragEnterEvent):
         """Gene input 드래그 진입 이벤트"""
