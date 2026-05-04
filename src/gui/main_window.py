@@ -380,7 +380,12 @@ class MainWindow(QMainWindow):
         clear_log_action = QAction("Clear Log", self)
         clear_log_action.triggered.connect(self._on_clear_log)
         view_menu.addAction(clear_log_action)
-        
+
+        view_menu.addSeparator()
+        igv_settings_action = QAction("🔬 IGV Settings...", self)
+        igv_settings_action.triggered.connect(self._on_igv_settings)
+        view_menu.addAction(igv_settings_action)
+
         # Visualization 메뉴
         viz_menu = menubar.addMenu("&Visualization")
         
@@ -3448,42 +3453,59 @@ class MainWindow(QMainWindow):
         from PyQt6.QtWidgets import QMenu
         from PyQt6.QtGui import QDesktopServices
         from PyQt6.QtCore import QUrl
-        
+
         # 클릭된 셀 찾기
         item = table.itemAt(pos)
         if not item:
             return
-        
+
         row = item.row()
         col = item.column()
-        
+
         # 컬럼 헤더 이름 가져오기
         header_item = table.horizontalHeaderItem(col)
         if not header_item:
             return
-        
+
         column_name = header_item.text().lower()
-        
+
         # 셀 값 가져오기
         cell_text = item.text().strip()
-        if not cell_text:
-            return
-        
+
         # 컬럼 타입 감지
-        is_gene_column = any(keyword in column_name for keyword in 
+        is_gene_column = any(keyword in column_name for keyword in
                             ['gene_id', 'gene id', 'geneid', 'symbol', 'gene_symbol', 'gene symbol'])
-        
-        is_go_column = any(keyword in column_name for keyword in 
+
+        is_go_column = any(keyword in column_name for keyword in
                           ['term_id', 'termid', 'go_id', 'goid', 'go term'])
-        
-        is_kegg_column = any(keyword in column_name for keyword in 
+
+        is_kegg_column = any(keyword in column_name for keyword in
                             ['pathway_id', 'pathwayid', 'kegg_id', 'keggid', 'kegg pathway'])
-        
-        is_description_column = any(keyword in column_name for keyword in 
+
+        is_description_column = any(keyword in column_name for keyword in
                                    ['description', 'term_name', 'pathway_name', 'name'])
-        
+
+        # ATAC-seq 여부 — 현재 탭의 dataset 확인
+        current_index = self.data_tabs.currentIndex()
+        atac_dataset = None
+        atac_dataframe = None
+        if current_index in self.tab_data:
+            _df, _ds = self.tab_data[current_index]
+            if _ds and _ds.dataset_type == DatasetType.ATAC_SEQ:
+                coord_cols = {'chromosome', 'peak_start', 'peak_end'}
+                if _df is not None and coord_cols.issubset(_df.columns):
+                    atac_dataframe = _df
+                    atac_dataset = _ds
+
+        has_atac_coords = atac_dataframe is not None
+
         # 아무 것도 해당하지 않으면 메뉴 표시 안 함
-        if not (is_gene_column or is_go_column or is_kegg_column or is_description_column):
+        if not (is_gene_column or is_go_column or is_kegg_column or is_description_column
+                or has_atac_coords):
+            return
+
+        # 빈 셀이고 ATAC IGV만 있을 때도 메뉴를 표시할 수 있도록 cell_text 체크를 뒤로 이동
+        if not cell_text and not has_atac_coords:
             return
         
         # 컨텍스트 메뉴 생성
@@ -3517,7 +3539,18 @@ class MainWindow(QMainWindow):
         # Description 컬럼이지만 GO/KEGG가 아닌 경우 - 일반 검색만
         elif is_description_column:
             self._add_general_search_items(menu, cell_text)
-        
+
+        # ATAC-seq: IGV 이동 / Locus 복사
+        if has_atac_coords:
+            if menu.actions():
+                menu.addSeparator()
+            igv_action = menu.addAction("🔬 Send to IGV")
+            igv_action.triggered.connect(
+                lambda: self._send_peak_to_igv(atac_dataframe, atac_dataset, row))
+            copy_action = menu.addAction("📋 Copy Locus")
+            copy_action.triggered.connect(
+                lambda: self._copy_locus(atac_dataframe, row))
+
         # 메뉴 표시
         if menu.actions():  # 메뉴 항목이 있을 때만 표시
             menu.exec(table.viewport().mapToGlobal(pos))
@@ -3677,3 +3710,53 @@ class MainWindow(QMainWindow):
                 QUrl(f"https://pubmed.ncbi.nlm.nih.gov/?term={text}")
             )
         )
+
+    # ──────────────────────────── IGV integration ────────────────────────────
+
+    def _send_peak_to_igv(self, dataframe, dataset, row: int):
+        from utils.igv_connector import IGVConnector
+        from PyQt6.QtWidgets import QMessageBox
+
+        chrom = str(dataframe.iloc[row]['chromosome'])
+        start = int(dataframe.iloc[row]['peak_start'])
+        end = int(dataframe.iloc[row]['peak_end'])
+
+        port = self.settings.value("igv/port", 60151, type=int)
+        padding = self.settings.value("igv/padding", 500, type=int)
+        auto_genome = self.settings.value("igv/auto_genome", True, type=bool)
+
+        connector = IGVConnector(port=port)
+        if not connector.is_running():
+            QMessageBox.warning(
+                self, "IGV Not Running",
+                "IGV에 연결할 수 없습니다.\n\n"
+                "IGV를 실행하고 Tools → Preferences → Advanced에서\n"
+                "'Enable port (60151)'을 체크해 주세요."
+            )
+            return
+
+        if auto_genome:
+            genome = (dataset.metadata.get('genome_build') or
+                      self.settings.value("igv/last_genome", ""))
+            if genome:
+                connector.set_genome(genome)
+
+        success = connector.goto_peak(chrom, start, end, padding)
+        if not success:
+            self.logger.warning(f"IGV goto failed: {chrom}:{start}-{end}")
+
+    def _copy_locus(self, dataframe, row: int):
+        from PyQt6.QtWidgets import QApplication
+
+        chrom = str(dataframe.iloc[row]['chromosome'])
+        start = int(dataframe.iloc[row]['peak_start'])
+        end = int(dataframe.iloc[row]['peak_end'])
+        locus = f"{chrom}:{start}-{end}"
+        QApplication.clipboard().setText(locus)
+        if hasattr(self, 'status_label'):
+            self.status_label.setText(f"Copied: {locus}")
+
+    def _on_igv_settings(self):
+        from gui.igv_settings_dialog import IGVSettingsDialog
+        dialog = IGVSettingsDialog(self.settings, self)
+        dialog.exec()

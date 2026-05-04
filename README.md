@@ -387,6 +387,7 @@ cmg-seqviewer/
 |   |   |-- ma_plot_dialog.py                # MA Plot (ATAC-seq / RNA-seq)
 |   |   |-- genomic_distribution_dialog.py   # ATAC-seq annotation pie chart
 |   |   |-- tss_distance_dialog.py           # ATAC-seq TSS distance histogram
+|   |   |-- igv_settings_dialog.py           # IGV integration settings
 |   |   |-- help_dialog.py                   # F1 help system
 |   |   +-- workers.py                       # Async QThread workers
 |   |-- presenters/
@@ -394,6 +395,7 @@ cmg-seqviewer/
 |   +-- utils/
 |       |-- data_loader.py           # Excel/CSV/parquet loading + type detection
 |       |-- atac_seq_loader.py       # ATAC-seq DA loader (HOMER-annotated DESeq2)
+|       |-- igv_connector.py         # IGV HTTP Remote Control API client
 |       |-- go_kegg_loader.py        # GO/KEGG specific loader
 |       |-- go_clustering.py         # Clustering algorithms
 |       |-- statistics.py            # Fisher's test, GSEA
