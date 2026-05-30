@@ -306,9 +306,12 @@ class MainPresenter(QObject):
                     filtered_df = self._filter_by_statistics(
                         adj_pvalue_max=criteria.adj_pvalue_max,
                         log2fc_min=criteria.log2fc_min,
-                        fdr_max=None  # DE에서는 사용 안함
+                        fdr_max=None,  # DE에서는 사용 안함
+                        regulation_direction=criteria.regulation_direction,
                     )
                     tab_name = f"Filtered: p≤{criteria.adj_pvalue_max:.3g}, |FC|≥{criteria.log2fc_min:.3g}"
+                    if criteria.regulation_direction != "both":
+                        tab_name += f" ({criteria.regulation_direction.capitalize()})"
                 
                 elif dataset_type == DatasetType.GO_ANALYSIS:
                     # GO 데이터: fdr, ontology, direction 사용
@@ -548,10 +551,11 @@ class MainPresenter(QObject):
         return filtered
 
     def _filter_by_statistics(self, adj_pvalue_max: Optional[float] = None,
-                               log2fc_min: Optional[float] = None, 
+                               log2fc_min: Optional[float] = None,
                                fdr_max: Optional[float] = None,
                                ontology: Optional[str] = None,
-                               go_direction: Optional[str] = None) -> pd.DataFrame:
+                               go_direction: Optional[str] = None,
+                               regulation_direction: str = "both") -> pd.DataFrame:
         """
         통계값으로 필터링 (p-value, FC)
         
@@ -579,10 +583,15 @@ class MainPresenter(QObject):
             
             mask = (df[adj_pval_col] <= adj_pvalue_max) & (abs(df[log2fc_col]) >= log2fc_min)
             filtered = df[mask]
-            
+
+            if regulation_direction == "up":
+                filtered = filtered[filtered[log2fc_col] > 0]
+            elif regulation_direction == "down":
+                filtered = filtered[filtered[log2fc_col] < 0]
+
             self.logger.info(
                 f"Statistical filter (DE): {len(filtered)}/{len(df)} rows "
-                f"(p≤{adj_pvalue_max}, |FC|≥{log2fc_min})"
+                f"(p≤{adj_pvalue_max}, |FC|≥{log2fc_min}, dir={regulation_direction})"
             )
             
         elif dataset_type == DatasetType.GO_ANALYSIS:
@@ -1287,7 +1296,147 @@ class MainPresenter(QObject):
                         keyword, case=case_sensitive, na=False
                     )]
                     self.logger.debug(f"After description filter: {len(df)} terms")
-            
+
+            return df
+
+        except Exception as e:
+            self.logger.error(f"filter_go_kegg_data failed: {e}", exc_info=True)
+            raise
+
+    # ------------------------------------------------------------------ #
+    #  Multi-Omics Integration
+    # ------------------------------------------------------------------ #
+
+    def integrate_datasets(
+        self,
+        rna_name: str,
+        atac_name: str,
+        method: str = "nearest_gene",
+        tss_window: int = 2000,
+        rna_padj: float = 0.05,
+        rna_lfc: float = 1.0,
+        atac_padj: float = 0.05,
+        atac_lfc: float = 1.0,
+    ):
+        """
+        RNA-seq DE 데이터셋과 ATAC-seq DA 데이터셋을 통합 분석합니다.
+
+        통합 결과는 새 탭으로 표시되며, self.datasets에 MULTI_OMICS 타입으로 저장됩니다.
+
+        Args:
+            rna_name:   로드된 RNA-seq 데이터셋 이름
+            atac_name:  로드된 ATAC-seq 데이터셋 이름
+            method:     "nearest_gene" | "promoter_only"
+            tss_window: promoter_only 모드 TSS window (bp)
+            rna_padj:   RNA 유의성 adj p-value cutoff
+            rna_lfc:    RNA 유의성 |log2FC| cutoff
+            atac_padj:  ATAC 유의성 adj p-value cutoff
+            atac_lfc:   ATAC 유의성 |log2FC| cutoff
+        """
+        import time
+        start_time = time.time()
+
+        if rna_name not in self.datasets:
+            self.error_occurred.emit(f"RNA-seq dataset not found: {rna_name}")
+            return
+        if atac_name not in self.datasets:
+            self.error_occurred.emit(f"ATAC-seq dataset not found: {atac_name}")
+            return
+
+        self.audit_logger.log_action(
+            "Integrate Datasets",
+            details={
+                "rna": rna_name, "atac": atac_name,
+                "method": method, "tss_window": tss_window,
+            },
+        )
+
+        try:
+            from models.multi_omics_dataset import MultiOmicsDataset
+            from models.data_models import DatasetType
+
+            mo = MultiOmicsDataset(
+                name=f"{rna_name} + {atac_name}",
+                rna_dataset=self.datasets[rna_name],
+                atac_dataset=self.datasets[atac_name],
+                integration_method=method,
+                tss_window=tss_window,
+                rna_padj_cutoff=rna_padj,
+                rna_lfc_cutoff=rna_lfc,
+                atac_padj_cutoff=atac_padj,
+                atac_lfc_cutoff=atac_lfc,
+            )
+
+            integrated_df = mo.integrate()
+
+            # MULTI_OMICS Dataset으로 저장
+            result_dataset = mo.to_dataset()
+            unique_name = self.view.dataset_manager._generate_unique_name(result_dataset.name)
+            result_dataset.name = unique_name
+            mo.name = unique_name
+            self.datasets[unique_name] = result_dataset
+            self.current_dataset = result_dataset
+
+            # 집계 정보 로그
+            cats = mo.get_category_counts()
+            self.logger.info(
+                f"Integration complete '{unique_name}': "
+                f"{len(integrated_df)} genes | {cats}"
+            )
+
+            # View 업데이트
+            self.dataset_loaded.emit(unique_name, result_dataset)
+            self._update_view_with_dataset(result_dataset)
+            self.view._update_comparison_panel_datasets()
+
+            duration = time.time() - start_time
+            self.audit_logger.log_action(
+                "Integration Complete",
+                details={"rows": len(integrated_df), "categories": cats},
+                duration=duration,
+            )
+
+        except Exception as e:
+            self.logger.error(f"Integration failed: {e}", exc_info=True)
+            self.error_occurred.emit(f"Integration failed: {str(e)}")
+
+    def export_multi_omics_excel(self, integrated_df: pd.DataFrame, file_path: str):
+        """
+        통합 결과를 카테고리별 다중 시트 Excel로 내보냅니다.
+
+        Sheet 구성:
+          Integrated_Summary, Concordant_UP, Concordant_DOWN,
+          Discordant, RNA_only, ATAC_only
+        """
+        from models.multi_omics_dataset import ConcordanceCategory, IntegratedColumns
+
+        col_cat = IntegratedColumns.CONCORDANCE
+
+        sheet_map = {
+            "Integrated_Summary": integrated_df,
+            "Concordant_UP":   integrated_df[integrated_df[col_cat] == ConcordanceCategory.CONCORDANT_BOTH_UP],
+            "Concordant_DOWN": integrated_df[integrated_df[col_cat] == ConcordanceCategory.CONCORDANT_BOTH_DOWN],
+            "Discordant":      integrated_df[integrated_df[col_cat].isin([
+                ConcordanceCategory.DISCORDANT_RNA_UP,
+                ConcordanceCategory.DISCORDANT_RNA_DOWN,
+            ])],
+            "RNA_only":  integrated_df[integrated_df[col_cat] == ConcordanceCategory.RNA_ONLY],
+            "ATAC_only": integrated_df[integrated_df[col_cat] == ConcordanceCategory.ATAC_ONLY],
+        }
+
+        try:
+            with pd.ExcelWriter(file_path, engine="openpyxl") as writer:
+                for sheet_name, df in sheet_map.items():
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+            self.logger.info(f"Multi-omics Excel exported: {file_path}")
+            self.audit_logger.log_action(
+                "Export Multi-Omics Excel",
+                details={"file": file_path, "rows": len(integrated_df)},
+            )
+        except Exception as e:
+            self.logger.error(f"Export failed: {e}", exc_info=True)
+            self.error_occurred.emit(f"Export failed: {str(e)}")
+
             # 결과 로깅
             filtered_count = len(df)
             self.logger.info(

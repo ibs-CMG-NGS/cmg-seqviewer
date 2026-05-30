@@ -2,7 +2,7 @@
 ; Download Inno Setup: https://jrsoftware.org/isdl.php
 
 #define MyAppName "CMG-SeqViewer"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.2.1"
 #define MyAppPublisher "Your Organization"
 #define MyAppURL "https://yourwebsite.com"
 #define MyAppExeName "CMG-SeqViewer.exe"

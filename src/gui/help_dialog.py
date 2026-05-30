@@ -92,6 +92,7 @@ class HelpDialog(QDialog):
             "5. GO/KEGG Analysis",
             "5b. GO Term Comparison",
             "5c. ATAC-seq Analysis",
+            "5d. Multi-Omics Integration",
             "6. Statistical Analysis",
             "7. Visualization",
             "8. Multi-Group Heatmap",
@@ -118,6 +119,7 @@ class HelpDialog(QDialog):
             self._get_go_kegg_analysis(),
             self._get_go_term_comparison(),
             self._get_atac_seq_analysis(),
+            self._get_multi_omics_integration(),
             self._get_statistical_analysis(),
             self._get_visualization(),
             self._get_multi_group_heatmap(),
@@ -544,6 +546,156 @@ pipeline_run_2026-03-12/
         <p>These can differ: a peak may overlap an intron of a large gene (annotation) while
         the nearest TSS belongs to a different gene (nearest_gene). For downstream analysis
         (e.g., gene list filtering), <code>nearest_gene</code> is used.</p>
+        """
+
+    def _get_multi_omics_integration(self):
+        """Multi-Omics Integration section"""
+        return """
+        <h1>5d. Multi-Omics Integration</h1>
+
+        <h2>Overview</h2>
+        <p>Multi-Omics Integration combines <b>RNA-seq DE</b> results and
+        <b>ATAC-seq DA</b> results to reveal genes that are both
+        transcriptionally and epigenomically regulated.
+        For each gene, the analysis asks: is there concordant evidence from both modalities?</p>
+
+        <h2>Requirements</h2>
+        <ul>
+            <li>At least one <b>RNA-seq</b> dataset and one <b>ATAC-seq</b> dataset loaded</li>
+            <li>Both datasets must share gene identifiers (RNA uses <code>symbol</code>;
+                ATAC uses <code>nearest_gene</code>)</li>
+        </ul>
+
+        <h2>Step-by-Step Workflow</h2>
+        <ol>
+            <li>Load an RNA-seq DE dataset (e.g., via <b>File &rarr; Open Dataset&hellip;</b>)</li>
+            <li>Load an ATAC-seq DA dataset (e.g., via <b>File &rarr; Open ATAC-seq Dataset&hellip;</b>)</li>
+            <li>Open <b>Analysis &rarr; 🔗 Integrate RNA + ATAC&hellip;</b></li>
+            <li>In the <b>Multi-Omics Panel</b> that appears on the left:</li>
+            <ul>
+                <li>Select the RNA dataset from the drop-down</li>
+                <li>Select the ATAC dataset from the drop-down</li>
+                <li>Choose an <b>Integration Method</b></li>
+                <li>Set significance thresholds for RNA and ATAC</li>
+            </ul>
+            <li>Click <b>Integrate</b></li>
+            <li>A new tab appears: <em>&ldquo;Multi-Omics: [RNA name] × [ATAC name]&rdquo;</em></li>
+        </ol>
+
+        <h2>Integration Methods</h2>
+        <table border="1" cellpadding="5" cellspacing="0" style="border-collapse:collapse; width:100%;">
+            <tr style="background:#f0f0f0;"><th>Method</th><th>Description</th></tr>
+            <tr>
+                <td><b>Nearest Gene</b></td>
+                <td>All ATAC peaks whose annotated <code>nearest_gene</code> matches
+                    an RNA-seq gene are grouped and summarised per gene.
+                    Captures distal enhancers and all regulatory peaks.</td>
+            </tr>
+            <tr>
+                <td><b>Promoter Only</b></td>
+                <td>Only peaks with <code>|distance_to_tss|</code> within the TSS Window
+                    (default 2,000 bp) are used.
+                    Focuses on proximal promoter regulation.</td>
+            </tr>
+        </table>
+
+        <h2>Significance Thresholds</h2>
+        <ul>
+            <li><b>RNA padj &le;:</b> Adjusted p-value cutoff for RNA-seq significance (default 0.05)</li>
+            <li><b>RNA |log2FC| &ge;:</b> Fold-change cutoff for RNA-seq (default 1.0)</li>
+            <li><b>ATAC padj &le;:</b> Adjusted p-value cutoff for ATAC-seq (default 0.05)</li>
+            <li><b>ATAC |log2FC| &ge;:</b> Fold-change cutoff for ATAC-seq (default 0.5)</li>
+        </ul>
+        <p>A gene is &ldquo;RNA-significant&rdquo; if <b>both</b> thresholds are met.
+        Likewise for ATAC.</p>
+
+        <h2>Concordance Categories</h2>
+        <p>Each gene is assigned one of seven concordance labels:</p>
+        <table border="1" cellpadding="5" cellspacing="0" style="border-collapse:collapse; width:100%;">
+            <tr style="background:#f0f0f0;"><th>Category</th><th>Meaning</th><th>Color</th></tr>
+            <tr>
+                <td><b>Concordant_Both_UP</b></td>
+                <td>RNA up <em>and</em> ATAC more accessible — epigenomically supported activation</td>
+                <td style="background:#D73027; color:white;">&nbsp;#D73027&nbsp;</td>
+            </tr>
+            <tr>
+                <td><b>Concordant_Both_DOWN</b></td>
+                <td>RNA down <em>and</em> ATAC less accessible — epigenomically supported repression</td>
+                <td style="background:#4575B4; color:white;">&nbsp;#4575B4&nbsp;</td>
+            </tr>
+            <tr>
+                <td><b>Discordant_RNA_UP_ATAC_DOWN</b></td>
+                <td>RNA up but ATAC less accessible — post-transcriptional or indirect regulation</td>
+                <td style="background:#FC8D59; color:white;">&nbsp;#FC8D59&nbsp;</td>
+            </tr>
+            <tr>
+                <td><b>Discordant_RNA_DOWN_ATAC_UP</b></td>
+                <td>RNA down but ATAC more accessible — repressor activation or complex regulation</td>
+                <td style="background:#74ADD1; color:white;">&nbsp;#74ADD1&nbsp;</td>
+            </tr>
+            <tr>
+                <td><b>RNA_only</b></td>
+                <td>RNA significant, no significant ATAC peaks associated</td>
+                <td style="background:#F46D43; color:white;">&nbsp;#F46D43&nbsp;</td>
+            </tr>
+            <tr>
+                <td><b>ATAC_only</b></td>
+                <td>Significant ATAC peaks but RNA not significantly changed</td>
+                <td style="background:#ABD9E9;">&nbsp;#ABD9E9&nbsp;</td>
+            </tr>
+            <tr>
+                <td><b>Not_significant</b></td>
+                <td>Neither RNA nor ATAC is significant</td>
+                <td style="background:#CCCCCC;">&nbsp;#CCCCCC&nbsp;</td>
+            </tr>
+        </table>
+
+        <h2>Integrated Result Columns</h2>
+        <ul>
+            <li><code>symbol</code> — gene symbol</li>
+            <li><code>rna_log2fc</code>, <code>rna_padj</code>, <code>rna_base_mean</code> — RNA-seq stats</li>
+            <li><code>peak_count</code> — number of ATAC peaks associated with this gene</li>
+            <li><code>atac_log2fc_mean</code>, <code>atac_log2fc_max</code> — ATAC log2FC summary</li>
+            <li><code>atac_padj_min</code> — most significant ATAC peak p-value</li>
+            <li><code>concordance</code> — one of the 7 concordance categories above</li>
+            <li><code>regulatory_status</code> — human-readable regulatory interpretation</li>
+        </ul>
+
+        <h2>Visualizations (Multi-Omics only)</h2>
+        <p>When a Multi-Omics integrated tab is active, the following are available
+        under <b>Visualization</b>:</p>
+        <ul>
+            <li><b>◈ Quadrant Plot</b> — RNA log2FC (Y) vs ATAC log2FC (X), colored by concordance</li>
+            <li><b>🔥 Concordance Heatmap</b> — genes × [RNA_log2FC, ATAC_log2FC] with concordance sidebar</li>
+            <li><b>📊 Concordance Summary</b> — bar chart and count/percentage table per concordance category</li>
+            <li><b>🌋 Integrated Volcano</b> — RNA-seq Volcano Plot where each point is:
+                <ul>
+                    <li>Colored by concordance category (ATAC support)</li>
+                    <li>Sized proportionally to the number of nearby ATAC peaks (<code>peak_count</code>)</li>
+                </ul>
+            </li>
+        </ul>
+
+        <h2>Export</h2>
+        <p>Use <b>File &rarr; Export Multi-Omics Results&hellip;</b> to save a multi-sheet Excel file:</p>
+        <ul>
+            <li><b>Integrated_Summary</b> — all genes</li>
+            <li><b>Concordant_UP</b> — Concordant_Both_UP genes</li>
+            <li><b>Concordant_DOWN</b> — Concordant_Both_DOWN genes</li>
+            <li><b>Discordant</b> — all discordant genes</li>
+            <li><b>RNA_only</b> — RNA-significant without ATAC support</li>
+            <li><b>ATAC_only</b> — ATAC-significant without RNA change</li>
+        </ul>
+
+        <h2>Typical Biological Interpretation</h2>
+        <ul>
+            <li><b>Concordant genes</b> are the highest-confidence candidates for
+                direct transcription-factor-driven regulation</li>
+            <li><b>RNA_only genes</b> may be regulated post-transcriptionally or
+                by distal enhancers outside the peak window</li>
+            <li><b>ATAC_only regions</b> may indicate pre-poised enhancers or
+                pioneer-factor binding without immediate transcription change</li>
+        </ul>
         """
 
     def _get_statistical_analysis(self):

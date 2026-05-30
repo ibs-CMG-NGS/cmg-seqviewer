@@ -27,6 +27,7 @@ from gui.pca_dialog import PCADialog
 from gui.venn_dialog import VennDiagramDialog
 from gui.venn_dialog_comparison import VennDiagramFromComparisonDialog
 from gui.help_dialog import HelpDialog
+from gui.multi_omics_panel import MultiOmicsPanel
 from models.data_models import FilterMode, DatasetType
 from presenters.main_presenter import MainPresenter
 
@@ -156,6 +157,12 @@ class MainWindow(QMainWindow):
         self.comparison_panel.compare_requested.connect(self._on_comparison_requested)
         left_layout.addWidget(self.comparison_panel)
         
+        # Multi-Omics 패널
+        self.multi_omics_panel = MultiOmicsPanel()
+        self.multi_omics_panel.integrate_requested.connect(self._on_integrate_requested)
+        self.multi_omics_panel.setVisible(False)  # 기본적으로 숨김
+        left_layout.addWidget(self.multi_omics_panel)
+        
         # === 실행 버튼 레이아웃 (Apply Filter + Start Comparison) ===
         button_layout = QHBoxLayout()
         button_layout.setSpacing(5)
@@ -278,6 +285,10 @@ class MainWindow(QMainWindow):
         self.export_action.triggered.connect(self._on_export_data)
         # 항상 활성화
         file_menu.addAction(self.export_action)
+
+        self.export_multi_omics_action = QAction("Export Multi-Omics Results (Excel)...", self)
+        self.export_multi_omics_action.triggered.connect(self._on_export_multi_omics)
+        file_menu.addAction(self.export_multi_omics_action)
         
         file_menu.addSeparator()
         
@@ -329,6 +340,13 @@ class MainWindow(QMainWindow):
         self.multi_heatmap_action = QAction("🌡️ Multi-Group Heatmap...", self)
         self.multi_heatmap_action.triggered.connect(self._on_multi_group_heatmap)
         analysis_menu.addAction(self.multi_heatmap_action)
+
+        analysis_menu.addSeparator()
+
+        # Multi-Omics 통합 분석
+        self.integrate_action = QAction("🔗 Integrate RNA + ATAC...", self)
+        self.integrate_action.triggered.connect(self._on_show_multi_omics_panel)
+        analysis_menu.addAction(self.integrate_action)
 
         # View 메뉴
         view_menu = menubar.addMenu("&View")
@@ -413,12 +431,12 @@ class MainWindow(QMainWindow):
         viz_menu.addSeparator()
         
         # 비교 데이터 시각화
-        self.dotplot_action = QAction("⚫ Dot Plot (Comparison Data)", self)
+        self.dotplot_action = QAction("⚫ Dot Plot (Comparison)", self)
         self.dotplot_action.triggered.connect(self._on_dotplot_requested)
         # 항상 활성화
         viz_menu.addAction(self.dotplot_action)
         
-        self.venn_action = QAction("⭕ Venn Diagram (2-3 datasets)", self)
+        self.venn_action = QAction("⭕ Venn Diagram (Comparison)", self)
         self.venn_action.triggered.connect(self._on_venn_diagram)
         # 항상 활성화
         viz_menu.addAction(self.venn_action)
@@ -426,35 +444,66 @@ class MainWindow(QMainWindow):
         viz_menu.addSeparator()
         
         # GO/KEGG 시각화 메뉴 (서브메뉴 없이 직접 추가)
-        self.go_dotplot_action = QAction("🧬 GO/KEGG Dot Plot", self)
+        self.go_dotplot_action = QAction("🧬 Dot Plot (GO/KEGG)", self)
         self.go_dotplot_action.triggered.connect(lambda: self._on_go_visualization("dotplot"))
         viz_menu.addAction(self.go_dotplot_action)
         
-        self.go_barplot_action = QAction("🧬 GO/KEGG Bar Chart", self)
+        self.go_barplot_action = QAction("🧬 Bar Chart (GO/KEGG)", self)
         self.go_barplot_action.triggered.connect(lambda: self._on_go_visualization("barplot"))
         viz_menu.addAction(self.go_barplot_action)
         
-        self.go_network_action = QAction("🧬 GO/KEGG Network Chart", self)
+        self.go_network_action = QAction("🧬 Network Chart (GO/KEGG)", self)
         self.go_network_action.triggered.connect(lambda: self._on_go_visualization("network"))
         viz_menu.addAction(self.go_network_action)
 
         viz_menu.addSeparator()
 
         # ATAC-seq 전용 시각화 (ATAC 탭 활성 시에만 활성화)
-        self.genomic_dist_action = QAction("🧬 Genomic Distribution (ATAC)", self)
+        self.genomic_dist_action = QAction("🧬 Genomic Distribution Plot (ATAC-seq)", self)
         self.genomic_dist_action.triggered.connect(lambda: self._on_atac_visualization("genomic_distribution"))
         self.genomic_dist_action.setEnabled(False)
         viz_menu.addAction(self.genomic_dist_action)
 
-        self.tss_distance_action = QAction("📏 TSS Distance Plot (ATAC)", self)
+        self.tss_distance_action = QAction("📏 TSS Distance Plot (ATAC-seq)", self)
         self.tss_distance_action.triggered.connect(lambda: self._on_atac_visualization("tss_distance"))
         self.tss_distance_action.setEnabled(False)
         viz_menu.addAction(self.tss_distance_action)
 
-        self.ma_plot_action = QAction("📈 MA Plot (ATAC)", self)
+        self.ma_plot_action = QAction("📈 MA Plot (ATAC-seq)", self)
         self.ma_plot_action.triggered.connect(lambda: self._on_atac_visualization("ma_plot"))
         self.ma_plot_action.setEnabled(False)
         viz_menu.addAction(self.ma_plot_action)
+
+        viz_menu.addSeparator()
+
+        # Multi-Omics 전용 시각화 (MULTI_OMICS 탭 활성 시에만 활성화)
+        self.quadrant_plot_action = QAction("◈ Quadrant Plot (Multi-Omics)", self)
+        self.quadrant_plot_action.triggered.connect(
+            lambda: self._on_multi_omics_visualization("quadrant")
+        )
+        self.quadrant_plot_action.setEnabled(False)
+        viz_menu.addAction(self.quadrant_plot_action)
+
+        self.concordance_heatmap_action = QAction("🔥 Concordance Heatmap (Multi-Omics)", self)
+        self.concordance_heatmap_action.triggered.connect(
+            lambda: self._on_multi_omics_visualization("heatmap")
+        )
+        self.concordance_heatmap_action.setEnabled(False)
+        viz_menu.addAction(self.concordance_heatmap_action)
+
+        self.concordance_summary_action = QAction("📊 Concordance Bar Chart (Multi-Omics)", self)
+        self.concordance_summary_action.triggered.connect(
+            lambda: self._on_multi_omics_visualization("summary")
+        )
+        self.concordance_summary_action.setEnabled(False)
+        viz_menu.addAction(self.concordance_summary_action)
+
+        self.integrated_volcano_action = QAction("🌋 Integrated Volcano Plot (Multi-Omics)", self)
+        self.integrated_volcano_action.triggered.connect(
+            lambda: self._on_multi_omics_visualization("integrated_volcano")
+        )
+        self.integrated_volcano_action.setEnabled(False)
+        viz_menu.addAction(self.integrated_volcano_action)
 
         # Help 메뉴
         help_menu = menubar.addMenu("&Help")
@@ -649,8 +698,9 @@ class MainWindow(QMainWindow):
                     formatted_value = str(value)
                     item = QTableWidgetItem(formatted_value)
                 
+                item.setData(Qt.ItemDataRole.UserRole, i)
                 table.setItem(i, j, item)
-        
+
         # setSortingEnabled(True)를 사용하지 않음:
         # Qt가 활성화 시 자동으로 sortItems(0, Asc)를 호출하여 입력 순서를 깨뜨림.
         # 대신 sectionClicked 시그널에 _sort_table_by_column을 연결하여 수동 정렬.
@@ -1065,40 +1115,42 @@ class MainWindow(QMainWindow):
     def _filter_current_tab(self, criteria, tab_name, table):
         """현재 탭의 데이터를 필터링"""
         try:
-            # 테이블 데이터를 DataFrame으로 변환
             row_count = table.rowCount()
-            col_count = table.columnCount()
-            
             if row_count == 0:
                 QMessageBox.warning(self, "No Data", "Current tab is empty.")
                 return
-            
-            # 헤더 읽기
-            headers = []
-            for col in range(col_count):
-                header_item = table.horizontalHeaderItem(col)
-                if header_item:
-                    headers.append(header_item.text())
-            
-            # 데이터 읽기
-            data = []
-            for row in range(row_count):
-                row_data = {}
+
+            # tab_data에서 전체 DataFrame 사용 (column display level과 무관하게 모든 컬럼 접근 가능)
+            current_index = self.data_tabs.currentIndex()
+            stored_df, tab_dataset = self.tab_data.get(current_index, (None, None))
+
+            if stored_df is not None and not stored_df.empty:
+                df = stored_df.copy()
+            else:
+                # fallback: 테이블 위젯에서 읽기
+                col_count = table.columnCount()
+                headers = []
                 for col in range(col_count):
-                    item = table.item(row, col)
-                    if item:
-                        value = item.text()
-                        # 숫자로 변환 시도
-                        try:
-                            value = float(value)
-                        except:
-                            pass
-                        row_data[headers[col]] = value
-                    else:
-                        row_data[headers[col]] = None
-                data.append(row_data)
-            
-            df = pd.DataFrame(data)
+                    header_item = table.horizontalHeaderItem(col)
+                    if header_item:
+                        headers.append(header_item.text())
+                data = []
+                for row in range(row_count):
+                    row_data = {}
+                    for col in range(col_count):
+                        item = table.item(row, col)
+                        if item:
+                            value = item.text()
+                            try:
+                                value = float(value)
+                            except:
+                                pass
+                            row_data[headers[col]] = value
+                        else:
+                            row_data[headers[col]] = None
+                    data.append(row_data)
+                df = pd.DataFrame(data)
+                tab_dataset = None
             
             # 필터 적용
             if criteria.mode == FilterMode.GENE_LIST:
@@ -1107,9 +1159,6 @@ class MainWindow(QMainWindow):
                     QMessageBox.warning(self, "Empty Gene List", "Please enter genes to filter.")
                     return
 
-                # 현재 탭의 dataset type 확인
-                current_index = self.data_tabs.currentIndex()
-                _, tab_dataset = self.tab_data.get(current_index, (None, None))
                 tab_dataset_type = tab_dataset.dataset_type if tab_dataset else None
 
                 if tab_dataset_type == DatasetType.GO_ANALYSIS:
@@ -1159,11 +1208,7 @@ class MainWindow(QMainWindow):
                     new_tab_name = f"Filtered: {tab_name} - Gene List ({len(criteria.gene_list)} genes)"
                 
             else:  # Statistical filter
-                # Current dataset type 확인
-                current_index = self.data_tabs.currentIndex()
-                _, dataset = self.tab_data.get(current_index, (None, None))
-                dataset_type = dataset.dataset_type if dataset else None
-                
+                dataset_type = tab_dataset.dataset_type if tab_dataset else None
                 filtered_df = df.copy()
                 
                 if dataset_type == DatasetType.DIFFERENTIAL_EXPRESSION:
@@ -1964,9 +2009,12 @@ class MainWindow(QMainWindow):
             self.logger.info(f"  - Unique to {name}: {len(unique_to_dataset)}")
     
     def _update_comparison_panel_datasets(self):
-        """비교 패널의 데이터셋 리스트 업데이트"""
+        """비교 패널의 데이터셋 리스트 업데이트, Multi-Omics 패널 콤보박스도 갱신"""
         dataset_names = self.dataset_manager.get_all_datasets()
         self.comparison_panel.update_dataset_list(dataset_names)
+        # Multi-Omics 패널이 표시 중이면 콤보박스도 갱신
+        if hasattr(self, 'multi_omics_panel') and self.multi_omics_panel.isVisible():
+            self.multi_omics_panel.refresh_dataset_list(self.presenter.datasets)
 
 
     
@@ -2094,18 +2142,26 @@ class MainWindow(QMainWindow):
 
         is_atac = (dataset is not None and
                    dataset.dataset_type == DatasetType.ATAC_SEQ)
+        is_multi_omics = (dataset is not None and
+                          dataset.dataset_type == DatasetType.MULTI_OMICS)
 
         # FilterPanel 갱신
         if hasattr(self.filter_panel, 'update_for_dataset'):
             self.filter_panel.update_for_dataset(dataset if is_atac else None)
 
-        # Visualization 메뉴 활성화
+        # ATAC 전용 Visualization 메뉴 활성화
         if hasattr(self, 'genomic_dist_action'):
             self.genomic_dist_action.setEnabled(is_atac)
         if hasattr(self, 'tss_distance_action'):
             self.tss_distance_action.setEnabled(is_atac)
         if hasattr(self, 'ma_plot_action'):
             self.ma_plot_action.setEnabled(is_atac)
+
+        # Multi-Omics 전용 Visualization 메뉴 활성화
+        for action_name in ('quadrant_plot_action', 'concordance_heatmap_action',
+                            'concordance_summary_action', 'integrated_volcano_action'):
+            if hasattr(self, action_name):
+                getattr(self, action_name).setEnabled(is_multi_omics)
 
     def _on_clear_log(self):
         """로그 지우기"""
@@ -2212,7 +2268,7 @@ class MainWindow(QMainWindow):
 
         title_label = QLabel(
             "<h2 style='margin:0;'>CMG-SeqViewer</h2>"
-            "<p style='margin:2px 0;'><b>Version 1.1.5</b></p>"
+            "<p style='margin:2px 0;'><b>Version 1.2.1</b></p>"
             "<p style='margin:2px 0; color:#555;'>RNA-Seq Data Analysis &amp; Visualization</p>"
         )
         title_label.setWordWrap(True)
@@ -3218,6 +3274,101 @@ class MainWindow(QMainWindow):
             dialog = MAPlotDialog(filtered_dataset, self)
             dialog.exec()
 
+    # ------------------------------------------------------------------ #
+    #  Multi-Omics handlers
+    # ------------------------------------------------------------------ #
+
+    def _on_show_multi_omics_panel(self):
+        """Analysis > Integrate RNA + ATAC 메뉴 클릭 — Multi-Omics 패널 토글"""
+        visible = not self.multi_omics_panel.isVisible()
+        self.multi_omics_panel.setVisible(visible)
+        if visible:
+            # 현재 로드된 데이터셋 목록으로 콤보박스 갱신
+            self.multi_omics_panel.refresh_dataset_list(self.presenter.datasets)
+
+    def _on_integrate_requested(
+        self,
+        rna_name: str,
+        atac_name: str,
+        method: str,
+        tss_window: int,
+        rna_padj: float,
+        rna_lfc: float,
+        atac_padj: float,
+        atac_lfc: float,
+    ):
+        """MultiOmicsPanel의 integrate_requested 시그널 처리"""
+        self.logger.info(
+            f"Integration requested: RNA='{rna_name}' ATAC='{atac_name}' "
+            f"method={method}"
+        )
+        self.presenter.integrate_datasets(
+            rna_name=rna_name,
+            atac_name=atac_name,
+            method=method,
+            tss_window=tss_window,
+            rna_padj=rna_padj,
+            rna_lfc=rna_lfc,
+            atac_padj=atac_padj,
+            atac_lfc=atac_lfc,
+        )
+
+    def _on_multi_omics_visualization(self, plot_type: str):
+        """Multi-Omics 전용 시각화"""
+        current_index = self.data_tabs.currentIndex()
+        if current_index < 0 or current_index not in self.tab_data:
+            QMessageBox.warning(self, "No Data",
+                                "Please run RNA + ATAC integration first.")
+            return
+
+        dataframe, dataset = self.tab_data[current_index]
+        if dataset is None or dataset.dataset_type != DatasetType.MULTI_OMICS:
+            QMessageBox.warning(
+                self, "Invalid Dataset",
+                "This visualization is only available for Multi-Omics integrated datasets."
+            )
+            return
+
+        tab_name = self.data_tabs.tabText(current_index)
+
+        if plot_type == "quadrant":
+            from gui.quadrant_plot_dialog import QuadrantPlotDialog
+            dialog = QuadrantPlotDialog(dataframe, title=tab_name, parent=self)
+            dialog.exec()
+        elif plot_type == "heatmap":
+            from gui.concordance_heatmap_dialog import ConcordanceHeatmapDialog
+            dialog = ConcordanceHeatmapDialog(dataframe, title=tab_name, parent=self)
+            dialog.exec()
+        elif plot_type == "summary":
+            from gui.concordance_summary_dialog import ConcordanceSummaryDialog
+            dialog = ConcordanceSummaryDialog(dataframe, title=tab_name, parent=self)
+            dialog.exec()
+        elif plot_type == "integrated_volcano":
+            from gui.integrated_volcano_dialog import IntegratedVolcanoDialog
+            dialog = IntegratedVolcanoDialog(dataframe, title=tab_name, parent=self)
+            dialog.exec()
+
+    def _on_export_multi_omics(self):
+        """Multi-Omics 결과를 다중 시트 Excel로 내보내기"""
+        current_index = self.data_tabs.currentIndex()
+        if current_index < 0 or current_index not in self.tab_data:
+            return
+
+        dataframe, dataset = self.tab_data[current_index]
+        if dataset is None or dataset.dataset_type != DatasetType.MULTI_OMICS:
+            QMessageBox.warning(self, "Invalid Dataset",
+                                "Please select a Multi-Omics integrated tab first.")
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Multi-Omics Results",
+            f"{dataset.name}_integrated.xlsx",
+            "Excel (*.xlsx)",
+        )
+        if path:
+            self.presenter.export_multi_omics_excel(dataframe, path)
+            self.logger.info(f"Multi-omics Excel saved: {path}")
+
     def _on_go_visualization(self, plot_type: str):
         """GO/KEGG 시각화"""
         from PyQt6.QtWidgets import QMessageBox
@@ -3462,6 +3613,11 @@ class MainWindow(QMainWindow):
         row = item.row()
         col = item.column()
 
+        # 정렬 후에도 올바른 DataFrame 행을 찾기 위해 원본 인덱스를 UserRole에서 가져옴
+        original_row = item.data(Qt.ItemDataRole.UserRole)
+        if original_row is None:
+            original_row = row  # populate_table이 호출되기 전 행일 경우 fallback
+
         # 컬럼 헤더 이름 가져오기
         header_item = table.horizontalHeaderItem(col)
         if not header_item:
@@ -3474,7 +3630,8 @@ class MainWindow(QMainWindow):
 
         # 컬럼 타입 감지
         is_gene_column = any(keyword in column_name for keyword in
-                            ['gene_id', 'gene id', 'geneid', 'symbol', 'gene_symbol', 'gene symbol'])
+                            ['gene_id', 'gene id', 'geneid', 'symbol', 'gene_symbol', 'gene symbol',
+                             'nearest_gene', 'gene_name'])
 
         is_go_column = any(keyword in column_name for keyword in
                           ['term_id', 'termid', 'go_id', 'goid', 'go term'])
@@ -3486,12 +3643,16 @@ class MainWindow(QMainWindow):
                                    ['description', 'term_name', 'pathway_name', 'name'])
 
         # ATAC-seq 여부 — 현재 탭의 dataset 확인
-        current_index = self.data_tabs.currentIndex()
+        current_index = self.data_tabs.indexOf(table)
+        if current_index < 0:
+            current_index = self.data_tabs.currentIndex()
+        is_atac_tab = False
         atac_dataset = None
         atac_dataframe = None
         if current_index in self.tab_data:
             _df, _ds = self.tab_data[current_index]
             if _ds and _ds.dataset_type == DatasetType.ATAC_SEQ:
+                is_atac_tab = True
                 coord_cols = {'chromosome', 'peak_start', 'peak_end'}
                 if _df is not None and coord_cols.issubset(_df.columns):
                     atac_dataframe = _df
@@ -3501,11 +3662,11 @@ class MainWindow(QMainWindow):
 
         # 아무 것도 해당하지 않으면 메뉴 표시 안 함
         if not (is_gene_column or is_go_column or is_kegg_column or is_description_column
-                or has_atac_coords):
+                or is_atac_tab):
             return
 
-        # 빈 셀이고 ATAC IGV만 있을 때도 메뉴를 표시할 수 있도록 cell_text 체크를 뒤로 이동
-        if not cell_text and not has_atac_coords:
+        # 빈 셀이고 ATAC 탭도 아닌 경우 표시 안 함
+        if not cell_text and not is_atac_tab:
             return
         
         # 컨텍스트 메뉴 생성
@@ -3546,10 +3707,10 @@ class MainWindow(QMainWindow):
                 menu.addSeparator()
             igv_action = menu.addAction("🔬 Send to IGV")
             igv_action.triggered.connect(
-                lambda: self._send_peak_to_igv(atac_dataframe, atac_dataset, row))
+                lambda checked=False, r=original_row: self._send_peak_to_igv(atac_dataframe, atac_dataset, r))
             copy_action = menu.addAction("📋 Copy Locus")
             copy_action.triggered.connect(
-                lambda: self._copy_locus(atac_dataframe, row))
+                lambda checked=False, r=original_row: self._copy_locus(atac_dataframe, r))
 
         # 메뉴 표시
         if menu.actions():  # 메뉴 항목이 있을 때만 표시

@@ -395,39 +395,42 @@ Excel 다중 시트 출력:
 
 ---
 
-## 2.6 메뉴 업데이트 (미구현)
+## 2.6 메뉴 업데이트 ✅ 구현 완료
 
 ```
 File Menu:
-  └─ Open Multi-Omics Pair  (신규)
+  └─ Export Multi-Omics Results (Excel)...  ✅
 
 Analysis Menu:
-  └─ Integrate RNA + ATAC  (신규)
+  └─ Integrate RNA + ATAC  ✅
 
 Visualization Menu (multi-omics 탭 활성 시):
-  ├─ Quadrant Plot
-  ├─ Concordance Heatmap
-  ├─ Integrated Volcano
-  └─ Concordance Summary
+  ├─ Quadrant Plot          ✅
+  ├─ Concordance Heatmap    ✅
+  ├─ Integrated Volcano     ✅
+  └─ Concordance Summary    ✅
 ```
 
 ---
 
 ## Phase 2 체크리스트
 
-- [ ] `DatasetType.MULTI_OMICS` 추가
-- [ ] `MultiOmicsDataset` 클래스 (`src/models/multi_omics_dataset.py`)
-- [ ] `MultiOmicsIntegrator` 유틸 (`src/utils/multi_omics_integrator.py`)
-- [ ] `MultiOmicsPanel` GUI 컴포넌트
-- [ ] Quadrant Plot dialog
-- [ ] Concordance Heatmap dialog
-- [ ] Concordance Summary Bar Chart dialog
-- [ ] Integrated Volcano dialog
-- [ ] Multi-sheet Excel export
+- [x] `DatasetType.MULTI_OMICS` 추가 — `src/models/data_models.py`
+- [x] `MultiOmicsDataset` 클래스 — `src/models/multi_omics_dataset.py`
+- [x] `MultiOmicsIntegrator` 유틸 — `src/utils/multi_omics_integrator.py`
+- [x] `MultiOmicsPanel` GUI 컴포넌트 — `src/gui/multi_omics_panel.py`
+- [x] Quadrant Plot dialog — `src/gui/quadrant_plot_dialog.py`
+- [x] Concordance Heatmap dialog — `src/gui/concordance_heatmap_dialog.py`
+- [x] Concordance Summary Bar Chart dialog — `src/gui/concordance_summary_dialog.py`
+- [x] Integrated Volcano dialog — `src/gui/integrated_volcano_dialog.py`
+- [x] Multi-sheet Excel export — `presenter.export_multi_omics_excel()`
 - [ ] Database multi-omics pair 저장 지원
-- [ ] File / Analysis / Visualization 메뉴 업데이트
+- [x] File / Analysis / Visualization 메뉴 업데이트
 - [ ] Unit tests for integration algorithms
-- [ ] F1 Help: Multi-Omics Integration 섹션 추가
+- [x] F1 Help: Multi-Omics Integration 섹션 추가
+
+> **구현일**: 2026-05-31  
+> **구현 범위**: nearest_gene / promoter_only 통합, concordance 7-category 분류, Quadrant Plot · Concordance Heatmap · Concordance Summary 시각화, 다중 시트 Excel export
 
 ---
 
@@ -457,15 +460,16 @@ Visualization Menu (multi-omics 탭 활성 시):
 
 ---
 
-## Technical Architecture: 현재 상태 (v1.2.0)
+## Technical Architecture: 현재 상태 (v1.2.1)
 
 ```
-CMG-SeqViewer (v1.2.0)
+CMG-SeqViewer (v1.2.1)
 ├── DatasetType
 │   ├── DIFFERENTIAL_EXPRESSION    ✅
 │   ├── GO_ANALYSIS                ✅
 │   ├── MULTI_GROUP                ✅
-│   └── ATAC_SEQ                   ✅ (Phase 1 완료)
+│   ├── ATAC_SEQ                   ✅ (Phase 1 완료)
+│   └── MULTI_OMICS                ✅ (Phase 2 완료, 2026-05-31)
 ├── DataLoader
 │   ├── RNA-seq (Excel, CSV, Parquet)  ✅
 │   ├── GO/KEGG                        ✅
@@ -483,14 +487,19 @@ CMG-SeqViewer (v1.2.0)
 │   ├── Venn Diagram                   ✅
 │   ├── Genomic Distribution           ✅
 │   └── TSS Distance Plot              ✅
-├── MultiOmicsPanel                    ⏳ Phase 2
-│   ├── Dataset pairing                ⏳
-│   ├── Integration method             ⏳
-│   └── Concordance analysis           ⏳
+├── MultiOmicsPanel                    ✅ Phase 2 완료
+│   ├── Dataset pairing (RNA + ATAC)   ✅
+│   ├── Integration method             ✅ (nearest_gene / promoter_only)
+│   ├── Concordance analysis           ✅ (7-category)
+│   ├── Quadrant Plot                  ✅
+│   ├── Concordance Heatmap            ✅
+│   ├── Concordance Summary            ✅
+│   ├── Integrated Volcano             ✅
+│   └── Multi-sheet Excel export       ✅
 └── DatabaseManager
     ├── RNA-seq datasets               ✅
     ├── ATAC-seq datasets              ✅
-    └── Multi-omics pairs              ⏳ Phase 2
+    └── Multi-omics pairs              ⏳ Phase 2 잔여
 ```
 
 ---

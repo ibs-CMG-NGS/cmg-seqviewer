@@ -17,6 +17,7 @@ class DatasetType(Enum):
     GO_ANALYSIS = "go_analysis"
     MULTI_GROUP = "multi_group"
     ATAC_SEQ = "atac_seq"
+    MULTI_OMICS = "multi_omics"
     UNKNOWN = "unknown"
 
 
