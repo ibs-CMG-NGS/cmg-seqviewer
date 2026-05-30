@@ -161,7 +161,7 @@ class StandardColumns:
     @classmethod
     def get_atac_stat(cls) -> list[str]:
         """ATAC stat 표시 수준: basic + 통계 컬럼"""
-        return cls.get_atac_basic() + [cls.BASE_MEAN, cls.LOG2FC, cls.PVALUE, cls.ADJ_PVALUE, cls.DIRECTION]
+        return cls.get_atac_basic() + [cls.BASE_MEAN, cls.LOG2FC, cls.PVALUE, cls.ADJ_PVALUE]
 
     @classmethod
     def get_atac_all(cls) -> list[str]:

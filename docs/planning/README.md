@@ -7,6 +7,9 @@
 | 문서 | 설명 | 상태 | 우선순위 |
 |------|------|------|---------|
 | [ATAC-seq 통합 계획](ATAC_SEQ_INTEGRATION_PLAN.md) | 멀티오믹스 통합 로드맵 | ✅ 완료 | 높음 |
+| [온라인 GO/KEGG 분석 계획](ONLINE_ENRICHMENT_ANALYSIS_PLAN.md) | gseapy/Enrichr 기반 온디맨드 농축 분석 | 📝 계획 | 중간 |
+| [Dataset Tree Panel 계획](dataset-tree-panel.md) | 좌측 트리 패널로 데이터셋 계층 표시 | 📝 계획 | 중간 |
+| [Multi-Group Heatmap 계획](multi-group-heatmap.md) | 3개+ 그룹 비교 및 LRT 히트맵 | 📝 계획 | 중간 |
 
 ---
 

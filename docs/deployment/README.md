@@ -6,9 +6,12 @@
 
 | 문서 | 설명 | 대상 |
 |------|------|------|
-| [빌드 가이드](build-guide.md) | Windows/macOS 실행 파일 빌드 | 빌드 담당자 |
+| [빌드 가이드](build-guide.md) | Windows/macOS 실행 파일 빌드 (Apple Silicon 포함) | 빌드 담당자 |
 | [배포 가이드](deployment.md) | GitHub Release 및 CI/CD | 릴리스 매니저 |
-| [내부 배포 가이드](internal-distribution.md) | 조직 내부 배포 (작성 예정) | 내부 배포 담당자 |
+| [Windows 설치 프로그램](windows-installer.md) | PyInstaller 설정, Inno Setup 인스톨러 | Windows 빌드 담당자 |
+| [배포 전략](distribution-strategy.md) | Portable vs Installer 비교, 배포 단계 | 배포 전략 담당자 |
+| [GitHub 설정 가이드](github-setup.md) | 저장소 생성, CI/CD 워크플로우 설정 | 프로젝트 관리자 |
+| [내부 배포 가이드](INTERNAL_DISTRIBUTION.md) | 조직 내부 데이터 배포 전략 | 내부 배포 담당자 |
 
 ---
 

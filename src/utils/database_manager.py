@@ -734,8 +734,15 @@ class DatabaseManager:
             
             all_standard_present = all(col in df.columns for col in required_standard_cols) if required_standard_cols else True
             
-            if not all_standard_present:
-                # 표준화되지 않은 구버전 database - 변환 필요
+            if not all_standard_present and metadata.dataset_type == DatasetType.GO_ANALYSIS:
+                # GO 데이터: GOKEGGLoader로 처리 (GO.ID + KEGG.ID 동시 매핑 지원)
+                from utils.go_kegg_loader import GOKEGGLoader
+                go_loader = GOKEGGLoader()
+                df = go_loader._standardize_columns(df)
+                original_columns = {}
+                self.logger.info(f"Applied GO column standardization via GOKEGGLoader")
+            elif not all_standard_present:
+                # 표준화되지 않은 구버전 database (DE/ATAC) - 변환 필요
                 auto_mapping = loader._map_columns(df, metadata.dataset_type)
                 df, original_columns = loader._standardize_columns(df, auto_mapping, metadata.dataset_type)
                 self.logger.info(f"Converted legacy database columns to standard format")

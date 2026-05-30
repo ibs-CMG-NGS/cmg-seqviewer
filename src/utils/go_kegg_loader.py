@@ -356,17 +356,23 @@ class GOKEGGLoader:
             df.rename(columns=rename_dict, inplace=True)
             self.logger.info(f"Standardized columns: {rename_dict}")
         
-        # 중복 컬럼 제거 (같은 표준 컬럼명으로 여러 원본 컬럼이 매핑되는 경우)
-        # 예: 'GO ID'와 'KEGG ID' 둘 다 'term_id'로 매핑되면 중복 발생
+        # 중복 컬럼 병합 (같은 표준 컬럼명으로 여러 원본 컬럼이 매핑되는 경우)
+        # 예: GO.ID(GO 행에만 값) + KEGG.ID(KEGG 행에만 값) → 둘 다 'term_id'로 매핑될 때
+        # 단순 제거하면 한쪽이 NaN이 되므로, fillna로 상호 보완한 후 중복 제거
         if df.columns.duplicated().any():
-            duplicates_count = df.columns.duplicated().sum()
             duplicated_names = df.columns[df.columns.duplicated()].unique().tolist()
-            
-            # 중복된 컬럼 중 첫 번째만 유지 (첫 번째가 가장 중요한 데이터일 가능성이 높음)
+
+            for col_name in duplicated_names:
+                dup_cols = [i for i, c in enumerate(df.columns) if c == col_name]
+                if len(dup_cols) >= 2:
+                    # 첫 번째 컬럼을 기준으로 나머지의 값으로 NaN을 채움
+                    merged = df.iloc[:, dup_cols[0]].copy()
+                    for idx in dup_cols[1:]:
+                        merged = merged.fillna(df.iloc[:, idx])
+                    df.iloc[:, dup_cols[0]] = merged
+
             df = df.loc[:, ~df.columns.duplicated(keep='first')]
-            
-            self.logger.warning(f"Removed {duplicates_count} duplicate columns: {duplicated_names}")
-            self.logger.info(f"Remaining columns after deduplication: {list(df.columns)}")
+            self.logger.info(f"Merged duplicate columns (NaN-filled): {duplicated_names}")
         
         # Fold Enrichment 파생 계산 (gene_ratio / bg_ratio)
         df = self._compute_fold_enrichment(df)
