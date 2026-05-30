@@ -29,7 +29,7 @@ jobs:
           pip install pyinstaller pillow
       
       - name: Create icon
-        run: python create_icon.py
+        run: python scripts/create_icon.py
       
       - name: Build executable
         run: |
@@ -57,7 +57,7 @@ jobs:
           pip3 install pyinstaller pillow
       
       - name: Create icon (PNG)
-        run: python3 create_icon.py
+        run: python3 scripts/create_icon.py
       
       - name: Convert icon to ICNS
         run: |
