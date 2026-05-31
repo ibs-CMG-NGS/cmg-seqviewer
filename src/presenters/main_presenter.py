@@ -53,6 +53,7 @@ class MainPresenter(QObject):
         # 데이터 저장소
         self.datasets: Dict[str, Dataset] = {}
         self.current_dataset: Optional[Dataset] = None
+        self.last_filter_criteria: Optional[FilterCriteria] = None  # 마지막 필터 파라미터 저장
         
         # 유틸리티
         self.data_loader = DataLoader()
@@ -260,6 +261,8 @@ class MainPresenter(QObject):
         """
         import time
         start_time = time.time()
+        # 필터 파라미터 저장 (탭 생성 시 tab_data에 기록)
+        self.last_filter_criteria = criteria
         
         if self.current_dataset is None:
             self.error_occurred.emit("No dataset loaded")

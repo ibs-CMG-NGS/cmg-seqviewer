@@ -85,6 +85,10 @@ class MainWindow(QMainWindow):
         self.recent_files = []
         self.max_recent_files = 10
         self._load_recent_files()
+
+        # 최근 프로젝트 히스토리
+        self.recent_projects: list = []
+        self._load_recent_projects()
         
         # Database Manager 초기화
         from utils.database_manager import DatabaseManager
@@ -330,11 +334,28 @@ class MainWindow(QMainWindow):
         database_menu.addAction(self.db_import_action)
         
         file_menu.addSeparator()
-        
+
+        # 프로젝트 저장/불러오기
+        self.save_project_action = QAction("Save Project...", self)
+        self.save_project_action.setShortcut("Ctrl+Shift+S")
+        self.save_project_action.triggered.connect(self._on_save_project)
+        file_menu.addAction(self.save_project_action)
+
+        self.open_project_action = QAction("Open Project...", self)
+        self.open_project_action.setShortcut("Ctrl+Shift+O")
+        self.open_project_action.triggered.connect(self._on_open_project)
+        file_menu.addAction(self.open_project_action)
+
+        file_menu.addSeparator()
+
         # 최근 파일 메뉴
         self.recent_menu = file_menu.addMenu("Recent Files")
         self._update_recent_files_menu()
-        
+
+        # 최근 프로젝트 메뉴
+        self.recent_projects_menu = file_menu.addMenu("Recent Projects")
+        self._update_recent_projects_menu()
+
         file_menu.addSeparator()
         
         self.export_action = QAction("&Export Current Tab...", self)
@@ -3126,8 +3147,239 @@ class MainWindow(QMainWindow):
             self.recent_files = []
             self._save_recent_files()
             self._update_recent_files_menu()
-    
-    def _set_window_icon(self):
+
+    # ── Project Save / Load ──────────────────────────────────────────
+
+    def _load_recent_projects(self):
+        """최근 프로젝트 히스토리 로드"""
+        try:
+            import json
+            import os
+            config_path = os.path.join(os.path.expanduser("~"), ".rna_seq_viewer_recent_projects.json")
+            if os.path.exists(config_path):
+                with open(config_path, "r", encoding="utf-8") as f:
+                    self.recent_projects = json.load(f)
+                    self.recent_projects = self.recent_projects[:self.max_recent_files]
+        except Exception as e:
+            self.logger.warning(f"Failed to load recent projects: {e}")
+            self.recent_projects = []
+
+    def _save_recent_projects(self):
+        """최근 프로젝트 히스토리 저장"""
+        try:
+            import json
+            import os
+            config_path = os.path.join(os.path.expanduser("~"), ".rna_seq_viewer_recent_projects.json")
+            with open(config_path, "w", encoding="utf-8") as f:
+                json.dump(self.recent_projects, f, indent=2)
+        except Exception as e:
+            self.logger.warning(f"Failed to save recent projects: {e}")
+
+    def _add_recent_project(self, project_path: str):
+        """최근 프로젝트 목록에 추가"""
+        import os
+        project_path = os.path.abspath(project_path)
+        if project_path in self.recent_projects:
+            self.recent_projects.remove(project_path)
+        self.recent_projects.insert(0, project_path)
+        self.recent_projects = self.recent_projects[:self.max_recent_files]
+        self._save_recent_projects()
+        self._update_recent_projects_menu()
+
+    def _update_recent_projects_menu(self):
+        """최근 프로젝트 메뉴 업데이트"""
+        import os
+        self.recent_projects_menu.clear()
+        if not self.recent_projects:
+            action = QAction("(No recent projects)", self)
+            action.setEnabled(False)
+            self.recent_projects_menu.addAction(action)
+        else:
+            for i, proj_path in enumerate(self.recent_projects):
+                display = os.path.basename(proj_path)
+                action = QAction(f"{i+1}. {display}", self)
+                action.setToolTip(proj_path)
+                action.triggered.connect(lambda checked, p=proj_path: self._open_project_path(p))
+                self.recent_projects_menu.addAction(action)
+            self.recent_projects_menu.addSeparator()
+            clear_action = QAction("Clear Recent Projects", self)
+            clear_action.triggered.connect(lambda: self._clear_recent_projects())
+            self.recent_projects_menu.addAction(clear_action)
+
+    def _clear_recent_projects(self):
+        """최근 프로젝트 목록 지우기"""
+        reply = QMessageBox.question(
+            self, "Clear Recent Projects",
+            "Are you sure you want to clear the recent projects list?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.recent_projects = []
+            self._save_recent_projects()
+            self._update_recent_projects_menu()
+
+    def _on_save_project(self):
+        """현재 분석 세션을 .seqproj 파일로 저장"""
+        import os
+        from src.utils.project_io import ProjectIO
+
+        # 저장할 탭이 없으면 알림
+        if not self.tab_data:
+            QMessageBox.information(self, "Save Project", "There are no datasets to save.")
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Project",
+            os.path.expanduser("~"),
+            "SeqViewer Project (*.seqproj);;All Files (*)",
+        )
+        if not path:
+            return
+        if not path.endswith(".seqproj"):
+            path += ".seqproj"
+
+        try:
+            # 데이터셋 파일 경로 / 타입 맵 구성
+            dataset_file_map: dict = {}
+            dataset_type_map: dict = {}
+            for name, ds in self.presenter.datasets.items():
+                fp = getattr(ds, "file_path", None) or ""
+                dataset_file_map[name] = str(fp)
+                dt = getattr(ds, "dataset_type", None)
+                dataset_type_map[name] = dt.value if dt else ""
+
+            # 트리에서 펼쳐진 루트 항목 수집
+            tree_expanded: list = []
+            if hasattr(self, "dataset_manager"):
+                root = self.dataset_manager.tree.invisibleRootItem()
+                for i in range(root.childCount()):
+                    item = root.child(i)
+                    if item.isExpanded():
+                        tree_expanded.append(item.text(0))
+
+            spec = ProjectIO.build_spec(
+                tab_data=self.tab_data,
+                dataset_file_map=dataset_file_map,
+                dataset_type_map=dataset_type_map,
+                active_tab_index=self.data_tabs.currentIndex(),
+                tree_expanded=tree_expanded,
+                project_path=None,  # 상대 경로 변환은 ProjectIO.save 내부에서 처리하지 않음
+            )
+            # 프로젝트 경로 기준 상대 경로 처리
+            from pathlib import Path as _Path
+            project_dir = _Path(path).parent
+            for ds_spec in spec.get("datasets", []):
+                fp = ds_spec.get("file_path", "")
+                if fp and os.path.isabs(fp):
+                    try:
+                        ds_spec["file_path"] = os.path.relpath(fp, start=project_dir)
+                    except ValueError:
+                        pass  # 드라이브 다를 경우 절대 경로 유지
+
+            ProjectIO.save(path, spec)
+            self._add_recent_project(path)
+            self.logger.info(f"Project saved: {path}")
+            QMessageBox.information(self, "Save Project", f"Project saved successfully:\n{path}")
+
+        except Exception as e:
+            self.logger.error(f"Failed to save project: {e}", exc_info=True)
+            QMessageBox.critical(self, "Save Project Failed", f"Could not save project:\n{e}")
+
+    def _on_open_project(self):
+        """파일 대화상자로 .seqproj 프로젝트 열기"""
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open Project",
+            os.path.expanduser("~"),
+            "SeqViewer Project (*.seqproj);;All Files (*)",
+        )
+        if path:
+            self._open_project_path(path)
+
+    def _open_project_path(self, path: str):
+        """지정된 .seqproj 경로의 프로젝트 복원"""
+        import os
+        from src.utils.project_io import ProjectIO
+        from src.models.data_models import FilterCriteria, FilterMode
+
+        if not os.path.exists(path):
+            QMessageBox.warning(self, "File Not Found", f"Project file not found:\n{path}")
+            if path in self.recent_projects:
+                self.recent_projects.remove(path)
+                self._save_recent_projects()
+                self._update_recent_projects_menu()
+            return
+
+        try:
+            spec = ProjectIO.load(path)
+        except Exception as e:
+            QMessageBox.critical(self, "Open Project Failed", f"Could not read project file:\n{e}")
+            return
+
+        missing_files: list = []
+        loaded_count = 0
+
+        for ds_spec in spec.get("datasets", []):
+            ds_name = ds_spec.get("name", "")
+            ds_file = ds_spec.get("file_path", "")
+            ds_type = ds_spec.get("type", "")
+            sheets = ds_spec.get("sheets", [])
+
+            if not os.path.exists(ds_file):
+                missing_files.append(ds_file or ds_name)
+                continue
+
+            # 데이터셋 로드 (whole sheet)
+            try:
+                self.presenter.load_dataset(
+                    Path(ds_file),
+                    custom_name=ds_name if ds_name else None,
+                )
+                loaded_count += 1
+            except Exception as e:
+                self.logger.warning(f"Failed to load dataset '{ds_name}': {e}")
+                missing_files.append(ds_file)
+                continue
+
+            # filtered sheets 재현
+            for sheet in sheets:
+                if sheet.get("type") != "filtered":
+                    continue
+                fp_dict = sheet.get("filter_params")
+                if not fp_dict:
+                    continue
+                try:
+                    criteria = FilterCriteria.from_dict(fp_dict)
+                    # 해당 데이터셋을 활성 상태로 전환 후 필터 적용
+                    self.presenter.switch_dataset(ds_name)
+                    self.presenter.apply_filter(criteria)
+                except Exception as e:
+                    self.logger.warning(f"Failed to replay filter for sheet '{sheet.get('label')}': {e}")
+
+        # 마지막 활성 탭 복원
+        ui_state = spec.get("ui_state", {})
+        active_idx = ui_state.get("active_tab_index", 0)
+        if 0 <= active_idx < self.data_tabs.count():
+            self.data_tabs.setCurrentIndex(active_idx)
+
+        self._add_recent_project(path)
+
+        # 누락 파일 경고
+        if missing_files:
+            files_list = "\n".join(missing_files[:10])
+            QMessageBox.warning(
+                self,
+                "Missing Files",
+                f"The following files could not be found and were skipped:\n{files_list}",
+            )
+
+        msg = f"Project opened: {loaded_count} dataset(s) loaded."
+        if missing_files:
+            msg += f" {len(missing_files)} file(s) skipped."
+        self.logger.info(msg)
+
+
         """윈도우 아이콘 설정"""
         from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont
         from PyQt6.QtCore import Qt, QRect
@@ -3840,7 +4092,12 @@ class MainWindow(QMainWindow):
             
             # 테이블에 데이터 채우기
             self.populate_table(table, filtered_df, dataset)
-            
+
+            # filter_params를 tab_data에 저장 (Project Save/Load용)
+            criteria = getattr(self.presenter, "last_filter_criteria", None)
+            if criteria is not None and new_tab_index in self.tab_data:
+                self.tab_data[new_tab_index]["filter_params"] = criteria.to_dict()
+
             # 비교 패널 업데이트 (populate_table 이후에 한 번만)
             self._update_comparison_panel_datasets()
             
