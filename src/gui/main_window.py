@@ -3379,7 +3379,7 @@ class MainWindow(QMainWindow):
             msg += f" {len(missing_files)} file(s) skipped."
         self.logger.info(msg)
 
-
+    def _set_window_icon(self):
         """윈도우 아이콘 설정"""
         from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont
         from PyQt6.QtCore import Qt, QRect
