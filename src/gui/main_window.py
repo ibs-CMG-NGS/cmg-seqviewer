@@ -3598,15 +3598,15 @@ class MainWindow(QMainWindow):
                 for idx in reversed(existing_indices):
                     self._remove_tab_safely(idx)
             
+            # 데이터셋 생성 - 현재 활성 데이터셋의 타입을 유지
+            from models.data_models import Dataset, DatasetType
+            current_dataset = self.presenter.current_dataset
+
             # 새 탭 생성
             _par = current_dataset.name if current_dataset else None
             table = self._create_data_tab(tab_name, sheet_type='filtered',
                                           parent_dataset=_par)
             new_tab_index = self.data_tabs.indexOf(table)
-
-            # 데이터셋 생성 - 현재 활성 데이터셋의 타입을 유지
-            from models.data_models import Dataset, DatasetType
-            current_dataset = self.presenter.current_dataset
             dataset_type = current_dataset.dataset_type if current_dataset else DatasetType.GO_ANALYSIS
             
             dataset = Dataset(
