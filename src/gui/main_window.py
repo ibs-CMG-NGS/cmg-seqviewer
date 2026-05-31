@@ -79,7 +79,7 @@ class MainWindow(QMainWindow):
         self.decimal_precision = 3
         
         # 각 탭의 원본 데이터 저장 (탭 인덱스 -> (DataFrame, Dataset))
-        self.tab_data: Dict[int, tuple] = {}
+        self.tab_data: Dict[int, dict] = {}
         
         # 최근 파일 히스토리 (최대 10개)
         self.recent_files = []
@@ -637,7 +637,19 @@ class MainWindow(QMainWindow):
         # 탭 인덱스 찾기 및 원본 데이터 저장 (시각화를 위해 항상 전체 데이터 저장)
         tab_index = self.data_tabs.indexOf(table)
         if tab_index >= 0:
-            self.tab_data[tab_index] = (dataframe, dataset)
+            if tab_index in self.tab_data:
+                self.tab_data[tab_index]['dataframe'] = dataframe
+                self.tab_data[tab_index]['dataset'] = dataset
+            else:
+                self.tab_data[tab_index] = {
+                    'dataframe': dataframe,
+                    'dataset': dataset,
+                    'parent_dataset': None,
+                    'sheet_type': None,
+                    'sheet_label': '',
+                    'filter_params': None,
+                    'comparison_params': None,
+                }
         
         # 컬럼 필터링 (테이블 표시용 - dataset이 있으면 필터링)
         if dataset:
@@ -1122,7 +1134,9 @@ class MainWindow(QMainWindow):
 
             # tab_data에서 전체 DataFrame 사용 (column display level과 무관하게 모든 컬럼 접근 가능)
             current_index = self.data_tabs.currentIndex()
-            stored_df, tab_dataset = self.tab_data.get(current_index, (None, None))
+            _entry = self.tab_data.get(current_index)
+            stored_df = _entry['dataframe'] if _entry else None
+            tab_dataset = _entry['dataset'] if _entry else None
 
             if stored_df is not None and not stored_df.empty:
                 df = stored_df.copy()
@@ -1343,7 +1357,8 @@ class MainWindow(QMainWindow):
             
             # 현재 탭의 dataset 정보 가져오기 (GO visualization 등에서 dataset type 필요)
             current_index = self.data_tabs.currentIndex()
-            _, current_dataset = self.tab_data.get(current_index, (None, None))
+            _entry = self.tab_data.get(current_index)
+            current_dataset = _entry['dataset'] if _entry else None
             
             # 필터링된 데이터로 Dataset 객체 생성
             from models.data_models import Dataset
@@ -2098,7 +2113,7 @@ class MainWindow(QMainWindow):
             
             # 탭에 저장된 dataset으로 current_dataset 업데이트
             if index in self.tab_data:
-                _, dataset = self.tab_data[index]
+                dataset = self.tab_data[index]['dataset']
                 if dataset is not None:
                     self.presenter.current_dataset = dataset
                     self.logger.info(f"Tab changed to index {index}: current_dataset updated to '{dataset.name}'")
@@ -2118,7 +2133,7 @@ class MainWindow(QMainWindow):
         from models.data_models import DatasetType
         is_go = False
         if tab_index in self.tab_data:
-            _, dataset = self.tab_data[tab_index]
+            dataset = self.tab_data[tab_index]['dataset']
             if dataset is not None and dataset.dataset_type == DatasetType.GO_ANALYSIS:
                 is_go = True
 
@@ -2138,7 +2153,7 @@ class MainWindow(QMainWindow):
         from models.data_models import DatasetType
         dataset = None
         if tab_index in self.tab_data:
-            _, dataset = self.tab_data[tab_index]
+            dataset = self.tab_data[tab_index]['dataset']
 
         is_atac = (dataset is not None and
                    dataset.dataset_type == DatasetType.ATAC_SEQ)
@@ -2181,7 +2196,8 @@ class MainWindow(QMainWindow):
                 continue
             
             if tab_index in self.tab_data:
-                dataframe, dataset = self.tab_data[tab_index]
+                dataframe = self.tab_data[tab_index]['dataframe']
+                dataset = self.tab_data[tab_index]['dataset']
                 table = self.data_tabs.widget(tab_index)
                 if isinstance(table, QTableWidget):
                     # 테이블 재구성
@@ -2197,7 +2213,8 @@ class MainWindow(QMainWindow):
         # 모든 탭의 데이터를 다시 표시
         for tab_index in range(self.data_tabs.count()):
             if tab_index in self.tab_data:
-                dataframe, dataset = self.tab_data[tab_index]
+                dataframe = self.tab_data[tab_index]['dataframe']
+                dataset = self.tab_data[tab_index]['dataset']
                 table = self.data_tabs.widget(tab_index)
                 if isinstance(table, QTableWidget):
                     # 테이블 재구성
@@ -2343,7 +2360,8 @@ class MainWindow(QMainWindow):
                                   "No data available in current tab.")
                 return
             
-            dataframe, dataset = self.tab_data[current_index]
+            dataframe = self.tab_data[current_index]['dataframe']
+            dataset = self.tab_data[current_index]['dataset']
             
             # Comparison 결과인지 확인 (dataset이 None인 경우)
             if dataset is None:
@@ -2431,7 +2449,7 @@ class MainWindow(QMainWindow):
             if current_index < 0 or current_index not in self.tab_data:
                 QMessageBox.warning(self, "No Data", "Please load a dataset first.")
                 return
-            _, dataset = self.tab_data[current_index]
+            dataset = self.tab_data[current_index]['dataset']
             from models.data_models import DatasetType as _DT
             if dataset is None or dataset.dataset_type != _DT.MULTI_GROUP:
                 QMessageBox.warning(
@@ -3130,7 +3148,8 @@ class MainWindow(QMainWindow):
             return
         
         # tab_data에서 DataFrame과 Dataset 가져오기
-        dataframe, dataset = self.tab_data[current_tab_index]
+        dataframe = self.tab_data[current_tab_index]['dataframe']
+        dataset = self.tab_data[current_tab_index]['dataset']
         
         if dataframe is None or dataframe.empty:
             QMessageBox.warning(
@@ -3193,7 +3212,20 @@ class MainWindow(QMainWindow):
             
             # 탭 데이터 저장
             tab_index = self.data_tabs.count() - 1  # 방금 추가한 탭
-            self.tab_data[tab_index] = (clustered_data, clustered_dataset)
+            if tab_index in self.tab_data:
+                self.tab_data[tab_index]['dataframe'] = clustered_data
+                self.tab_data[tab_index]['dataset'] = clustered_dataset
+                self.tab_data[tab_index]['sheet_type'] = 'clustered'
+            else:
+                self.tab_data[tab_index] = {
+                    'dataframe': clustered_data,
+                    'dataset': clustered_dataset,
+                    'parent_dataset': None,
+                    'sheet_type': 'clustered',
+                    'sheet_label': 'Clustered',
+                    'filter_params': None,
+                    'comparison_params': None,
+                }
             
             # 새 탭으로 전환 (이때 _on_tab_changed가 호출되어 current_dataset 업데이트)
             self.data_tabs.setCurrentIndex(tab_index)
@@ -3245,7 +3277,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "No Data", "Please load an ATAC-seq dataset first.")
             return
 
-        dataframe, dataset = self.tab_data[current_index]
+        dataframe = self.tab_data[current_index]['dataframe']
+        dataset = self.tab_data[current_index]['dataset']
         if dataset is None or dataset.dataset_type != DatasetType.ATAC_SEQ:
             QMessageBox.warning(self, "Invalid Dataset",
                                 "This visualization is only available for ATAC-seq datasets.")
@@ -3321,7 +3354,8 @@ class MainWindow(QMainWindow):
                                 "Please run RNA + ATAC integration first.")
             return
 
-        dataframe, dataset = self.tab_data[current_index]
+        dataframe = self.tab_data[current_index]['dataframe']
+        dataset = self.tab_data[current_index]['dataset']
         if dataset is None or dataset.dataset_type != DatasetType.MULTI_OMICS:
             QMessageBox.warning(
                 self, "Invalid Dataset",
@@ -3354,7 +3388,8 @@ class MainWindow(QMainWindow):
         if current_index < 0 or current_index not in self.tab_data:
             return
 
-        dataframe, dataset = self.tab_data[current_index]
+        dataframe = self.tab_data[current_index]['dataframe']
+        dataset = self.tab_data[current_index]['dataset']
         if dataset is None or dataset.dataset_type != DatasetType.MULTI_OMICS:
             QMessageBox.warning(self, "Invalid Dataset",
                                 "Please select a Multi-Omics integrated tab first.")
@@ -3387,7 +3422,8 @@ class MainWindow(QMainWindow):
                               "No data available in current tab.")
             return
         
-        dataframe, dataset = self.tab_data[current_index]
+        dataframe = self.tab_data[current_index]['dataframe']
+        dataset = self.tab_data[current_index]['dataset']
         
         # GO/KEGG 데이터셋인지 확인
         if dataset and dataset.dataset_type != DatasetType.GO_ANALYSIS:
@@ -3650,7 +3686,8 @@ class MainWindow(QMainWindow):
         atac_dataset = None
         atac_dataframe = None
         if current_index in self.tab_data:
-            _df, _ds = self.tab_data[current_index]
+            _df = self.tab_data[current_index]['dataframe']
+            _ds = self.tab_data[current_index]['dataset']
             if _ds and _ds.dataset_type == DatasetType.ATAC_SEQ:
                 is_atac_tab = True
                 coord_cols = {'chromosome', 'peak_start', 'peak_end'}
