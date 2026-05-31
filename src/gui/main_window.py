@@ -2229,22 +2229,25 @@ class MainWindow(QMainWindow):
         bar.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         bar.setStyleSheet("""
             QWidget#ActivityBar {
-                background: #2c2c2c;
-                border-right: 1px solid #444;
+                background: #ebebeb;
+                border-right: 1px solid #ccc;
             }
             QToolButton {
                 background: transparent;
                 border: none;
-                color: #aaa;
+                color: #555;
                 font-size: 18px;
                 border-radius: 4px;
                 padding: 6px 4px;
             }
-            QToolButton:hover { background: #3e3e3e; color: #fff; }
+            QToolButton:hover {
+                background: #d6d6d6;
+                color: #222;
+            }
             QToolButton:checked {
-                background: #094771;
-                color: #fff;
-                border-left: 2px solid #007acc;
+                background: #cde4f5;
+                color: #005a9e;
+                border-left: 2px solid #0078d4;
             }
         """)
         bar_layout = QVBoxLayout(bar)
@@ -2273,7 +2276,7 @@ class MainWindow(QMainWindow):
 
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("color: #555;")
+        sep.setStyleSheet("color: #ccc;")
         bar_layout.addWidget(sep)
 
         self._act_split_btn = QToolButton()
