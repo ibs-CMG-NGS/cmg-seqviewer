@@ -3243,11 +3243,19 @@ class MainWindow(QMainWindow):
             # 데이터셋 파일 경로 / 타입 맵 구성
             dataset_file_map: dict = {}
             dataset_type_map: dict = {}
+            dataset_source_map: dict = {}  # "file" or "database"
+            dataset_db_id_map: dict = {}   # db_dataset_id (database source 전용)
             for name, ds in self.presenter.datasets.items():
                 fp = getattr(ds, "file_path", None) or ""
                 dataset_file_map[name] = str(fp)
                 dt = getattr(ds, "dataset_type", None)
                 dataset_type_map[name] = dt.value if dt else ""
+                db_id = ds.metadata.get("db_dataset_id", "") if hasattr(ds, "metadata") else ""
+                if db_id:
+                    dataset_source_map[name] = "database"
+                    dataset_db_id_map[name] = db_id
+                else:
+                    dataset_source_map[name] = "file"
 
             # 트리에서 펼쳐진 루트 항목 수집
             tree_expanded: list = []
@@ -3264,18 +3272,25 @@ class MainWindow(QMainWindow):
                 dataset_type_map=dataset_type_map,
                 active_tab_index=self.data_tabs.currentIndex(),
                 tree_expanded=tree_expanded,
-                project_path=None,  # 상대 경로 변환은 ProjectIO.save 내부에서 처리하지 않음
+                project_path=None,
             )
-            # 프로젝트 경로 기준 상대 경로 처리
+            # source / db_dataset_id 주입 + 파일 경로 상대화
             from pathlib import Path as _Path
             project_dir = _Path(path).parent
             for ds_spec in spec.get("datasets", []):
-                fp = ds_spec.get("file_path", "")
-                if fp and os.path.isabs(fp):
-                    try:
-                        ds_spec["file_path"] = os.path.relpath(fp, start=project_dir)
-                    except ValueError:
-                        pass  # 드라이브 다를 경우 절대 경로 유지
+                ds_name = ds_spec.get("name", "")
+                source = dataset_source_map.get(ds_name, "file")
+                ds_spec["source"] = source
+                if source == "database":
+                    ds_spec["db_dataset_id"] = dataset_db_id_map.get(ds_name, "")
+                    ds_spec["file_path"] = ""  # 파일 경로 불필요
+                else:
+                    fp = ds_spec.get("file_path", "")
+                    if fp and os.path.isabs(fp):
+                        try:
+                            ds_spec["file_path"] = os.path.relpath(fp, start=project_dir)
+                        except ValueError:
+                            pass
 
             ProjectIO.save(path, spec)
             self._add_recent_project(path)
@@ -3325,23 +3340,51 @@ class MainWindow(QMainWindow):
             ds_name = ds_spec.get("name", "")
             ds_file = ds_spec.get("file_path", "")
             ds_type = ds_spec.get("type", "")
+            source = ds_spec.get("source", "file")
             sheets = ds_spec.get("sheets", [])
 
-            if not os.path.exists(ds_file):
-                missing_files.append(ds_file or ds_name)
-                continue
+            # ── 데이터베이스 소스 ──
+            if source == "database":
+                db_id = ds_spec.get("db_dataset_id", "")
+                try:
+                    dataset = self.db_manager.load_dataset(db_id or ds_name)
+                    if dataset is None:
+                        raise ValueError(f"Not found in database: {db_id or ds_name}")
+                    unique_name = self.dataset_manager._generate_unique_name(ds_name)
+                    dataset.name = unique_name
+                    dataset.metadata['db_dataset_id'] = db_id
+                    self.presenter.datasets[unique_name] = dataset
+                    meta = {
+                        'file_path': 'database',
+                        'dataset_type': dataset.dataset_type.value,
+                        'row_count': len(dataset.dataframe),
+                        'column_count': len(dataset.dataframe.columns),
+                    }
+                    self.dataset_manager.add_dataset(unique_name, metadata=meta)
+                    self.presenter.current_dataset = dataset
+                    self.presenter._update_view_with_dataset(dataset, add_to_manager=False)
+                    self._update_comparison_panel_datasets()
+                    loaded_count += 1
+                except Exception as e:
+                    self.logger.warning(f"Failed to load DB dataset '{ds_name}': {e}")
+                    missing_files.append(ds_name)
+                    continue
 
-            # 데이터셋 로드 (whole sheet)
-            try:
-                self.presenter.load_dataset(
-                    Path(ds_file),
-                    custom_name=ds_name if ds_name else None,
-                )
-                loaded_count += 1
-            except Exception as e:
-                self.logger.warning(f"Failed to load dataset '{ds_name}': {e}")
-                missing_files.append(ds_file)
-                continue
+            # ── 파일 소스 ──
+            else:
+                if not ds_file or not os.path.exists(ds_file):
+                    missing_files.append(ds_file or ds_name)
+                    continue
+                try:
+                    self.presenter.load_dataset(
+                        Path(ds_file),
+                        custom_name=ds_name if ds_name else None,
+                    )
+                    loaded_count += 1
+                except Exception as e:
+                    self.logger.warning(f"Failed to load dataset '{ds_name}': {e}")
+                    missing_files.append(ds_file)
+                    continue
 
             # filtered sheets 재현
             for sheet in sheets:
@@ -3352,7 +3395,6 @@ class MainWindow(QMainWindow):
                     continue
                 try:
                     criteria = FilterCriteria.from_dict(fp_dict)
-                    # 해당 데이터셋을 활성 상태로 전환 후 필터 적용
                     self.presenter.switch_dataset(ds_name)
                     self.presenter.apply_filter(criteria)
                 except Exception as e:
@@ -3481,6 +3523,7 @@ class MainWindow(QMainWindow):
                     
                     # Presenter에 추가
                     self.presenter.datasets[unique_name] = dataset
+                    dataset.metadata['db_dataset_id'] = dataset_id  # 프로젝트 저장/복원용
                     
                     # Dataset Manager에 추가 (metadata와 함께)
                     metadata = {
