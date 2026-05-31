@@ -3252,7 +3252,7 @@ class MainWindow(QMainWindow):
             # 트리에서 펼쳐진 루트 항목 수집
             tree_expanded: list = []
             if hasattr(self, "dataset_manager"):
-                root = self.dataset_manager.tree.invisibleRootItem()
+                root = self.dataset_manager.dataset_tree.invisibleRootItem()
                 for i in range(root.childCount()):
                     item = root.child(i)
                     if item.isExpanded():
