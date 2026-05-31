@@ -407,7 +407,32 @@ class MainWindow(QMainWindow):
 
         # View 메뉴
         view_menu = menubar.addMenu("&View")
-        
+
+        # ── Panels 서브메뉴 ──────────────────────────────────────────
+        panels_menu = view_menu.addMenu("Panels")
+
+        self._menu_datasets_action = QAction("Datasets", self, checkable=True)
+        self._menu_datasets_action.setChecked(False)
+        self._menu_datasets_action.setShortcut("Ctrl+1")
+        self._menu_datasets_action.triggered.connect(self._on_menu_datasets_toggled)
+        panels_menu.addAction(self._menu_datasets_action)
+
+        self._menu_filter_action = QAction("Filter / Compare", self, checkable=True)
+        self._menu_filter_action.setChecked(True)
+        self._menu_filter_action.setShortcut("Ctrl+2")
+        self._menu_filter_action.triggered.connect(self._on_menu_filter_toggled)
+        panels_menu.addAction(self._menu_filter_action)
+
+        panels_menu.addSeparator()
+
+        self._menu_split_action = QAction("Split View", self, checkable=True)
+        self._menu_split_action.setChecked(False)
+        self._menu_split_action.setShortcut("Ctrl+\\")
+        self._menu_split_action.triggered.connect(self._on_menu_split_toggled)
+        panels_menu.addAction(self._menu_split_action)
+
+        view_menu.addSeparator()
+
         # 컬럼 표시 레벨 서브메뉴
         column_level_menu = view_menu.addMenu("📊 Column Display Level")
         
@@ -2295,27 +2320,52 @@ class MainWindow(QMainWindow):
         if checked and not self._split_view_active:
             self._set_panel_visible(self.func_container, False, is_func=True)
             self._act_filter_btn.setChecked(False)
+            self._menu_filter_action.setChecked(False)
         self._set_panel_visible(self.tree_container, checked, is_func=False)
+        self._menu_datasets_action.setChecked(checked)
 
     def _on_act_filter_clicked(self, checked: bool):
         """Filter/Compare 패널 토글 (비분할 모드에서는 Datasets와 상호 배타)"""
         if checked and not self._split_view_active:
             self._set_panel_visible(self.tree_container, False, is_func=False)
             self._act_dataset_btn.setChecked(False)
+            self._menu_datasets_action.setChecked(False)
         self._set_panel_visible(self.func_container, checked, is_func=True)
+        self._menu_filter_action.setChecked(checked)
 
     def _on_act_split_toggled(self, checked: bool):
         """Split View 토글: 두 패널 동시 표시 ↔ 단일 패널"""
         self._split_view_active = checked
+        self._menu_split_action.setChecked(checked)
         if checked:
             self._set_panel_visible(self.tree_container, True, is_func=False)
             self._set_panel_visible(self.func_container, True, is_func=True)
             self._act_dataset_btn.setChecked(True)
             self._act_filter_btn.setChecked(True)
+            self._menu_datasets_action.setChecked(True)
+            self._menu_filter_action.setChecked(True)
         else:
             # Filter만 유지, 트리 숨김
             self._set_panel_visible(self.tree_container, False, is_func=False)
             self._act_dataset_btn.setChecked(False)
+            self._menu_datasets_action.setChecked(False)
+
+    # ── View 메뉴 핸들러 ───────────────────────────────────────
+
+    def _on_menu_datasets_toggled(self, checked: bool):
+        """View > Panels > Datasets 메뉴 → activity bar로 위임"""
+        self._act_dataset_btn.setChecked(checked)
+        self._on_act_dataset_clicked(checked)
+
+    def _on_menu_filter_toggled(self, checked: bool):
+        """View > Panels > Filter/Compare 메뉴 → activity bar로 위임"""
+        self._act_filter_btn.setChecked(checked)
+        self._on_act_filter_clicked(checked)
+
+    def _on_menu_split_toggled(self, checked: bool):
+        """View > Panels > Split View 메뉴 → activity bar로 위임"""
+        self._act_split_btn.setChecked(checked)
+        self._on_act_split_toggled(checked)
 
     def _set_panel_visible(self, panel: QWidget, visible: bool, *, is_func: bool):
         """패널 표시/숨김 + splitter 크기 복원"""
