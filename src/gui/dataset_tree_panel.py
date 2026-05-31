@@ -2,7 +2,6 @@
 Dataset Tree Panel
 
 좌측 패널 상단에 배치되는 트리 기반 데이터셋/시트 관리 위젯.
-DatasetManagerWidget(가로 콤보박스)의 기능을 흡수하고 계층 구조로 확장한다.
 
 트리 구조:
   📊 DESeq2  (root node — Dataset)
@@ -215,7 +214,7 @@ class DatasetTreePanel(QWidget):
 
     # backward-compat alias used by main_window.py
     def add_dataset(self, dataset_name: str, info: str = "", metadata: Optional[Dict] = None) -> str:
-        """DatasetManagerWidget.add_dataset() 호환 메서드."""
+        """dataset_manager 호환 메서드: add_root_dataset() 추가 방식으로 데이터셋 등록."""
         return self.add_root_dataset(dataset_name, metadata)
 
     def remove_root_dataset(self, dataset_name: str):
@@ -293,7 +292,7 @@ class DatasetTreePanel(QWidget):
     def generate_unique_name(self, base_name: str) -> str:
         """중복되지 않는 고유 이름을 생성한다.
 
-        DatasetManagerWidget._generate_unique_name() 과 동일 로직.
+        이름이 없으면 기본값, 이미 있으면 번호 suffix 추가 (name, name_2, …).
         main_window.py에서 외부 호출되므로 public 메서드로 제공한다.
         """
         existing = self.get_all_root_datasets()
