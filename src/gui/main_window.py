@@ -3372,19 +3372,51 @@ class MainWindow(QMainWindow):
 
             # ── 파일 소스 ──
             else:
+                # 파일 경로가 없거나 존재하지 않으면 DB에서 이름으로 fallback 시도
                 if not ds_file or not os.path.exists(ds_file):
-                    missing_files.append(ds_file or ds_name)
-                    continue
-                try:
-                    self.presenter.load_dataset(
-                        Path(ds_file),
-                        custom_name=ds_name if ds_name else None,
+                    db_meta = next(
+                        (m for m in self.db_manager.get_all_metadata() if m.alias == ds_name),
+                        None,
                     )
-                    loaded_count += 1
-                except Exception as e:
-                    self.logger.warning(f"Failed to load dataset '{ds_name}': {e}")
-                    missing_files.append(ds_file)
-                    continue
+                    if db_meta:
+                        # DB fallback 성공 → database 소스로 처리
+                        try:
+                            dataset = self.db_manager.load_dataset(db_meta.dataset_id)
+                            if dataset is None:
+                                raise ValueError(f"DB load returned None for {db_meta.dataset_id}")
+                            unique_name = self.dataset_manager._generate_unique_name(ds_name)
+                            dataset.name = unique_name
+                            dataset.metadata['db_dataset_id'] = db_meta.dataset_id
+                            self.presenter.datasets[unique_name] = dataset
+                            meta = {
+                                'file_path': 'database',
+                                'dataset_type': dataset.dataset_type.value,
+                                'row_count': len(dataset.dataframe),
+                                'column_count': len(dataset.dataframe.columns),
+                            }
+                            self.dataset_manager.add_dataset(unique_name, metadata=meta)
+                            self.presenter.current_dataset = dataset
+                            self.presenter._update_view_with_dataset(dataset, add_to_manager=False)
+                            self._update_comparison_panel_datasets()
+                            loaded_count += 1
+                        except Exception as e:
+                            self.logger.warning(f"DB fallback failed for '{ds_name}': {e}")
+                            missing_files.append(ds_name)
+                            continue
+                    else:
+                        missing_files.append(ds_file or ds_name)
+                        continue
+                else:
+                    try:
+                        self.presenter.load_dataset(
+                            Path(ds_file),
+                            custom_name=ds_name if ds_name else None,
+                        )
+                        loaded_count += 1
+                    except Exception as e:
+                        self.logger.warning(f"Failed to load dataset '{ds_name}': {e}")
+                        missing_files.append(ds_file)
+                        continue
 
             # filtered sheets 재현
             for sheet in sheets:
