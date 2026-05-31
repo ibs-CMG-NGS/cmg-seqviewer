@@ -64,6 +64,7 @@ class DatasetTreePanel(QWidget):
     """
 
     dataset_selected = pyqtSignal(str)
+    dataset_added = pyqtSignal(str)       # 루트 노드 추가 완료 후 발화 (unique_name)
     sheet_selected = pyqtSignal(int)
     dataset_removed = pyqtSignal(str)
     rename_requested = pyqtSignal(str, str)
@@ -160,6 +161,7 @@ class DatasetTreePanel(QWidget):
         item.setExpanded(True)
 
         self._update_info()
+        self.dataset_added.emit(unique_name)
         return unique_name
 
     # backward-compat alias used by main_window.py

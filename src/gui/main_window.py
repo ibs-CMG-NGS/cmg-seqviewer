@@ -20,7 +20,7 @@ import pandas as pd
 from core.fsm import FSM, State, Event
 from core.logger import QtLogHandler, LogBuffer, get_audit_logger
 from gui.filter_panel import FilterPanel
-from gui.dataset_manager import DatasetManagerWidget
+from gui.dataset_tree_panel import DatasetTreePanel
 from gui.comparison_panel import ComparisonPanel
 from gui.visualization_dialog import VolcanoPlotDialog, PadjHistogramDialog, HeatmapDialog, DotPlotDialog
 from gui.pca_dialog import PCADialog
@@ -128,48 +128,67 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(5, 5, 5, 5)
         main_layout.setSpacing(5)
         
-        # 상단: 데이터셋 관리자
-        self.dataset_manager = DatasetManagerWidget()
-        self.dataset_manager.dataset_selected.connect(self._on_dataset_selected)
-        self.dataset_manager.add_dataset_btn.clicked.connect(self._on_add_dataset)
-        self.dataset_manager.dataset_removed.connect(self._on_dataset_removed)
-        # file_dropped 시그널은 제거 (data_tabs로 이동)
-        main_layout.addWidget(self.dataset_manager)
-        
         # 중앙: Splitter (좌측 패널 + 우측 데이터 뷰) - 인스턴스 변수로 저장
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
-        
-        # 좌측 패널 컨테이너 (필터 + 비교 기능)
+
+        # 좌측 패널 컨테이너 (트리 + 필터 + 비교 기능)
         left_panel = QWidget()
-        left_panel.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)  # 가로: 필요한 만큼, 세로: 확장
-        left_layout = QVBoxLayout(left_panel)
+        left_panel.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
+        left_outer_layout = QVBoxLayout(left_panel)
+        left_outer_layout.setContentsMargins(0, 0, 0, 0)
+        left_outer_layout.setSpacing(0)
+
+        # 좌측 세로 Splitter: 트리(상단) / 필터+비교(하단)
+        left_splitter = QSplitter(Qt.Orientation.Vertical)
+
+        # DatasetTreePanel (상단)
+        self.dataset_manager = DatasetTreePanel()
+        self.dataset_manager.dataset_selected.connect(self._on_dataset_selected)
+        self.dataset_manager.add_requested.connect(self._on_add_dataset)
+        self.dataset_manager.dataset_removed.connect(self._on_dataset_removed)
+        self.dataset_manager.rename_requested.connect(self._on_dataset_renamed)
+        self.dataset_manager.file_dropped.connect(self._on_file_dropped)
+        self.dataset_manager.sheet_selected.connect(self._on_tree_sheet_selected)
+        self.dataset_manager.dataset_added.connect(self._on_dataset_tree_root_added)
+        self.dataset_manager.setMinimumHeight(150)
+        left_splitter.addWidget(self.dataset_manager)
+
+        # 필터+비교 패널 (하단)
+        filter_widget = QWidget()
+        left_layout = QVBoxLayout(filter_widget)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(5)
-        
+
         # 필터 패널
         self.filter_panel = FilterPanel()
         self.filter_panel.filter_requested.connect(self._on_filter_requested)
         self.filter_panel.analysis_requested.connect(self._on_analysis_requested)
         left_layout.addWidget(self.filter_panel)
-        
+
         # 비교 패널
         self.comparison_panel = ComparisonPanel()
         self.comparison_panel.compare_requested.connect(self._on_comparison_requested)
         left_layout.addWidget(self.comparison_panel)
-        
+
         # Multi-Omics 패널
         self.multi_omics_panel = MultiOmicsPanel()
         self.multi_omics_panel.integrate_requested.connect(self._on_integrate_requested)
-        self.multi_omics_panel.setVisible(False)  # 기본적으로 숨김
+        self.multi_omics_panel.setVisible(False)
         left_layout.addWidget(self.multi_omics_panel)
-        
+
         # === 실행 버튼 레이아웃 (Apply Filter + Start Comparison) ===
         button_layout = QHBoxLayout()
         button_layout.setSpacing(5)
         button_layout.addWidget(self.filter_panel.apply_filter_btn)
         button_layout.addWidget(self.comparison_panel.compare_btn)
         left_layout.addLayout(button_layout)
-        
+
+        left_splitter.addWidget(filter_widget)
+        # 트리:필터 기본 비율 1:2
+        left_splitter.setStretchFactor(0, 1)
+        left_splitter.setStretchFactor(1, 2)
+        left_outer_layout.addWidget(left_splitter)
+
         self.main_splitter.addWidget(left_panel)
         
         # 우측: 데이터 뷰 (탭) - 주로 확장되도록 설정
@@ -577,7 +596,8 @@ class MainWindow(QMainWindow):
         root_logger = logging.getLogger()
         root_logger.addHandler(self.qt_log_handler)
     
-    def _create_data_tab(self, tab_name: str) -> QTableWidget:
+    def _create_data_tab(self, tab_name: str, sheet_type: str = 'whole',
+                         parent_dataset: str = None) -> QTableWidget:
         """새 데이터 탭 생성"""
         table = QTableWidget()
         table.setAlternatingRowColors(True)
@@ -620,8 +640,25 @@ class MainWindow(QMainWindow):
         """)
         
         self.data_tabs.addTab(table, tab_name)
+
+        # tab_data 사전 등록 (아직 없을 때만)
+        new_idx = self.data_tabs.indexOf(table)
+        if new_idx >= 0 and new_idx not in self.tab_data:
+            self.tab_data[new_idx] = {
+                'dataframe': None,
+                'dataset': None,
+                'parent_dataset': parent_dataset,
+                'sheet_type': sheet_type,
+                'sheet_label': tab_name,
+                'filter_params': None,
+                'comparison_params': None,
+            }
+        # 비-whole 시트는 parent_dataset이 있으면 즉시 트리에 등록
+        if parent_dataset and sheet_type != 'whole':
+            self.dataset_manager.add_sheet(parent_dataset, new_idx, tab_name, sheet_type)
+
         return table
-    
+
     def populate_table(self, table: QTableWidget, dataframe: pd.DataFrame, dataset=None):
         """
         테이블에 데이터 채우기 (컬럼 레벨 및 정밀도 적용)
@@ -640,12 +677,17 @@ class MainWindow(QMainWindow):
             if tab_index in self.tab_data:
                 self.tab_data[tab_index]['dataframe'] = dataframe
                 self.tab_data[tab_index]['dataset'] = dataset
+                # 'whole' 시트: parent_dataset이 아직 None이면 dataset.name으로 채움
+                if (dataset is not None
+                        and self.tab_data[tab_index].get('parent_dataset') is None
+                        and self.tab_data[tab_index].get('sheet_type') == 'whole'):
+                    self.tab_data[tab_index]['parent_dataset'] = dataset.name
             else:
                 self.tab_data[tab_index] = {
                     'dataframe': dataframe,
                     'dataset': dataset,
-                    'parent_dataset': None,
-                    'sheet_type': None,
+                    'parent_dataset': dataset.name if dataset else None,
+                    'sheet_type': 'whole',
                     'sheet_label': '',
                     'filter_params': None,
                     'comparison_params': None,
@@ -1374,7 +1416,12 @@ class MainWindow(QMainWindow):
                 filtered_dataset = None
             
             # 새 탭 생성
-            new_table = self._create_data_tab(new_tab_name)
+            _cur_entry = self.tab_data.get(self.data_tabs.currentIndex())
+            parent_root = (_cur_entry.get('parent_dataset') if _cur_entry else None) \
+                or (current_dataset.name if current_dataset else None)
+            new_table = self._create_data_tab(new_tab_name,
+                                              sheet_type='filtered',
+                                              parent_dataset=parent_root)
             self.populate_table(new_table, filtered_df, filtered_dataset)
             self.logger.info(f"Filtered current tab: {len(filtered_df)} rows from {row_count} rows")
             
@@ -1623,7 +1670,7 @@ class MainWindow(QMainWindow):
         
         # 탭 생성
         comparison_tab_name = f"Comparison: Gene List ({len(datasets)} datasets)"
-        table = self._create_data_tab(comparison_tab_name)
+        table = self._create_data_tab(comparison_tab_name, sheet_type='comparison')
         self.populate_table(table, result_df)
         self.logger.info(f"Gene list comparison completed: {len(result_df)} genes across {len(datasets)} datasets")
 
@@ -1786,7 +1833,7 @@ class MainWindow(QMainWindow):
             }
         )
 
-        table = self._create_data_tab(tab_name)
+        table = self._create_data_tab(tab_name, sheet_type='comparison')
         self.populate_table(table, result_df, comp_dataset)
 
         # 비교 탭으로 자동 이동
@@ -2012,9 +2059,9 @@ class MainWindow(QMainWindow):
         
         # 탭 생성
         comparison_tab_name = f"Comparison: Statistics ({len(datasets)} datasets)"
-        table = self._create_data_tab(comparison_tab_name)
+        table = self._create_data_tab(comparison_tab_name, sheet_type='comparison')
         self.populate_table(table, result_df)
-        
+
         # 통계 정보 로그
         self.logger.info(f"Statistics comparison completed:")
         self.logger.info(f"  - Total unique genes: {len(all_genes)}")
@@ -2083,17 +2130,24 @@ class MainWindow(QMainWindow):
         tab_data를 먼저 정리한 뒤 실제 탭을 제거해야 _on_tab_changed가
         올바른 데이터를 읽을 수 있다.
         """
-        # 1. 제거 대상 삭제
+        # 1. 트리: 닫히는 시트 노드 제거
+        self.dataset_manager.remove_sheet(index)
+        # 트리: index보다 큰 child 노드의 tab_index를 1씩 당김
+        for key in sorted(self.tab_data.keys()):
+            if key > index:
+                self.dataset_manager.update_sheet_tab_index(key, key - 1)
+
+        # 2. tab_data: 제거 대상 삭제
         if index in self.tab_data:
             del self.tab_data[index]
 
-        # 2. index보다 큰 키를 1씩 당김 (removeTab 후 탭 shift 반영)
+        # 3. index보다 큰 키를 1씩 당김 (removeTab 후 탭 shift 반영)
         shifted: dict = {}
         for key, value in self.tab_data.items():
             shifted[key - 1 if key > index else key] = value
         self.tab_data = shifted
 
-        # 3. 실제 탭 제거 (currentChanged 신호 발화)
+        # 4. 실제 탭 제거 (currentChanged 신호 발화)
         self.data_tabs.removeTab(index)
 
     def _on_tab_close_requested(self, index: int):
@@ -2123,7 +2177,28 @@ class MainWindow(QMainWindow):
 
             # ATAC-seq 필터 섹션 및 전용 시각화 메뉴 업데이트
             self._update_atac_ui(index)
-    
+
+            # 트리 선택 동기화
+            self.dataset_manager.sync_selection(index)
+
+    def _on_tree_sheet_selected(self, tab_index: int):
+        """트리에서 시트 클릭 → 탭 활성화"""
+        if 0 <= tab_index < self.data_tabs.count():
+            self.data_tabs.setCurrentIndex(tab_index)
+
+    def _on_file_dropped(self, file_path: str):
+        """DatasetTreePanel 드롭 → 파일 로드"""
+        self._load_dataset_with_name(file_path)
+
+    def _on_dataset_tree_root_added(self, dataset_name: str):
+        """루트 노드 추가 후 해당 dataset의 whole 시트를 트리에 등록"""
+        for tab_index, entry in self.tab_data.items():
+            if (entry.get('sheet_type') == 'whole'
+                    and entry.get('parent_dataset') == dataset_name
+                    and self.dataset_manager._find_child_by_tab(tab_index) is None):
+                sheet_label = self.data_tabs.tabText(tab_index)
+                self.dataset_manager.add_sheet(dataset_name, tab_index, sheet_label, 'whole')
+
     def _update_filter_panel_go_mode(self, tab_index: int):
         """
         현재 탭의 dataset type이 GO_ANALYSIS이면 FilterPanel Gene List 탭에
@@ -3207,7 +3282,7 @@ class MainWindow(QMainWindow):
             logger.info(f"Created clustered dataset: {dataset_name}")
             
             # 새 탭 생성 및 데이터 표시
-            table = self._create_data_tab(dataset_name)
+            table = self._create_data_tab(dataset_name, sheet_type='clustered')
             self.populate_table(table, clustered_data, clustered_dataset)
             
             # 탭 데이터 저장
@@ -3524,9 +3599,11 @@ class MainWindow(QMainWindow):
                     self._remove_tab_safely(idx)
             
             # 새 탭 생성
-            table = self._create_data_tab(tab_name)
+            _par = current_dataset.name if current_dataset else None
+            table = self._create_data_tab(tab_name, sheet_type='filtered',
+                                          parent_dataset=_par)
             new_tab_index = self.data_tabs.indexOf(table)
-            
+
             # 데이터셋 생성 - 현재 활성 데이터셋의 타입을 유지
             from models.data_models import Dataset, DatasetType
             current_dataset = self.presenter.current_dataset
