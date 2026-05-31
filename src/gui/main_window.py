@@ -131,10 +131,11 @@ class MainWindow(QMainWindow):
         # ── 3-way horizontal splitter ──────────────────────────────────
         # [트리 패널] | [기능 패널] | [데이터 탭]
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.main_splitter.setChildrenCollapsible(True)
+        self.main_splitter.setChildrenCollapsible(False)  # 드래그로 완전 접힘 방지
 
         # ── 패널 0: Dataset Tree ───────────────────────────────────────
         tree_container = QWidget()
+        tree_container.setMinimumWidth(140)
         tree_container.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         tree_container_layout = QVBoxLayout(tree_container)
         tree_container_layout.setContentsMargins(0, 0, 0, 0)
@@ -149,9 +150,9 @@ class MainWindow(QMainWindow):
         tree_title = QLabel("Datasets")
         tree_title.setStyleSheet("font-weight:bold; font-size:11px;")
         tree_header_layout.addWidget(tree_title, stretch=1)
-        self._tree_toggle_btn = QPushButton("◀")
+        self._tree_toggle_btn = QPushButton("▼")
         self._tree_toggle_btn.setFixedSize(20, 20)
-        self._tree_toggle_btn.setToolTip("Hide Dataset Tree panel")
+        self._tree_toggle_btn.setToolTip("Show Dataset Tree")
         self._tree_toggle_btn.setStyleSheet(
             "QPushButton{border:none; background:transparent; font-size:10px;}"
             "QPushButton:hover{background:#e0e0e0; border-radius:3px;}"
@@ -168,11 +169,14 @@ class MainWindow(QMainWindow):
         self.dataset_manager.file_dropped.connect(self._on_file_dropped)
         self.dataset_manager.sheet_selected.connect(self._on_tree_sheet_selected)
         self.dataset_manager.dataset_added.connect(self._on_dataset_tree_root_added)
+        # 기본: tree widget 숨김 (스크린샷 default 상태)
+        self.dataset_manager.dataset_tree.setVisible(False)
         tree_container_layout.addWidget(self.dataset_manager)
         self.main_splitter.addWidget(tree_container)
 
         # ── 패널 1: 기능 패널 (필터 + 비교) ───────────────────────────
         func_container = QWidget()
+        func_container.setMinimumWidth(200)
         func_container.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
         func_container_layout = QVBoxLayout(func_container)
         func_container_layout.setContentsMargins(0, 0, 0, 0)
@@ -189,7 +193,7 @@ class MainWindow(QMainWindow):
         func_header_layout.addWidget(func_title, stretch=1)
         self._func_toggle_btn = QPushButton("◀")
         self._func_toggle_btn.setFixedSize(20, 20)
-        self._func_toggle_btn.setToolTip("Hide Filter/Compare panel")
+        self._func_toggle_btn.setToolTip("Hide Filter/Compare panel")  # 기본: 표시 중
         self._func_toggle_btn.setStyleSheet(
             "QPushButton{border:none; background:transparent; font-size:10px;}"
             "QPushButton:hover{background:#e0e0e0; border-radius:3px;}"
@@ -237,15 +241,18 @@ class MainWindow(QMainWindow):
         self.data_tabs.dropEvent = self._data_tabs_drop
         self.main_splitter.addWidget(self.data_tabs)
 
-        # splitter 초기 비율: 트리 200 / 기능 250 / 데이터 나머지
-        self.main_splitter.setSizes([200, 250, 950])
+        # splitter 초기 비율: 트리 200 / 기능 260 / 데이터 나머지
+        self.main_splitter.setSizes([200, 260, 940])
         self.main_splitter.setStretchFactor(0, 0)
         self.main_splitter.setStretchFactor(1, 0)
         self.main_splitter.setStretchFactor(2, 1)
+        # 기능 패널만 splitter로 접기/펼치기 가능
+        self.main_splitter.setCollapsible(0, False)  # 트리 패널: 드래그 최소 유지
+        self.main_splitter.setCollapsible(1, True)   # 기능 패널: 완전 접기 가능
+        self.main_splitter.setCollapsible(2, False)  # 데이터 탭: 항상 표시
 
-        # 패널 크기 저장용 (접기/펼치기 복원)
-        self._tree_panel_width: int = 200
-        self._func_panel_width: int = 250
+        # 기능 패널 크기 저장용 (접기/펼치기 복원)
+        self._func_panel_width: int = 260
 
         # 초기 탭 생성
         self._create_data_tab("Whole Dataset")
@@ -2225,19 +2232,17 @@ class MainWindow(QMainWindow):
     # ── 패널 토글 ────────────────────────────────────────────────────
 
     def _toggle_tree_panel(self):
-        """Dataset Tree 패널 접기/펼치기 (splitter index 0)"""
-        sizes = self.main_splitter.sizes()
-        if sizes[0] > 0:
-            self._tree_panel_width = sizes[0]
-            self.main_splitter.setSizes([0, sizes[1], sizes[2] + sizes[0]])
-            self._tree_toggle_btn.setText("▶")
-            self._tree_toggle_btn.setToolTip("Show Dataset Tree panel")
+        """Dataset Tree 패널: 내부 QTreeWidget 표시/숨김 (패널 너비 유지)"""
+        tree_visible = self.dataset_manager.dataset_tree.isVisible()
+        self.dataset_manager.dataset_tree.setVisible(not tree_visible)
+        if not tree_visible:
+            # 펼치기
+            self._tree_toggle_btn.setText("▲")
+            self._tree_toggle_btn.setToolTip("Collapse Dataset Tree")
         else:
-            w = self._tree_panel_width or 200
-            total = sizes[2]
-            self.main_splitter.setSizes([w, sizes[1], max(total - w, 200)])
-            self._tree_toggle_btn.setText("◀")
-            self._tree_toggle_btn.setToolTip("Hide Dataset Tree panel")
+            # 접기
+            self._tree_toggle_btn.setText("▼")
+            self._tree_toggle_btn.setToolTip("Expand Dataset Tree")
 
     def _toggle_func_panel(self):
         """Filter/Compare 패널 접기/펼치기 (splitter index 1)"""
@@ -2248,7 +2253,7 @@ class MainWindow(QMainWindow):
             self._func_toggle_btn.setText("▶")
             self._func_toggle_btn.setToolTip("Show Filter/Compare panel")
         else:
-            w = self._func_panel_width or 250
+            w = self._func_panel_width or 260
             total = sizes[2]
             self.main_splitter.setSizes([sizes[0], w, max(total - w, 200)])
             self._func_toggle_btn.setText("◀")
