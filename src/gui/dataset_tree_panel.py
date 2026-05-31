@@ -88,25 +88,39 @@ class DatasetTreePanel(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
 
-        # 툴바 (Add / Remove / Rename)
+        # 툴바 (Add / Remove / Rename) — 아이콘 전용, 호버 시 이름 표시
         toolbar = QHBoxLayout()
-        toolbar.setSpacing(4)
+        toolbar.setSpacing(2)
 
-        self.add_dataset_btn = QPushButton("➕ Add")
+        _btn_style = (
+            "QPushButton{border:1px solid #bbb; background:#f5f5f5; "
+            "border-radius:3px; padding:2px 6px; font-size:13px;}"
+            "QPushButton:hover{background:#dceefb; border-color:#0078d4;}"
+            "QPushButton:pressed{background:#b3d7f5;}"
+            "QPushButton:disabled{color:#aaa; background:#f0f0f0;}"
+        )
+
+        self.add_dataset_btn = QPushButton("+")
         self.add_dataset_btn.setToolTip("Add Dataset (or drag & drop a file)")
+        self.add_dataset_btn.setFixedSize(26, 26)
+        self.add_dataset_btn.setStyleSheet(_btn_style)
         self.add_dataset_btn.setAcceptDrops(True)
         self.add_dataset_btn.dragEnterEvent = lambda e: self.dragEnterEvent(e)
         self.add_dataset_btn.dropEvent = lambda e: self.dropEvent(e)
         self.add_dataset_btn.clicked.connect(self.add_requested.emit)
         toolbar.addWidget(self.add_dataset_btn)
 
-        self.remove_dataset_btn = QPushButton("➖ Remove")
+        self.remove_dataset_btn = QPushButton("−")
         self.remove_dataset_btn.setToolTip("Remove selected dataset")
+        self.remove_dataset_btn.setFixedSize(26, 26)
+        self.remove_dataset_btn.setStyleSheet(_btn_style)
         self.remove_dataset_btn.clicked.connect(self._on_remove_clicked)
         toolbar.addWidget(self.remove_dataset_btn)
 
-        self.rename_dataset_btn = QPushButton("✏️ Rename")
+        self.rename_dataset_btn = QPushButton("✎")
         self.rename_dataset_btn.setToolTip("Rename selected dataset")
+        self.rename_dataset_btn.setFixedSize(26, 26)
+        self.rename_dataset_btn.setStyleSheet(_btn_style)
         self.rename_dataset_btn.clicked.connect(self._on_rename_clicked)
         toolbar.addWidget(self.rename_dataset_btn)
 
