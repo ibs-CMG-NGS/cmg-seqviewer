@@ -127,21 +127,39 @@ class MainWindow(QMainWindow):
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(5, 5, 5, 5)
         main_layout.setSpacing(5)
-        
-        # 중앙: Splitter (좌측 패널 + 우측 데이터 뷰) - 인스턴스 변수로 저장
+
+        # ── 3-way horizontal splitter ──────────────────────────────────
+        # [트리 패널] | [기능 패널] | [데이터 탭]
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.main_splitter.setChildrenCollapsible(True)
 
-        # 좌측 패널 컨테이너 (트리 + 필터 + 비교 기능)
-        left_panel = QWidget()
-        left_panel.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
-        left_outer_layout = QVBoxLayout(left_panel)
-        left_outer_layout.setContentsMargins(0, 0, 0, 0)
-        left_outer_layout.setSpacing(0)
+        # ── 패널 0: Dataset Tree ───────────────────────────────────────
+        tree_container = QWidget()
+        tree_container.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        tree_container_layout = QVBoxLayout(tree_container)
+        tree_container_layout.setContentsMargins(0, 0, 0, 0)
+        tree_container_layout.setSpacing(0)
 
-        # 좌측 세로 Splitter: 트리(상단) / 필터+비교(하단)
-        left_splitter = QSplitter(Qt.Orientation.Vertical)
+        # 트리 헤더 (제목 + 접기 버튼)
+        tree_header = QWidget()
+        tree_header.setStyleSheet("background:#f5f5f5; border-bottom:1px solid #ddd;")
+        tree_header_layout = QHBoxLayout(tree_header)
+        tree_header_layout.setContentsMargins(6, 3, 3, 3)
+        tree_header_layout.setSpacing(4)
+        tree_title = QLabel("Datasets")
+        tree_title.setStyleSheet("font-weight:bold; font-size:11px;")
+        tree_header_layout.addWidget(tree_title, stretch=1)
+        self._tree_toggle_btn = QPushButton("◀")
+        self._tree_toggle_btn.setFixedSize(20, 20)
+        self._tree_toggle_btn.setToolTip("Hide Dataset Tree panel")
+        self._tree_toggle_btn.setStyleSheet(
+            "QPushButton{border:none; background:transparent; font-size:10px;}"
+            "QPushButton:hover{background:#e0e0e0; border-radius:3px;}"
+        )
+        self._tree_toggle_btn.clicked.connect(self._toggle_tree_panel)
+        tree_header_layout.addWidget(self._tree_toggle_btn)
+        tree_container_layout.addWidget(tree_header)
 
-        # DatasetTreePanel (상단)
         self.dataset_manager = DatasetTreePanel()
         self.dataset_manager.dataset_selected.connect(self._on_dataset_selected)
         self.dataset_manager.add_requested.connect(self._on_add_dataset)
@@ -150,50 +168,67 @@ class MainWindow(QMainWindow):
         self.dataset_manager.file_dropped.connect(self._on_file_dropped)
         self.dataset_manager.sheet_selected.connect(self._on_tree_sheet_selected)
         self.dataset_manager.dataset_added.connect(self._on_dataset_tree_root_added)
-        self.dataset_manager.setMinimumHeight(150)
-        left_splitter.addWidget(self.dataset_manager)
+        tree_container_layout.addWidget(self.dataset_manager)
+        self.main_splitter.addWidget(tree_container)
 
-        # 필터+비교 패널 (하단)
-        filter_widget = QWidget()
-        left_layout = QVBoxLayout(filter_widget)
-        left_layout.setContentsMargins(0, 0, 0, 0)
+        # ── 패널 1: 기능 패널 (필터 + 비교) ───────────────────────────
+        func_container = QWidget()
+        func_container.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
+        func_container_layout = QVBoxLayout(func_container)
+        func_container_layout.setContentsMargins(0, 0, 0, 0)
+        func_container_layout.setSpacing(0)
+
+        # 기능 패널 헤더 (제목 + 접기 버튼)
+        func_header = QWidget()
+        func_header.setStyleSheet("background:#f5f5f5; border-bottom:1px solid #ddd;")
+        func_header_layout = QHBoxLayout(func_header)
+        func_header_layout.setContentsMargins(6, 3, 3, 3)
+        func_header_layout.setSpacing(4)
+        func_title = QLabel("Filter / Compare")
+        func_title.setStyleSheet("font-weight:bold; font-size:11px;")
+        func_header_layout.addWidget(func_title, stretch=1)
+        self._func_toggle_btn = QPushButton("◀")
+        self._func_toggle_btn.setFixedSize(20, 20)
+        self._func_toggle_btn.setToolTip("Hide Filter/Compare panel")
+        self._func_toggle_btn.setStyleSheet(
+            "QPushButton{border:none; background:transparent; font-size:10px;}"
+            "QPushButton:hover{background:#e0e0e0; border-radius:3px;}"
+        )
+        self._func_toggle_btn.clicked.connect(self._toggle_func_panel)
+        func_header_layout.addWidget(self._func_toggle_btn)
+        func_container_layout.addWidget(func_header)
+
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setContentsMargins(0, 4, 0, 0)
         left_layout.setSpacing(5)
 
-        # 필터 패널
         self.filter_panel = FilterPanel()
         self.filter_panel.filter_requested.connect(self._on_filter_requested)
         self.filter_panel.analysis_requested.connect(self._on_analysis_requested)
         left_layout.addWidget(self.filter_panel)
 
-        # 비교 패널
         self.comparison_panel = ComparisonPanel()
         self.comparison_panel.compare_requested.connect(self._on_comparison_requested)
         left_layout.addWidget(self.comparison_panel)
 
-        # Multi-Omics 패널
         self.multi_omics_panel = MultiOmicsPanel()
         self.multi_omics_panel.integrate_requested.connect(self._on_integrate_requested)
         self.multi_omics_panel.setVisible(False)
         left_layout.addWidget(self.multi_omics_panel)
 
-        # === 실행 버튼 레이아웃 (Apply Filter + Start Comparison) ===
         button_layout = QHBoxLayout()
         button_layout.setSpacing(5)
         button_layout.addWidget(self.filter_panel.apply_filter_btn)
         button_layout.addWidget(self.comparison_panel.compare_btn)
         left_layout.addLayout(button_layout)
 
-        left_splitter.addWidget(filter_widget)
-        # 트리:필터 기본 비율 1:2
-        left_splitter.setStretchFactor(0, 1)
-        left_splitter.setStretchFactor(1, 2)
-        left_outer_layout.addWidget(left_splitter)
+        func_container_layout.addWidget(left_widget)
+        self.main_splitter.addWidget(func_container)
 
-        self.main_splitter.addWidget(left_panel)
-        
-        # 우측: 데이터 뷰 (탭) - 주로 확장되도록 설정
+        # ── 패널 2: 데이터 탭 ─────────────────────────────────────────
         self.data_tabs = QTabWidget()
-        self.data_tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)  # 가로/세로 모두 확장
+        self.data_tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.data_tabs.setTabsClosable(True)
         self.data_tabs.tabCloseRequested.connect(self._on_tab_close_requested)
         self.data_tabs.currentChanged.connect(self._on_tab_changed)
@@ -201,14 +236,20 @@ class MainWindow(QMainWindow):
         self.data_tabs.dragEnterEvent = self._data_tabs_drag_enter
         self.data_tabs.dropEvent = self._data_tabs_drop
         self.main_splitter.addWidget(self.data_tabs)
-        
+
+        # splitter 초기 비율: 트리 200 / 기능 250 / 데이터 나머지
+        self.main_splitter.setSizes([200, 250, 950])
+        self.main_splitter.setStretchFactor(0, 0)
+        self.main_splitter.setStretchFactor(1, 0)
+        self.main_splitter.setStretchFactor(2, 1)
+
+        # 패널 크기 저장용 (접기/펼치기 복원)
+        self._tree_panel_width: int = 200
+        self._func_panel_width: int = 250
+
         # 초기 탭 생성
         self._create_data_tab("Whole Dataset")
-        
-        # Splitter 비율 설정 (좌측 30%, 우측 70%)
-        self.main_splitter.setStretchFactor(0, 30)
-        self.main_splitter.setStretchFactor(1, 70)
-        
+
         # Main splitter는 확장 가능, 로그는 고정 높이
         main_layout.addWidget(self.main_splitter, stretch=100)
         
@@ -2180,6 +2221,38 @@ class MainWindow(QMainWindow):
 
             # 트리 선택 동기화
             self.dataset_manager.sync_selection(index)
+
+    # ── 패널 토글 ────────────────────────────────────────────────────
+
+    def _toggle_tree_panel(self):
+        """Dataset Tree 패널 접기/펼치기 (splitter index 0)"""
+        sizes = self.main_splitter.sizes()
+        if sizes[0] > 0:
+            self._tree_panel_width = sizes[0]
+            self.main_splitter.setSizes([0, sizes[1], sizes[2] + sizes[0]])
+            self._tree_toggle_btn.setText("▶")
+            self._tree_toggle_btn.setToolTip("Show Dataset Tree panel")
+        else:
+            w = self._tree_panel_width or 200
+            total = sizes[2]
+            self.main_splitter.setSizes([w, sizes[1], max(total - w, 200)])
+            self._tree_toggle_btn.setText("◀")
+            self._tree_toggle_btn.setToolTip("Hide Dataset Tree panel")
+
+    def _toggle_func_panel(self):
+        """Filter/Compare 패널 접기/펼치기 (splitter index 1)"""
+        sizes = self.main_splitter.sizes()
+        if sizes[1] > 0:
+            self._func_panel_width = sizes[1]
+            self.main_splitter.setSizes([sizes[0], 0, sizes[2] + sizes[1]])
+            self._func_toggle_btn.setText("▶")
+            self._func_toggle_btn.setToolTip("Show Filter/Compare panel")
+        else:
+            w = self._func_panel_width or 250
+            total = sizes[2]
+            self.main_splitter.setSizes([sizes[0], w, max(total - w, 200)])
+            self._func_toggle_btn.setText("◀")
+            self._func_toggle_btn.setToolTip("Hide Filter/Compare panel")
 
     def _on_tree_sheet_selected(self, tab_index: int):
         """트리에서 시트 클릭 → 탭 활성화"""
