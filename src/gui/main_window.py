@@ -3288,6 +3288,7 @@ class MainWindow(QMainWindow):
 
     def _on_open_project(self):
         """파일 대화상자로 .seqproj 프로젝트 열기"""
+        import os
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Open Project",
