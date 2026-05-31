@@ -3221,7 +3221,7 @@ class MainWindow(QMainWindow):
     def _on_save_project(self):
         """현재 분석 세션을 .seqproj 파일로 저장"""
         import os
-        from src.utils.project_io import ProjectIO
+        from utils.project_io import ProjectIO
 
         # 저장할 탭이 없으면 알림
         if not self.tab_data:
@@ -3300,8 +3300,8 @@ class MainWindow(QMainWindow):
     def _open_project_path(self, path: str):
         """지정된 .seqproj 경로의 프로젝트 복원"""
         import os
-        from src.utils.project_io import ProjectIO
-        from src.models.data_models import FilterCriteria, FilterMode
+        from utils.project_io import ProjectIO
+        from models.data_models import FilterCriteria, FilterMode
 
         if not os.path.exists(path):
             QMessageBox.warning(self, "File Not Found", f"Project file not found:\n{path}")
