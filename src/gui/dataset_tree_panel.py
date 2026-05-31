@@ -22,7 +22,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QDragEnterEvent, QDropEvent
+from PyQt6.QtGui import QColor, QDragEnterEvent, QDropEvent, QIcon, QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
@@ -40,6 +40,38 @@ from PyQt6.QtWidgets import (
 _ROLE_DATA = Qt.ItemDataRole.UserRole
 _ROLE_KIND = Qt.ItemDataRole.UserRole + 1
 _ROLE_META = Qt.ItemDataRole.UserRole + 2
+
+
+def _make_icon(name: str) -> QIcon:
+    """QPainter로 선명한 모노크롬 아이콘 생성 (plus / minus / pencil)"""
+    S = 16
+    px = QPixmap(S, S)
+    px.fill(Qt.GlobalColor.transparent)
+    p = QPainter(px)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    pen = QPen(QColor("#333333"), 1.6)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    p.setPen(pen)
+    if name == "plus":
+        p.drawLine(8, 2, 8, 14)
+        p.drawLine(2, 8, 14, 8)
+    elif name == "minus":
+        p.drawLine(3, 8, 13, 8)
+    elif name == "pencil":
+        # 몸통 (대각선)
+        p.drawLine(4, 12, 11, 5)
+        # 끝부분 (삼각형)
+        p.drawLine(11, 5, 13, 3)
+        p.drawLine(13, 3, 11, 3)
+        p.drawLine(11, 3, 11, 5)
+        # 지우개 끝
+        p.drawLine(3, 13, 4, 12)
+        p.drawLine(2, 14, 3, 13)
+        p.drawLine(2, 14, 4, 14)
+        p.drawLine(3, 13, 4, 14)
+    p.end()
+    return QIcon(px)
 
 # sheet_type → 아이콘
 _SHEET_ICONS: Dict[str, str] = {
@@ -100,7 +132,8 @@ class DatasetTreePanel(QWidget):
             "QPushButton:disabled{color:#aaa; background:#f0f0f0;}"
         )
 
-        self.add_dataset_btn = QPushButton("+")
+        self.add_dataset_btn = QPushButton()
+        self.add_dataset_btn.setIcon(_make_icon("plus"))
         self.add_dataset_btn.setToolTip("Add Dataset (or drag & drop a file)")
         self.add_dataset_btn.setFixedSize(26, 26)
         self.add_dataset_btn.setStyleSheet(_btn_style)
@@ -110,14 +143,16 @@ class DatasetTreePanel(QWidget):
         self.add_dataset_btn.clicked.connect(self.add_requested.emit)
         toolbar.addWidget(self.add_dataset_btn)
 
-        self.remove_dataset_btn = QPushButton("−")
+        self.remove_dataset_btn = QPushButton()
+        self.remove_dataset_btn.setIcon(_make_icon("minus"))
         self.remove_dataset_btn.setToolTip("Remove selected dataset")
         self.remove_dataset_btn.setFixedSize(26, 26)
         self.remove_dataset_btn.setStyleSheet(_btn_style)
         self.remove_dataset_btn.clicked.connect(self._on_remove_clicked)
         toolbar.addWidget(self.remove_dataset_btn)
 
-        self.rename_dataset_btn = QPushButton("✎")
+        self.rename_dataset_btn = QPushButton()
+        self.rename_dataset_btn.setIcon(_make_icon("pencil"))
         self.rename_dataset_btn.setToolTip("Rename selected dataset")
         self.rename_dataset_btn.setFixedSize(26, 26)
         self.rename_dataset_btn.setStyleSheet(_btn_style)
