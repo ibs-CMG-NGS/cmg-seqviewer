@@ -202,8 +202,7 @@ class MainWindow(QMainWindow):
 
         self.multi_omics_panel = MultiOmicsPanel()
         self.multi_omics_panel.integrate_requested.connect(self._on_integrate_requested)
-        self.multi_omics_panel.setVisible(False)
-        left_layout.addWidget(self.multi_omics_panel)
+        self.filter_panel.add_multi_omics_tab(self.multi_omics_panel)
 
         button_layout = QHBoxLayout()
         button_layout.setSpacing(5)
@@ -4045,12 +4044,9 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ #
 
     def _on_show_multi_omics_panel(self):
-        """Analysis > Integrate RNA + ATAC 메뉴 클릭 — Multi-Omics 패널 토글"""
-        visible = not self.multi_omics_panel.isVisible()
-        self.multi_omics_panel.setVisible(visible)
-        if visible:
-            # 현재 로드된 데이터셋 목록으로 콤보박스 갱신
-            self.multi_omics_panel.refresh_dataset_list(self.presenter.datasets)
+        """Analysis > Integrate RNA + ATAC 메뉴 클릭 — RNA+ATAC 탭으로 전환"""
+        self.filter_panel.switch_to_multi_omics_tab()
+        self.multi_omics_panel.refresh_dataset_list(self.presenter.datasets)
 
     def _on_integrate_requested(
         self,

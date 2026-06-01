@@ -551,9 +551,12 @@ class FilterPanel(QWidget):
     
     def get_filter_criteria(self) -> FilterCriteria:
         """현재 필터 조건 반환 (활성화된 Tab 기준)"""
-        # 현재 선택된 탭 확인 (0: Gene List, 1: Statistical)
+        # 현재 선택된 탭 확인 (0: Gene List, 1: Statistical, 2+: 기타)
         current_tab = self.filter_tabs.currentIndex()
-        mode = FilterMode.GENE_LIST if current_tab == 0 else FilterMode.STATISTICAL
+        if current_tab == 0:
+            mode = FilterMode.GENE_LIST
+        else:
+            mode = FilterMode.STATISTICAL
 
         # Gene List 탭: GO Term ID 모드인지 Gene Symbol 모드인지 구분
         gene_list = None
@@ -684,7 +687,31 @@ class FilterPanel(QWidget):
         has_dist = (dataset.dataframe is not None and
                     'distance_to_tss' in dataset.dataframe.columns)
         self.atac_distance_input.setEnabled(has_dist)
-    
+
+    # ------------------------------------------------------------------ #
+    #  Multi-Omics 탭 공개 API
+    # ------------------------------------------------------------------ #
+
+    def add_multi_omics_tab(self, widget: QWidget) -> int:
+        """MultiOmicsPanel을 세 번째 탭으로 추가합니다.
+
+        Returns:
+            추가된 탭의 인덱스
+        """
+        self._multi_omics_tab_index = self.filter_tabs.addTab(widget, "🔗 RNA+ATAC")
+        return self._multi_omics_tab_index
+
+    def switch_to_multi_omics_tab(self):
+        """RNA+ATAC 탭으로 전환합니다."""
+        idx = getattr(self, '_multi_omics_tab_index', -1)
+        if idx >= 0:
+            self.filter_tabs.setCurrentIndex(idx)
+
+    def is_multi_omics_tab_active(self) -> bool:
+        """현재 RNA+ATAC 탭이 활성화돼 있는지 반환합니다."""
+        idx = getattr(self, '_multi_omics_tab_index', -1)
+        return idx >= 0 and self.filter_tabs.currentIndex() == idx
+
     def _gene_drag_enter(self, event: QDragEnterEvent):
         """Gene input 드래그 진입 이벤트"""
         if event.mimeData().hasUrls():
