@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLabel, QLineEdit, QColorDialog, QGroupBox,
     QFormLayout, QDoubleSpinBox, QSpinBox, QComboBox, QCheckBox,
-    QScrollArea, QFileDialog, QMessageBox
+    QScrollArea, QFileDialog, QMessageBox, QSplitter
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QIcon, QPixmap, QPainter, QFont
@@ -170,7 +170,13 @@ class VolcanoPlotWidget(QWidget):
 
     def _init_ui(self):
         """UI 초기화"""
-        main_layout = QHBoxLayout(self)  # 전체를 좌우 배열로 변경
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+
+        # 메인 스플리터 (좌: 설정, 우: 플롯)
+        main_splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        outer_layout.addWidget(main_splitter)
 
         # 설정 패널 컨테이너
         settings_container = QWidget()
@@ -371,24 +377,22 @@ class VolcanoPlotWidget(QWidget):
         left_panel.addStretch()  # 아래 여백
 
         # embed_settings에 따라 설정 패널을 레이아웃에 추가하거나 외부 접근용으로 보관
+        scroll = QScrollArea()
+        scroll.setWidget(settings_container)
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setMinimumWidth(200)
+
         if self._embed_settings:
-            scroll = QScrollArea()
-            scroll.setWidget(settings_container)
-            scroll.setWidgetResizable(True)
-            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-            scroll.setMinimumWidth(240)
-            scroll.setMaximumWidth(340)
-            main_layout.addWidget(scroll)
+            main_splitter.addWidget(scroll)
         else:
             # 외부(MainWindow 도크)에 배치될 설정 패널 보존
-            scroll = QScrollArea()
-            scroll.setWidget(settings_container)
-            scroll.setWidgetResizable(True)
-            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             self._settings_panel = scroll
 
         # 오른쪽: Plot 영역
-        right_panel = QVBoxLayout()
+        right_widget = QWidget()
+        right_panel = QVBoxLayout(right_widget)
+        right_panel.setContentsMargins(0, 0, 0, 0)
 
         # Matplotlib Figure
         self.figure = Figure(figsize=(self.fig_width, self.fig_height))
@@ -423,8 +427,11 @@ class VolcanoPlotWidget(QWidget):
 
         right_panel.addLayout(button_layout)
 
-        # 오른쪽 패널을 메인 레이아웃에 추가
-        main_layout.addLayout(right_panel, stretch=3)  # 오른쪽을 더 크게
+        main_splitter.addWidget(right_widget)
+        # 초기 스플리터 비율: 설정 280px, 나머지 플롯
+        main_splitter.setSizes([280, 9999])
+        main_splitter.setStretchFactor(0, 0)
+        main_splitter.setStretchFactor(1, 1)
 
     def _choose_color(self, color_type):
         """색상 선택 다이얼로그"""
@@ -904,6 +911,11 @@ class VolcanoPlotDialog(QDialog):
         self.setWindowTitle("🌋 Volcano Plot")
         self.setWindowIcon(create_plot_icon("🌋", QColor(220, 20, 60)))  # Crimson
         self.setMinimumSize(1000, 700)
+        self.setWindowFlags(
+            self.windowFlags()
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowMinimizeButtonHint
+        )
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
@@ -1124,7 +1136,13 @@ class HeatmapWidget(QWidget):
 
     def _init_ui(self):
         """UI 초기화"""
-        main_layout = QHBoxLayout(self)
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+
+        # 메인 스플리터 (좌: 설정, 우: 플롯)
+        main_splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        outer_layout.addWidget(main_splitter)
 
         # 설정 패널 컨테이너
         settings_container = QWidget()
@@ -1255,23 +1273,21 @@ class HeatmapWidget(QWidget):
         left_panel.addStretch()
 
         # embed_settings에 따라 설정 패널을 레이아웃에 추가하거나 외부 접근용으로 보관
+        scroll = QScrollArea()
+        scroll.setWidget(settings_container)
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setMinimumWidth(200)
+
         if self._embed_settings:
-            scroll = QScrollArea()
-            scroll.setWidget(settings_container)
-            scroll.setWidgetResizable(True)
-            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-            scroll.setMinimumWidth(240)
-            scroll.setMaximumWidth(340)
-            main_layout.addWidget(scroll)
+            main_splitter.addWidget(scroll)
         else:
-            scroll = QScrollArea()
-            scroll.setWidget(settings_container)
-            scroll.setWidgetResizable(True)
-            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             self._settings_panel = scroll
 
         # 오른쪽: Plot 영역
-        right_panel = QVBoxLayout()
+        right_widget = QWidget()
+        right_panel = QVBoxLayout(right_widget)
+        right_panel.setContentsMargins(0, 0, 0, 0)
 
         self.figure = Figure(figsize=(self.fig_width, self.fig_height))
         self.canvas = FigureCanvas(self.figure)
@@ -1299,7 +1315,11 @@ class HeatmapWidget(QWidget):
 
         right_panel.addLayout(button_layout)
 
-        main_layout.addLayout(right_panel, stretch=3)
+        main_splitter.addWidget(right_widget)
+        # 초기 스플리터 비율: 설정 280px, 나머지 플롯
+        main_splitter.setSizes([280, 9999])
+        main_splitter.setStretchFactor(0, 0)
+        main_splitter.setStretchFactor(1, 1)
 
     def _on_settings_changed(self):
         """설정 변경 시 자동 업데이트"""
@@ -1615,6 +1635,11 @@ class HeatmapDialog(QDialog):
         self.setWindowTitle("🔥 Expression Heatmap")
         self.setWindowIcon(create_plot_icon("🔥", QColor(255, 140, 0)))
         self.setMinimumSize(1000, 800)
+        self.setWindowFlags(
+            self.windowFlags()
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowMinimizeButtonHint
+        )
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
