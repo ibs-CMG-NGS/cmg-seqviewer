@@ -47,6 +47,11 @@ class IntegratedVolcanoDialog(QDialog):
         self.plot_title = title
         self.setWindowTitle("Integrated Volcano Plot — RNA-seq with ATAC concordance")
         self.resize(900, 700)
+        self.setWindowFlags(
+            self.windowFlags()
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowMinimizeButtonHint
+        )
         self._init_ui()
         self._plot()
 

@@ -36,6 +36,11 @@ class ConcordanceSummaryDialog(QDialog):
         self.plot_title = title
         self.setWindowTitle("Concordance Summary")
         self.resize(800, 580)
+        self.setWindowFlags(
+            self.windowFlags()
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowMinimizeButtonHint
+        )
         self._init_ui()
         self._plot()
 

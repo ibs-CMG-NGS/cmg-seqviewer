@@ -42,6 +42,14 @@ class QuadrantPlotDialog(QDialog):
         self.plot_title = title
         self.setWindowTitle("Quadrant Plot — RNA vs ATAC log2FC")
         self.resize(720, 620)
+        self.setWindowFlags(
+            self.windowFlags()
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowMinimizeButtonHint
+        )
+        self._scatter_data = []   # hover용 데이터 저장
+        self._annot = None
+        self._ax = None
         self._init_ui()
         self._plot()
 
@@ -68,12 +76,15 @@ class QuadrantPlotDialog(QDialog):
 
     def _plot(self):
         self.figure.clear()
+        self._scatter_data = []
         ax = self.figure.add_subplot(111)
+        self._ax = ax
 
         col_rna  = IntegratedColumns.RNA_LOG2FC
         col_atac = IntegratedColumns.ATAC_LOG2FC_MEAN
         col_cat  = IntegratedColumns.CONCORDANCE
         col_sym  = IntegratedColumns.GENE_SYMBOL
+        col_padj = IntegratedColumns.RNA_PADJ
 
         df = self.df.dropna(subset=[col_rna, col_atac])
 
@@ -90,6 +101,15 @@ class QuadrantPlotDialog(QDialog):
                 edgecolors="white", label=f"{cat} (n={len(sub)})",
                 zorder=3,
             )
+            # hover용 데이터 저장
+            padj_vals = sub[col_padj].values if col_padj in sub.columns else np.full(len(sub), np.nan)
+            self._scatter_data.append({
+                'x': sub[col_atac].values.astype(float),
+                'y': sub[col_rna].values.astype(float),
+                'symbol': sub[col_sym].values.astype(str),
+                'padj': padj_vals.astype(float),
+                'concordance': sub[col_cat].values.astype(str),
+            })
 
         # 기준선
         ax.axhline(0, color="gray", linewidth=0.8, linestyle="--", zorder=1)
@@ -115,7 +135,81 @@ class QuadrantPlotDialog(QDialog):
 
         ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", fontsize=8, framealpha=0.7)
         self.figure.tight_layout()
+
+        # 어노테이션 (hover 툴팁)
+        self._annot = ax.annotate(
+            "",
+            xy=(0, 0), xytext=(12, 12), textcoords="offset points",
+            bbox=dict(boxstyle="round,pad=0.4", fc="lightyellow", ec="gray", alpha=0.92),
+            arrowprops=dict(arrowstyle="->", color="gray", lw=0.8),
+            fontsize=8, zorder=10,
+        )
+        self._annot.set_visible(False)
+
+        self.canvas.mpl_connect('motion_notify_event', self._on_mouse_move)
         self.canvas.draw()
+
+    def _on_mouse_move(self, event):
+        if event.inaxes is None or self._ax is None:
+            if self._annot and self._annot.get_visible():
+                self._annot.set_visible(False)
+                self.canvas.draw_idle()
+            return
+
+        xlim = self._ax.get_xlim()
+        ylim = self._ax.get_ylim()
+        x_range = xlim[1] - xlim[0]
+        y_range = ylim[1] - ylim[0]
+        # 화면 범위의 2.5% 이내 점을 가장 가까운 점으로 인식
+        threshold = 0.025 * min(x_range, y_range)
+
+        best_dist = float('inf')
+        best_info = None
+
+        ex, ey = event.xdata, event.ydata
+        for data in self._scatter_data:
+            if len(data['x']) == 0:
+                continue
+            dx = (data['x'] - ex) / (x_range or 1)
+            dy = (data['y'] - ey) / (y_range or 1)
+            dists = np.sqrt(dx ** 2 + dy ** 2)
+            idx = int(np.argmin(dists))
+            if dists[idx] < best_dist:
+                best_dist = dists[idx]
+                best_info = (
+                    data['x'][idx],
+                    data['y'][idx],
+                    data['symbol'][idx],
+                    data['concordance'][idx],
+                    data['padj'][idx],
+                )
+
+        # 실제 거리 임계값: 축 범위의 2.5%
+        real_threshold = 0.025
+        if best_dist < real_threshold and best_info is not None:
+            x, y, sym, cat, padj = best_info
+            padj_str = f"{padj:.2e}" if not np.isnan(padj) else "N/A"
+            text = (
+                f"{sym}\n"
+                f"RNA log2FC: {y:.3f}\n"
+                f"ATAC log2FC: {x:.3f}\n"
+                f"RNA padj: {padj_str}\n"
+                f"{cat}"
+            )
+            self._annot.xy = (x, y)
+            self._annot.set_text(text)
+            # 점이 오른쪽/위쪽에 있으면 툴팁을 반대 방향으로
+            xlim = self._ax.get_xlim()
+            ylim = self._ax.get_ylim()
+            xoff = -90 if (x > (xlim[0] + xlim[1]) / 2) else 12
+            yoff = -60 if (y > (ylim[0] + ylim[1]) / 2) else 12
+            self._annot.xyann = (xoff, yoff)
+            self._annot.set_visible(True)
+            self.canvas.draw_idle()
+        else:
+            if self._annot.get_visible():
+                self._annot.set_visible(False)
+                self.canvas.draw_idle()
 
     def _on_save(self):
         path, _ = QFileDialog.getSaveFileName(
