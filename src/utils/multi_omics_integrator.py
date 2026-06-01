@@ -122,9 +122,11 @@ class MultiOmicsIntegrator:
         grouped = (
             df.groupby(gene_col)
             .agg(
-                peak_count        =(col_lfc,  "count"),
+                # peak 수: log2fc NaN 여부와 무관하게 실제 peak 개수
+                peak_count        =(gene_col, "count"),
                 atac_log2fc_mean  =(col_lfc,  "mean"),
-                atac_log2fc_max   =(col_lfc,  lambda x: x.abs().max()),
+                # signed max: 가장 큰 양수 또는 가장 작은 음수 — 방향성 유지
+                atac_log2fc_max   =(col_lfc,  lambda x: x.dropna().max() if not x.dropna().empty else np.nan),
                 atac_padj_min     =(col_padj, "min"),
             )
             .reset_index()
@@ -223,10 +225,10 @@ class MultiOmicsIntegrator:
           rna_sig  = rna_padj  ≤ cutoff  AND |rna_log2fc|  ≥ cutoff
           atac_sig = atac_padj_min ≤ cutoff AND |atac_log2fc_mean| ≥ cutoff
         """
-        rna_lfc  = row.get(IntegratedColumns.RNA_LOG2FC,       np.nan)
-        rna_padj = row.get(IntegratedColumns.RNA_PADJ,         np.nan)
-        atac_lfc = row.get(IntegratedColumns.ATAC_LOG2FC_MEAN, np.nan)
-        atac_padj = row.get(IntegratedColumns.ATAC_PADJ_MIN,   np.nan)
+        rna_lfc   = row[IntegratedColumns.RNA_LOG2FC]       if IntegratedColumns.RNA_LOG2FC       in row.index else np.nan
+        rna_padj  = row[IntegratedColumns.RNA_PADJ]         if IntegratedColumns.RNA_PADJ         in row.index else np.nan
+        atac_lfc  = row[IntegratedColumns.ATAC_LOG2FC_MEAN] if IntegratedColumns.ATAC_LOG2FC_MEAN in row.index else np.nan
+        atac_padj = row[IntegratedColumns.ATAC_PADJ_MIN]    if IntegratedColumns.ATAC_PADJ_MIN    in row.index else np.nan
 
         rna_sig  = (
             pd.notna(rna_padj)  and rna_padj  <= self.rna_padj_cutoff
