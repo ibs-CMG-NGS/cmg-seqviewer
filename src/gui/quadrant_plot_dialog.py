@@ -17,7 +17,7 @@ import matplotlib.patches as mpatches
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
-    QLabel, QFileDialog, QMessageBox,
+    QLabel, QLineEdit, QSpinBox, QDoubleSpinBox, QFileDialog, QMessageBox,
 )
 from PyQt6.QtCore import Qt
 import pandas as pd
@@ -50,6 +50,7 @@ class QuadrantPlotDialog(QDialog):
         self._scatter_data = []   # hover용 데이터 저장
         self._annot = None
         self._ax = None
+        self._cid_mouse = None
         self._init_ui()
         self._plot()
 
@@ -60,6 +61,35 @@ class QuadrantPlotDialog(QDialog):
         self.figure = Figure(figsize=(7, 6), dpi=100)
         self.canvas = FigureCanvas(self.figure)
         self.toolbar = NavigationToolbar(self.canvas, self)
+
+        # 옵션 바 (타이틀 편집 / 점 크기 / 투명도)
+        opt_layout = QHBoxLayout()
+        opt_layout.addWidget(QLabel("Title:"))
+        self.title_edit = QLineEdit(self.plot_title)
+        self.title_edit.setMinimumWidth(180)
+        self.title_edit.textChanged.connect(self._update_title)
+        opt_layout.addWidget(self.title_edit)
+        opt_layout.addSpacing(12)
+        opt_layout.addWidget(QLabel("Point size:"))
+        self.point_size_spin = QSpinBox()
+        self.point_size_spin.setRange(5, 200)
+        self.point_size_spin.setValue(30)
+        self.point_size_spin.setFixedWidth(60)
+        self.point_size_spin.valueChanged.connect(self._plot)
+        opt_layout.addWidget(self.point_size_spin)
+        opt_layout.addSpacing(12)
+        opt_layout.addWidget(QLabel("Alpha:"))
+        self.alpha_spin = QDoubleSpinBox()
+        self.alpha_spin.setRange(0.05, 1.0)
+        self.alpha_spin.setDecimals(2)
+        self.alpha_spin.setSingleStep(0.05)
+        self.alpha_spin.setValue(0.70)
+        self.alpha_spin.setFixedWidth(65)
+        self.alpha_spin.valueChanged.connect(self._plot)
+        opt_layout.addWidget(self.alpha_spin)
+        opt_layout.addStretch()
+        layout.addLayout(opt_layout)
+
         layout.addWidget(self.toolbar)
         layout.addWidget(self.canvas)
 
@@ -97,7 +127,7 @@ class QuadrantPlotDialog(QDialog):
             ax.scatter(
                 sub[col_atac], sub[col_rna],
                 c=colors.get(cat, "#CCCCCC"),
-                s=30, alpha=0.7, linewidths=0.3,
+                s=self.point_size_spin.value(), alpha=self.alpha_spin.value(), linewidths=0.3,
                 edgecolors="white", label=f"{cat} (n={len(sub)})",
                 zorder=3,
             )
@@ -117,7 +147,7 @@ class QuadrantPlotDialog(QDialog):
 
         ax.set_xlabel("ATAC-seq log2FC (chromatin accessibility)", fontsize=11)
         ax.set_ylabel("RNA-seq log2FC (gene expression)", fontsize=11)
-        ax.set_title(self.plot_title, fontsize=13, fontweight="bold")
+        ax.set_title(self.title_edit.text(), fontsize=13, fontweight="bold")
 
         # 사분면 레이블
         xlim = ax.get_xlim()
@@ -146,7 +176,9 @@ class QuadrantPlotDialog(QDialog):
         )
         self._annot.set_visible(False)
 
-        self.canvas.mpl_connect('motion_notify_event', self._on_mouse_move)
+        if self._cid_mouse is not None:
+            self.canvas.mpl_disconnect(self._cid_mouse)
+        self._cid_mouse = self.canvas.mpl_connect('motion_notify_event', self._on_mouse_move)
         self.canvas.draw()
 
     def _on_mouse_move(self, event):
@@ -210,6 +242,11 @@ class QuadrantPlotDialog(QDialog):
             if self._annot.get_visible():
                 self._annot.set_visible(False)
                 self.canvas.draw_idle()
+
+    def _update_title(self, text: str):
+        if self._ax:
+            self._ax.set_title(text, fontsize=13, fontweight="bold")
+            self.canvas.draw_idle()
 
     def _on_save(self):
         path, _ = QFileDialog.getSaveFileName(

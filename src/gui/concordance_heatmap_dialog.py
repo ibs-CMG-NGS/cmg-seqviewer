@@ -20,7 +20,7 @@ import matplotlib.colors as mcolors
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
-    QLabel, QSpinBox, QCheckBox, QFileDialog,
+    QLabel, QLineEdit, QSpinBox, QCheckBox, QFileDialog,
 )
 from PyQt6.QtCore import Qt
 import pandas as pd
@@ -57,6 +57,7 @@ class ConcordanceHeatmapDialog(QDialog):
             | Qt.WindowType.WindowMaximizeButtonHint
             | Qt.WindowType.WindowMinimizeButtonHint
         )
+        self._ax_heat = None
         self._init_ui()
         self._plot()
 
@@ -65,6 +66,12 @@ class ConcordanceHeatmapDialog(QDialog):
 
         # Options
         opt_layout = QHBoxLayout()
+        opt_layout.addWidget(QLabel("Title:"))
+        self.title_edit = QLineEdit(self.plot_title)
+        self.title_edit.setMinimumWidth(160)
+        self.title_edit.textChanged.connect(self._update_title)
+        opt_layout.addWidget(self.title_edit)
+        opt_layout.addSpacing(12)
         opt_layout.addWidget(QLabel("Max genes:"))
         self.max_genes_spin = QSpinBox()
         self.max_genes_spin.setRange(10, 500)
@@ -137,6 +144,7 @@ class ConcordanceHeatmapDialog(QDialog):
         gs = self.figure.add_gridspec(1, 2, width_ratios=[10, 1], wspace=0.05)
         ax_heat = self.figure.add_subplot(gs[0])
         ax_ann  = self.figure.add_subplot(gs[1])
+        self._ax_heat = ax_heat
 
         # 색상 스케일 (대칭)
         vmax = np.nanpercentile(np.abs(heatmap_data), 95)
@@ -152,7 +160,7 @@ class ConcordanceHeatmapDialog(QDialog):
         # 컬럼 레이블
         ax_heat.set_xticks([0, 1])
         ax_heat.set_xticklabels(["RNA log2FC", "ATAC log2FC"], fontsize=9)
-        ax_heat.set_title(self.plot_title, fontsize=11, fontweight="bold")
+        ax_heat.set_title(self.title_edit.text(), fontsize=11, fontweight="bold")
 
         # 유전자 레이블
         if self.show_labels_cb.isChecked():
@@ -194,6 +202,11 @@ class ConcordanceHeatmapDialog(QDialog):
 
         self.figure.tight_layout()
         self.canvas.draw()
+
+    def _update_title(self, text: str):
+        if self._ax_heat:
+            self._ax_heat.set_title(text, fontsize=11, fontweight="bold")
+            self.canvas.draw_idle()
 
     def _on_save(self):
         path, _ = QFileDialog.getSaveFileName(

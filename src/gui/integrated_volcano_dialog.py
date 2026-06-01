@@ -22,7 +22,7 @@ import matplotlib.patches as mpatches
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
-    QLabel, QDoubleSpinBox, QGroupBox, QFormLayout,
+    QLabel, QLineEdit, QDoubleSpinBox, QGroupBox, QFormLayout,
     QFileDialog, QCheckBox, QSpinBox, QWidget,
 )
 from PyQt6.QtCore import Qt
@@ -52,6 +52,8 @@ class IntegratedVolcanoDialog(QDialog):
             | Qt.WindowType.WindowMaximizeButtonHint
             | Qt.WindowType.WindowMinimizeButtonHint
         )
+        self._ax = None
+        self._cid_hover = None
         self._init_ui()
         self._plot()
 
@@ -60,7 +62,12 @@ class IntegratedVolcanoDialog(QDialog):
 
         # ── 왼쪽: 설정 패널 ────────────────────────────────────────────
         left = QVBoxLayout()
-
+        title_group = QGroupBox("Plot Title")
+        title_form = QFormLayout(title_group)
+        self.title_edit = QLineEdit(self.plot_title)
+        self.title_edit.textChanged.connect(self._update_title)
+        title_form.addRow(self.title_edit)
+        left.addWidget(title_group)
         thresh_group = QGroupBox("Thresholds")
         thresh_form = QFormLayout(thresh_group)
 
@@ -138,6 +145,7 @@ class IntegratedVolcanoDialog(QDialog):
         self.figure.clear()
         self._scatter_data = []
         ax = self.figure.add_subplot(111)
+        self._ax = ax
 
         col_sym  = IntegratedColumns.GENE_SYMBOL
         col_lfc  = IntegratedColumns.RNA_LOG2FC
@@ -184,7 +192,7 @@ class IntegratedVolcanoDialog(QDialog):
 
         ax.set_xlabel("RNA-seq log2FC", fontsize=11)
         ax.set_ylabel("-log10(RNA padj)", fontsize=11)
-        ax.set_title(self.plot_title, fontsize=13, fontweight="bold")
+        ax.set_title(self.title_edit.text(), fontsize=13, fontweight="bold")
         ax.grid(True, alpha=0.25)
 
         if self.legend_cb.isChecked():
@@ -200,7 +208,9 @@ class IntegratedVolcanoDialog(QDialog):
             zorder=1000,
         )
         self._annot.set_visible(False)
-        self.figure.canvas.mpl_connect("motion_notify_event", self._on_hover)
+        if self._cid_hover is not None:
+            self.canvas.mpl_disconnect(self._cid_hover)
+        self._cid_hover = self.canvas.mpl_connect("motion_notify_event", self._on_hover)
 
         self.figure.tight_layout()
         self.canvas.draw()
@@ -243,6 +253,11 @@ class IntegratedVolcanoDialog(QDialog):
         if not found and self._annot.get_visible():
             self._annot.set_visible(False)
             self.figure.canvas.draw_idle()
+
+    def _update_title(self, text: str):
+        if self._ax:
+            self._ax.set_title(text, fontsize=13, fontweight="bold")
+            self.canvas.draw_idle()
 
     def _on_save(self):
         path, _ = QFileDialog.getSaveFileName(

@@ -15,7 +15,7 @@ from matplotlib.figure import Figure
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
-    QLabel, QFileDialog, QTableWidget, QTableWidgetItem,
+    QLabel, QLineEdit, QFileDialog, QTableWidget, QTableWidgetItem,
     QSplitter,
 )
 from PyQt6.QtCore import Qt
@@ -41,11 +41,20 @@ class ConcordanceSummaryDialog(QDialog):
             | Qt.WindowType.WindowMaximizeButtonHint
             | Qt.WindowType.WindowMinimizeButtonHint
         )
+        self._ax = None
         self._init_ui()
         self._plot()
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
+
+        # 타이틀 편집 바
+        title_layout = QHBoxLayout()
+        title_layout.addWidget(QLabel("Title:"))
+        self.title_edit = QLineEdit(self.plot_title)
+        self.title_edit.textChanged.connect(self._update_title)
+        title_layout.addWidget(self.title_edit)
+        layout.addLayout(title_layout)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
@@ -85,6 +94,7 @@ class ConcordanceSummaryDialog(QDialog):
     def _plot(self):
         self.figure.clear()
         ax = self.figure.add_subplot(111)
+        self._ax = ax
 
         col_cat = IntegratedColumns.CONCORDANCE
         counts  = self.df[col_cat].value_counts()
@@ -112,7 +122,7 @@ class ConcordanceSummaryDialog(QDialog):
         ax.set_xticks(range(len(categories)))
         ax.set_xticklabels(short_labels, fontsize=7, rotation=20, ha="right")
         ax.set_ylabel("Gene count", fontsize=10)
-        ax.set_title(self.plot_title, fontsize=12, fontweight="bold")
+        ax.set_title(self.title_edit.text(), fontsize=12, fontweight="bold")
         ax.set_xlim(-0.5, len(categories) - 0.5)
 
         self.figure.tight_layout()
@@ -130,6 +140,11 @@ class ConcordanceSummaryDialog(QDialog):
             pct_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.table.setItem(i, 2, pct_item)
         self.table.resizeColumnsToContents()
+
+    def _update_title(self, text: str):
+        if self._ax:
+            self._ax.set_title(text, fontsize=12, fontweight="bold")
+            self.canvas.draw_idle()
 
     def _on_save(self):
         path, _ = QFileDialog.getSaveFileName(
