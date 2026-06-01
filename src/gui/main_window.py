@@ -9,7 +9,8 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QTextEdit, QMenuBar, QMenu, QToolBar, QStatusBar,
                             QLabel, QPushButton, QFileDialog, QMessageBox,
                             QProgressBar, QInputDialog, QLineEdit, QHeaderView,
-                            QSizePolicy, QDialog, QToolButton, QFrame)
+                            QSizePolicy, QDialog, QToolButton, QFrame,
+                            QDockWidget, QScrollArea)
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 from PyQt6.QtGui import QAction, QIcon, QFont, QActionGroup, QPixmap
 import logging
@@ -22,7 +23,7 @@ from core.logger import QtLogHandler, LogBuffer, get_audit_logger
 from gui.filter_panel import FilterPanel
 from gui.dataset_tree_panel import DatasetTreePanel
 from gui.comparison_panel import ComparisonPanel
-from gui.visualization_dialog import VolcanoPlotDialog, PadjHistogramDialog, HeatmapDialog, DotPlotDialog
+from gui.visualization_dialog import VolcanoPlotWidget, VolcanoPlotDialog, HeatmapWidget, HeatmapDialog, PadjHistogramDialog, DotPlotDialog
 from gui.pca_dialog import PCADialog
 from gui.venn_dialog import VennDiagramDialog
 from gui.venn_dialog_comparison import VennDiagramFromComparisonDialog
@@ -232,6 +233,28 @@ class MainWindow(QMainWindow):
         self.main_splitter.setCollapsible(0, False)
         self.main_splitter.setCollapsible(1, False)
         self.main_splitter.setCollapsible(2, False)
+
+        # ── Plot Settings Dock (우측) ─────────────────────────────────
+        self.plot_settings_dock = QDockWidget("Plot Settings", self)
+        self.plot_settings_dock.setObjectName("PlotSettingsDock")
+        self.plot_settings_dock.setAllowedAreas(
+            Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.LeftDockWidgetArea
+        )
+        self.plot_settings_dock.setFeatures(
+            QDockWidget.DockWidgetFeature.DockWidgetMovable |
+            QDockWidget.DockWidgetFeature.DockWidgetFloatable |
+            QDockWidget.DockWidgetFeature.DockWidgetClosable
+        )
+        self.plot_settings_dock.setMinimumWidth(250)
+        self.plot_settings_dock.setMaximumWidth(380)
+        # 빈 placeholder 위젯으로 초기화
+        _dock_placeholder = QLabel("No plot settings")
+        _dock_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        _dock_placeholder.setStyleSheet("color: grey; font-size: 11px;")
+        self.plot_settings_dock.setWidget(_dock_placeholder)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.plot_settings_dock)
+        self.plot_settings_dock.hide()
+        self._current_settings_widget: QWidget | None = None  # 현재 도크에 들어있는 설정 패널
 
         # 패널 크기 저장용 (숨기기/복원)
         self._tree_panel_width: int = 200
@@ -2234,6 +2257,28 @@ class MainWindow(QMainWindow):
         # 4. 실제 탭 제거 (currentChanged 신호 발화)
         self.data_tabs.removeTab(index)
 
+    def _pin_plot_to_tab(self, widget, label: str, plot_type: str,
+                          plot_params: dict, parent_dataset: str = None):
+        """Plot widget을 새 탭으로 고정"""
+        tab_index = self.data_tabs.addTab(widget, f"📈 {label}")
+        # tab_data를 setCurrentIndex 전에 설정해야 _on_tab_changed에서 dock을 바로 업데이트할 수 있음
+        self.tab_data[tab_index] = {
+            'dataframe': None,
+            'dataset': None,
+            'parent_dataset': parent_dataset,
+            'sheet_type': 'plot',
+            'sheet_label': label,
+            'filter_params': None,
+            'comparison_params': None,
+            'plot_type': plot_type,
+            'plot_params': plot_params,
+            'plot_widget': widget,
+        }
+        self.data_tabs.setCurrentIndex(tab_index)
+        if parent_dataset and hasattr(self, 'dataset_manager'):
+            self.dataset_manager.add_sheet(parent_dataset, tab_index, label, 'plot')
+        self.logger.info(f"Plot pinned to tab: {label} (type={plot_type})")
+
     def _on_tab_close_requested(self, index: int):
         """탭 닫기 요청"""
         if index > 0:  # 첫 번째 탭(Whole Dataset)은 닫지 않음
@@ -2264,6 +2309,34 @@ class MainWindow(QMainWindow):
 
             # 트리 선택 동기화
             self.dataset_manager.sync_selection(index)
+
+            # ── Plot Settings Dock 업데이트 ────────────────────────────
+            self._update_plot_settings_dock(index)
+
+    def _update_plot_settings_dock(self, index: int):
+        """현재 탭이 plot 탭이면 우측 Settings Dock에 해당 위젯의 설정 패널을 표시"""
+        if not hasattr(self, 'plot_settings_dock'):
+            return
+
+        entry = self.tab_data.get(index, {})
+        if entry.get('sheet_type') == 'plot':
+            plot_widget = entry.get('plot_widget')
+            if plot_widget and hasattr(plot_widget, 'get_settings_panel'):
+                new_panel = plot_widget.get_settings_panel()
+                if new_panel is not None and new_panel is not self._current_settings_widget:
+                    self.plot_settings_dock.setWidget(new_panel)
+                    self._current_settings_widget = new_panel
+                    # dock 제목을 plot 타입에 맞게 업데이트
+                    plot_type = entry.get('plot_type', 'Plot')
+                    self.plot_settings_dock.setWindowTitle(
+                        f"{plot_type.capitalize()} Settings" if plot_type else "Plot Settings"
+                    )
+                if not self.plot_settings_dock.isVisible():
+                    self.plot_settings_dock.show()
+                return
+        # 비-plot 탭 → dock 숨김
+        self.plot_settings_dock.hide()
+        self._current_settings_widget = None
 
     # ── Activity Bar ─────────────────────────────────────────────────
 
@@ -2744,12 +2817,20 @@ class MainWindow(QMainWindow):
             # 시각화 다이얼로그 열기
             if viz_type == "volcano":
                 dialog = VolcanoPlotDialog(df, self)
+                _parent_ds = self.tab_data.get(self.data_tabs.currentIndex(), {}).get('parent_dataset')
+                dialog.plot_pinned.connect(
+                    lambda w, lbl, pt, pp, _pd=_parent_ds: self._pin_plot_to_tab(w, lbl, pt, pp, _pd)
+                )
                 dialog.exec()
             elif viz_type == "histogram":
                 dialog = PadjHistogramDialog(df, self)
                 dialog.exec()
             elif viz_type == "heatmap":
                 dialog = HeatmapDialog(df, self)
+                _parent_ds = self.tab_data.get(self.data_tabs.currentIndex(), {}).get('parent_dataset')
+                dialog.plot_pinned.connect(
+                    lambda w, lbl, pt, pp, _pd=_parent_ds: self._pin_plot_to_tab(w, lbl, pt, pp, _pd)
+                )
                 dialog.exec()
             
             self.logger.info(f"Visualization opened: {viz_type}")
@@ -3342,6 +3423,7 @@ class MainWindow(QMainWindow):
             ds_type = ds_spec.get("type", "")
             source = ds_spec.get("source", "file")
             sheets = ds_spec.get("sheets", [])
+            loaded_ds_name = ds_name  # 실제 presenter.datasets 키 (unique_name 적용 시 갱신)
 
             # ── 데이터베이스 소스 ──
             if source == "database":
@@ -3364,6 +3446,7 @@ class MainWindow(QMainWindow):
                     self.presenter.current_dataset = dataset
                     self.presenter._update_view_with_dataset(dataset, add_to_manager=False)
                     self._update_comparison_panel_datasets()
+                    loaded_ds_name = unique_name  # DB는 unique_name으로 저장됨
                     loaded_count += 1
                 except Exception as e:
                     self.logger.warning(f"Failed to load DB dataset '{ds_name}': {e}")
@@ -3398,6 +3481,7 @@ class MainWindow(QMainWindow):
                             self.presenter.current_dataset = dataset
                             self.presenter._update_view_with_dataset(dataset, add_to_manager=False)
                             self._update_comparison_panel_datasets()
+                            loaded_ds_name = unique_name  # DB fallback도 unique_name 사용
                             loaded_count += 1
                         except Exception as e:
                             self.logger.warning(f"DB fallback failed for '{ds_name}': {e}")
@@ -3418,19 +3502,44 @@ class MainWindow(QMainWindow):
                         missing_files.append(ds_file)
                         continue
 
-            # filtered sheets 재현
+            # sheets 재현 (filtered + plot)
             for sheet in sheets:
-                if sheet.get("type") != "filtered":
-                    continue
-                fp_dict = sheet.get("filter_params")
-                if not fp_dict:
-                    continue
-                try:
-                    criteria = FilterCriteria.from_dict(fp_dict)
-                    self.presenter.switch_dataset(ds_name)
-                    self.presenter.apply_filter(criteria)
-                except Exception as e:
-                    self.logger.warning(f"Failed to replay filter for sheet '{sheet.get('label')}': {e}")
+                stype = sheet.get("type")
+
+                if stype == "filtered":
+                    fp_dict = sheet.get("filter_params")
+                    if not fp_dict:
+                        continue
+                    try:
+                        criteria = FilterCriteria.from_dict(fp_dict)
+                        self.presenter.switch_dataset(loaded_ds_name)
+                        self.presenter.apply_filter(criteria)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to replay filter for sheet '{sheet.get('label')}': {e}")
+
+                elif stype == "plot":
+                    plot_type = sheet.get("plot_type", "")
+                    plot_params = sheet.get("plot_params") or {}
+                    label_str = sheet.get("label", "Plot")
+                    try:
+                        target_ds = self.presenter.datasets.get(loaded_ds_name)
+                        if target_ds is None:
+                            raise ValueError(f"Dataset '{loaded_ds_name}' not found")
+                        df = target_ds.dataframe
+                        if plot_type == "volcano":
+                            widget = VolcanoPlotWidget(
+                                df, plot_params=plot_params,
+                                show_pin_button=False, embed_settings=False
+                            )
+                            self._pin_plot_to_tab(widget, label_str, "volcano", plot_params, loaded_ds_name)
+                        elif plot_type == "heatmap":
+                            widget = HeatmapWidget(
+                                df, plot_params=plot_params,
+                                show_pin_button=False, embed_settings=False
+                            )
+                            self._pin_plot_to_tab(widget, label_str, "heatmap", plot_params, loaded_ds_name)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to restore plot '{label_str}': {e}")
 
         # 마지막 활성 탭 복원
         ui_state = spec.get("ui_state", {})

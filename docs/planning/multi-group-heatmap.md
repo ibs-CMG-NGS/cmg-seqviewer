@@ -1,8 +1,8 @@
 # PLAN: Multi-Group Heatmap & Clustering Feature
 
 **Created**: 2026-04-10  
-**Status**: Planning  
-**Branch**: master (작업 시작 시 feature branch 생성 권장)
+**Status**: Implemented (v1.2.1)  
+**Branch**: `feat/atac-seq-support` → merged via v1.2.1 release
 
 ---
 
@@ -101,7 +101,7 @@ gene_id, gene_symbol, baseMean, stat, pvalue, padj, log2FC, lfcSE
 
 ## 4. Step 2: CMG-SeqViewer 앱 구현 계획
 
-### Phase A: 데이터 타입 & 로더 (MVP)
+### Phase A: 데이터 타입 & 로더 ✅ 구현 완료
 
 **A-1. `DatasetType.MULTI_GROUP` 추가**
 - 파일: `src/models/data_models.py`
@@ -122,7 +122,7 @@ gene_id, gene_symbol, baseMean, stat, pvalue, padj, log2FC, lfcSE
 
 ---
 
-### Phase B: 통계 필터 UI
+### Phase B: 통계 필터 UI ✅ 구현 완료
 
 **B-1. 기존 Statistical Filter 패널 확장**
 - 파일: `src/gui/filter_panel.py`
@@ -133,7 +133,7 @@ gene_id, gene_symbol, baseMean, stat, pvalue, padj, log2FC, lfcSE
 
 ---
 
-### Phase C: Heatmap 시각화
+### Phase C: Heatmap 시각화 ✅ 구현 완료
 
 **C-1. `MultiGroupHeatmapDialog` 신규 작성**
 - 파일: `src/gui/multi_group_heatmap_dialog.py` (신규)
@@ -152,12 +152,13 @@ gene_id, gene_symbol, baseMean, stat, pvalue, padj, log2FC, lfcSE
 
 ---
 
-### Phase D: Gene Clustering (선택적 확장)
+### Phase D: Gene Clustering ✅ 구현 완료
 
-- k-means clustering (클러스터 수 K 지정)
-- 클러스터별 발현 패턴 line plot (평균 ± SE)
+- Hierarchical clustering dendrogram cut (`scipy.cluster.hierarchy.fcluster`, k 지정)
+  - 계획상 k-means 대신 dendrogram cut 방식으로 구현 (결과 동일)
+- 클러스터 수 K 선택 (2–20, 기본 3), 클러스터별 color bar 표시
 - 클러스터별 GO enrichment 연계 (기존 GO filter/network 활용)
-- 결과 컬럼 `gene_cluster` 추가 후 export
+- 결과 컬럼 `gene_cluster` 추가 후 CSV export
 
 ---
 

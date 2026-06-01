@@ -78,6 +78,7 @@ _SHEET_ICONS: Dict[str, str] = {
     "filtered": "🔍",
     "comparison": "🔗",
     "clustered": "🧩",
+    "plot": "📈",
 }
 
 

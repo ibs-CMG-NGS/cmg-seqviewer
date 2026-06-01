@@ -95,6 +95,7 @@ class HelpDialog(QDialog):
             "5d. Multi-Omics Integration",
             "6. Statistical Analysis",
             "7. Visualization",
+            "7b. Project Save/Load",
             "8. Multi-Group Heatmap",
             "9. PCA Plot",
             "10. Dataset Comparison",
@@ -122,6 +123,7 @@ class HelpDialog(QDialog):
             self._get_multi_omics_integration(),
             self._get_statistical_analysis(),
             self._get_visualization(),
+            self._get_project_save_load(),
             self._get_multi_group_heatmap(),
             self._get_pca_plot(),
             self._get_comparison(),
@@ -154,14 +156,17 @@ class HelpDialog(QDialog):
         <h2>Main Interface</h2>
         <p>The interface consists of four main areas:</p>
         <ul>
-            <li><b>Top:</b> Dataset Manager - Add, rename, remove, and switch datasets</li>
-            <li><b>Left Panel:</b> 
+            <li><b>Left Panel (top):</b> Dataset Tree — hierarchical view of all loaded datasets
+                and their derived sheets (Filtered, Comparison, Plot). Click a node to switch tabs.</li>
+            <li><b>Left Panel (bottom):</b>
                 <ul>
                     <li>Filter Panel - Apply gene list or statistical filters</li>
                     <li>Comparison Panel - Compare multiple datasets</li>
                 </ul>
             </li>
             <li><b>Center:</b> Data View - Tabbed display of datasets and results</li>
+            <li><b>Right (auto-shown):</b> Plot Settings Dock — appears when a Plot tab is active;
+                lets you adjust visualization parameters without opening a dialog</li>
             <li><b>Bottom:</b> Log Terminal - System messages and status updates</li>
         </ul>
         
@@ -169,7 +174,8 @@ class HelpDialog(QDialog):
         <p>All menus are always accessible. The application will show appropriate error messages 
         if an operation cannot be performed in the current context.</p>
         <ul>
-            <li><b>File:</b> Open datasets, database browser, recent files, export data</li>
+            <li><b>File:</b> Open datasets, database browser, recent files, export data,
+                <b>Save/Open Project</b> (.seqproj)</li>
             <li><b>Analysis:</b> Filtering, Fisher's Exact Test, GSEA, dataset comparison,
                 <b>🌡️ Multi-Group Heatmap</b></li>
             <li><b>View:</b> Column display level, decimal precision</li>
@@ -817,6 +823,26 @@ pipeline_run_2026-03-12/
         <ul>
             <li><b>High z-order:</b> Tooltips always appear above plot elements and colorbars</li>
             <li><b>Matplotlib toolbar:</b> Pan, zoom, home, back, forward, save image</li>
+        </ul>
+
+        <h2>📌 Pin to Tab</h2>
+        <p>Keep a plot open as a persistent tab instead of a dialog popup:</p>
+        <ol>
+            <li>Open any Volcano Plot or Heatmap dialog and configure the plot</li>
+            <li>Click <b>📌 Pin to Tab</b> at the bottom of the dialog</li>
+            <li>The plot appears as a new tab (📈) in the center data view</li>
+            <li>The tab is also registered in the Dataset Tree under the parent dataset</li>
+        </ol>
+        <p>Pinned plot tabs are saved with the project (<b>.seqproj</b>) and restored on next open.</p>
+
+        <h2>Plot Settings Dock (Right Panel)</h2>
+        <p>When a pinned plot tab is active, a <b>Plot Settings</b> panel automatically appears
+        on the right side of the window:</p>
+        <ul>
+            <li>All the same controls as the dialog left panel (thresholds, colors, colormap, etc.)</li>
+            <li>Changes apply to the plot in real time</li>
+            <li>The dock hides automatically when you switch to a non-plot tab</li>
+            <li>Can be moved or floated like any standard dock panel</li>
         </ul>
         """
 
@@ -1506,6 +1532,14 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
                 <td>Exit Application</td>
             </tr>
             <tr>
+                <td><b>Ctrl+Shift+S</b></td>
+                <td>Save Project (.seqproj)</td>
+            </tr>
+            <tr>
+                <td><b>Ctrl+Shift+O</b></td>
+                <td>Open Project (.seqproj)</td>
+            </tr>
+            <tr>
                 <td><b>F1</b></td>
                 <td>Open this Help Documentation</td>
             </tr>
@@ -1532,6 +1566,18 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
         
         <h2>New Features Summary</h2>
         <ul>
+            <li><b>📂 Dataset Tree Panel:</b> Left panel now shows datasets as a tree with child nodes
+                for each derived sheet (Whole, Filtered, Comparison, Plot). Click to switch tabs,
+                bidirectional sync with the tab bar.</li>
+            <li><b>💾 Project Save/Load (.seqproj):</b> Save your entire analysis session
+                (datasets, filters, plot tabs) and restore it later. Use
+                <b>File &rarr; Save Project</b> (Ctrl+Shift+S) / <b>Open Project</b> (Ctrl+Shift+O).
+                Recent Projects sub-menu for quick access.</li>
+            <li><b>📌 Pin to Tab:</b> Plot dialogs now have a "📌 Pin to Tab" button to embed
+                Volcano Plot or Heatmap as a persistent tab in the main window.</li>
+            <li><b>Plot Settings Dock:</b> Right-side dock panel appears automatically when
+                a pinned plot tab is active. Adjust thresholds, colors, and colormaps
+                without reopening dialogs.</li>
             <li><b>🌡️ Multi-Group Heatmap:</b> LRT omnibus result CSV → interactive Z-score clustermap
                 with group color bars, gene cluster cutting, and CSV export</li>
             <li><b>Gene List Filtering on Multi-Group:</b> Filter by gene symbol on multi-group sheets;
@@ -1571,6 +1617,62 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
         </ul>
         """
     
+    def _get_project_save_load(self):
+        """Project Save/Load section"""
+        return """
+        <h1>7b. Project Save/Load</h1>
+
+        <h2>Overview</h2>
+        <p>CMG-SeqViewer can save your entire analysis session — loaded datasets,
+        applied filters, and pinned plot tabs — to a <b>.seqproj</b> file.
+        Opening the file later restores the session exactly as you left it.</p>
+
+        <h2>Saving a Project</h2>
+        <ol>
+            <li>Go to <b>File &rarr; Save Project...</b> or press <b>Ctrl+Shift+S</b></li>
+            <li>Choose a location and filename (extension <code>.seqproj</code> is added automatically)</li>
+            <li>All current datasets and their derived sheets are saved</li>
+        </ol>
+        <p>What is saved in the <code>.seqproj</code> file:</p>
+        <ul>
+            <li><b>Datasets</b> — file paths (relative to the project file for portability) or
+                database IDs for DB-sourced datasets</li>
+            <li><b>Filtered sheets</b> — filter parameters so the filter can be replayed on restore</li>
+            <li><b>Plot tabs (📈)</b> — plot type and all visualization parameters
+                (<code>plot_params</code>) for Volcano and Heatmap tabs pinned via
+                <em>📌 Pin to Tab</em></li>
+            <li><b>UI state</b> — last active tab index</li>
+        </ul>
+
+        <h2>Opening a Project</h2>
+        <ol>
+            <li>Go to <b>File &rarr; Open Project...</b> or press <b>Ctrl+Shift+O</b></li>
+            <li>Select a <code>.seqproj</code> file</li>
+            <li>The app loads each dataset and replays filters and plot tabs in order</li>
+        </ol>
+        <p>If a data file cannot be found, the affected dataset is skipped and a warning
+        dialog lists the missing files. Other datasets load normally.</p>
+
+        <h2>Recent Projects</h2>
+        <p>Recently opened project files appear in <b>File &rarr; Recent Projects</b>
+        for one-click access.</p>
+
+        <h2>File Portability</h2>
+        <p>File paths inside <code>.seqproj</code> are stored as paths <b>relative</b> to
+        the project file. This means you can move the project folder to another machine
+        (keeping the relative directory structure) and it will still open correctly.</p>
+        <p>If a dataset was loaded from the internal <b>database</b>, the database ID is
+        stored instead — no external file needed.</p>
+
+        <h2>Limitations</h2>
+        <ul>
+            <li><b>Comparison sheets</b> are not yet restored automatically (planned)</li>
+            <li><b>Clustered heatmap</b> tabs are not restored (clustering is non-deterministic
+                without a fixed seed)</li>
+            <li>PCA, Venn, and DotPlot dialogs cannot be pinned as tabs yet</li>
+        </ul>
+        """
+
     def _get_go_kegg_analysis(self):
         """GO/KEGG Analysis section"""
         return """
