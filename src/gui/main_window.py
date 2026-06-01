@@ -204,11 +204,17 @@ class MainWindow(QMainWindow):
         self.multi_omics_panel.integrate_requested.connect(self._on_integrate_requested)
         self.filter_panel.add_multi_omics_tab(self.multi_omics_panel)
 
-        button_layout = QHBoxLayout()
+        # 버튼 행을 QWidget으로 감싸서 show/hide 가능하게 함
+        self.action_buttons_widget = QWidget()
+        button_layout = QHBoxLayout(self.action_buttons_widget)
+        button_layout.setContentsMargins(0, 0, 0, 0)
         button_layout.setSpacing(5)
         button_layout.addWidget(self.filter_panel.apply_filter_btn)
         button_layout.addWidget(self.comparison_panel.compare_btn)
-        left_layout.addLayout(button_layout)
+        left_layout.addWidget(self.action_buttons_widget)
+
+        # RNA+ATAC 탭 전환 시 ComparisonPanel / 버튼 행 자동 show/hide
+        self.filter_panel.filter_tabs.currentChanged.connect(self._on_filter_tab_changed)
 
         func_container_layout.addWidget(left_widget)
         self.func_container = func_container
@@ -4042,6 +4048,12 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ #
     #  Multi-Omics handlers
     # ------------------------------------------------------------------ #
+
+    def _on_filter_tab_changed(self, index: int):
+        """FilterPanel 탭 전환 시 ComparisonPanel / 버튼 행 show/hide"""
+        is_multi_omics = self.filter_panel.is_multi_omics_tab_active()
+        self.comparison_panel.setVisible(not is_multi_omics)
+        self.action_buttons_widget.setVisible(not is_multi_omics)
 
     def _on_show_multi_omics_panel(self):
         """Analysis > Integrate RNA + ATAC 메뉴 클릭 — RNA+ATAC 탭으로 전환"""
