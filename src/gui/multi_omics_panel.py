@@ -184,6 +184,9 @@ class MultiOmicsPanel(QWidget):
             n for n, d in datasets.items()
             if d.dataset_type == DatasetType.ATAC_SEQ
         ]
+        # ATAC 데이터셋이 없으면 전체 목록을 fallback으로 표시
+        if not atac_names:
+            atac_names = list(datasets.keys())
 
         self.rna_combo.clear()
         self.rna_combo.addItems(rna_names)

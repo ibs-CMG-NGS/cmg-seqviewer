@@ -4054,6 +4054,8 @@ class MainWindow(QMainWindow):
         is_multi_omics = self.filter_panel.is_multi_omics_tab_active()
         self.comparison_panel.setVisible(not is_multi_omics)
         self.action_buttons_widget.setVisible(not is_multi_omics)
+        if is_multi_omics:
+            self.multi_omics_panel.refresh_dataset_list(self.presenter.datasets)
 
     def _on_show_multi_omics_panel(self):
         """Analysis > Integrate RNA + ATAC 메뉴 클릭 — RNA+ATAC 탭으로 전환"""
