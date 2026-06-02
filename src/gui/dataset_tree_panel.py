@@ -36,9 +36,10 @@ from PyQt6.QtWidgets import (
 )
 
 # UserRole 상수
-_ROLE_DATA = Qt.ItemDataRole.UserRole
-_ROLE_KIND = Qt.ItemDataRole.UserRole + 1
-_ROLE_META = Qt.ItemDataRole.UserRole + 2
+_ROLE_DATA      = Qt.ItemDataRole.UserRole
+_ROLE_KIND      = Qt.ItemDataRole.UserRole + 1
+_ROLE_META      = Qt.ItemDataRole.UserRole + 2
+_ROLE_WHOLE_TAB = Qt.ItemDataRole.UserRole + 3   # root 아이템의 whole 탭 인덱스
 
 
 def _make_icon(name: str) -> QIcon:
@@ -206,6 +207,7 @@ class DatasetTreePanel(QWidget):
         item.setData(0, _ROLE_DATA, unique_name)
         item.setData(0, _ROLE_KIND, "root")
         item.setData(0, _ROLE_META, metadata)
+        item.setData(0, _ROLE_WHOLE_TAB, None)   # whole 탭은 add_sheet() 호출 시 설정
         item.setToolTip(0, self._build_tooltip(unique_name, metadata))
         item.setExpanded(True)
 
@@ -319,17 +321,26 @@ class DatasetTreePanel(QWidget):
         sheet_label: str,
         sheet_type: str = "whole",
     ):
-        """루트 데이터셋 아래에 시트 child 노드를 추가한다.
+        """루트 데이터셋 아래에 시트를 등록한다.
+
+        sheet_type == 'whole' 일 때는 child 노드를 추가하지 않고 root 아이템에
+        whole_tab_index (_ROLE_WHOLE_TAB) 를 저장한다.
+        root 클릭 시 해당 탭으로 직접 전환된다.
 
         Parameters
         ----------
         parent_name  : 루트 데이터셋 이름
         tab_index    : 대응하는 QTabWidget 탭 인덱스
         sheet_label  : 트리에 표시할 텍스트
-        sheet_type   : 'whole' | 'filtered' | 'comparison' | 'clustered'
+        sheet_type   : 'whole' | 'filtered' | 'comparison' | 'clustered' | 'plot'
         """
         root = self._find_root(parent_name)
         if root is None:
+            return
+
+        if sheet_type == "whole":
+            # whole 탭은 root 자체에 연결 — child 노드 추가하지 않음
+            root.setData(0, _ROLE_WHOLE_TAB, tab_index)
             return
 
         icon = _SHEET_ICONS.get(sheet_type, "📄")
@@ -340,7 +351,17 @@ class DatasetTreePanel(QWidget):
         root.setExpanded(True)
 
     def remove_sheet(self, tab_index: int):
-        """tab_index에 해당하는 child 노드를 제거한다."""
+        """tab_index에 해당하는 시트를 제거한다.
+
+        whole 탭(root의 whole_tab_index)인 경우 root의 whole_tab_index를 초기화한다.
+        """
+        # 먼저 root의 whole_tab_index 체크
+        for i in range(self.dataset_tree.topLevelItemCount()):
+            root = self.dataset_tree.topLevelItem(i)
+            if root.data(0, _ROLE_WHOLE_TAB) == tab_index:
+                root.setData(0, _ROLE_WHOLE_TAB, None)
+                return
+        # child 노드 체크
         child = self._find_child_by_tab(tab_index)
         if child is not None:
             parent = child.parent()
@@ -348,9 +369,13 @@ class DatasetTreePanel(QWidget):
                 parent.removeChild(child)
 
     def update_sheet_tab_index(self, old_index: int, new_index: int):
-        """탭 제거 후 인덱스가 shift될 때 child 노드의 tab_index를 갱신한다."""
+        """탭 제거 후 인덱스가 shift될 때 child/root 노드의 tab_index를 갱신한다."""
         for i in range(self.dataset_tree.topLevelItemCount()):
             root = self.dataset_tree.topLevelItem(i)
+            # root whole_tab_index 갱신
+            if root.data(0, _ROLE_WHOLE_TAB) == old_index:
+                root.setData(0, _ROLE_WHOLE_TAB, new_index)
+            # child 노드 갱신
             for j in range(root.childCount()):
                 child = root.child(j)
                 if child.data(0, _ROLE_DATA) == old_index:
@@ -361,11 +386,18 @@ class DatasetTreePanel(QWidget):
     # ------------------------------------------------------------------
 
     def sync_selection(self, tab_index: int):
-        """탭이 전환됐을 때 트리 선택을 해당 child로 동기화한다."""
+        """탭이 전환됐을 때 트리 선택을 해당 child(또는 root)로 동기화한다."""
         if self._syncing:
             return
         self._syncing = True
         try:
+            # 먼저 root의 whole_tab_index 체크
+            for i in range(self.dataset_tree.topLevelItemCount()):
+                root = self.dataset_tree.topLevelItem(i)
+                if root.data(0, _ROLE_WHOLE_TAB) == tab_index:
+                    self.dataset_tree.setCurrentItem(root)
+                    return
+            # child 노드 체크
             child = self._find_child_by_tab(tab_index)
             if child is not None:
                 self.dataset_tree.setCurrentItem(child)
@@ -447,7 +479,13 @@ class DatasetTreePanel(QWidget):
             return
         kind = item.data(0, _ROLE_KIND)
         if kind == "root":
-            self.dataset_selected.emit(item.data(0, _ROLE_DATA))
+            dataset_name = item.data(0, _ROLE_DATA)
+            whole_tab = item.data(0, _ROLE_WHOLE_TAB)
+            # dataset_selected 는 항상 발화 (presenter 동기화)
+            self.dataset_selected.emit(dataset_name)
+            # whole 탭이 등록돼 있으면 해당 탭으로 직접 전환
+            if whole_tab is not None:
+                self.sheet_selected.emit(whole_tab)
         else:
             # child sheet
             tab_index = item.data(0, _ROLE_DATA)
