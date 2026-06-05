@@ -179,7 +179,8 @@ class HelpDialog(QDialog):
             <li><b>Analysis:</b> Filtering, Fisher's Exact Test, GSEA, dataset comparison,
                 <b>🌡️ Multi-Group Heatmap</b></li>
             <li><b>View:</b> Column display level, decimal precision</li>
-            <li><b>Visualization:</b> Volcano plots, histograms, heatmaps, PCA plots, dot plots, Venn diagrams</li>
+            <li><b>Visualization:</b> Volcano plots, histograms, heatmaps, PCA plots, dot plots, Venn diagrams,
+                <b>📊 Gene Expression Bar+Scatter (Grouped)</b></li>
             <li><b>Help:</b> About dialog and user documentation</li>
         </ul>
         """
@@ -210,10 +211,13 @@ class HelpDialog(QDialog):
         </ul>
         
         <h2>Managing Datasets</h2>
-        <p>Use the Dataset Manager (top of window) to:</p>
+        <p>Use the Dataset Tree (top of window) to:</p>
         <ul>
-            <li><b>Switch:</b> Select a dataset from the dropdown to view it</li>
-            <li><b>Rename:</b> Click <b>Rename</b> to change the dataset name</li>
+            <li><b>Switch:</b> Click a root dataset to view its <b>Whole Dataset</b>, or a
+                child node (Filtered / Comparison / Clustered / Plot) to jump to that sheet</li>
+            <li><b>Rename:</b> Select a node and click <b>Rename</b> — works for both
+                <b>root datasets and derived sheets</b> (e.g. rename a "Filtered:" sheet to
+                disambiguate identical filters applied to different datasets)</li>
             <li><b>Remove:</b> Click <b>Remove</b> to delete a dataset from the session</li>
         </ul>
         
@@ -819,6 +823,28 @@ pipeline_run_2026-03-12/
             <li>Helps assess data quality and significance thresholds</li>
         </ul>
         
+        <h2>Gene Expression Bar + Scatter (Grouped)</h2>
+        <p>Compare per-gene expression across sample groups with a grouped bar (mean)
+        plus individual replicate points. Best used on a <b>Filtered</b> sheet so only a
+        small, readable set of genes is shown.</p>
+        <ul>
+            <li>Select <b>Visualization &rarr; 📊 Gene Expression Bar+Scatter (Grouped)</b>
+                while a DE or Multi-Group tab is active</li>
+            <li><b>Groups are auto-detected</b> from (in order): dataset metadata &rarr;
+                the dataset name (<i>"A vs B"</i>) &rarr; sample-column name prefixes — so
+                balanced 3:3 / 4:4 designs are recognized on open</li>
+            <li><b>Sample Groups (editable):</b> reassign any sample to a different group,
+                merge groups, or leave a group name empty to exclude it; click <b>Apply Groups</b></li>
+            <li><b>Group Colors:</b> pick a custom color per group</li>
+            <li><b>Significance stars:</b> compares each group to a chosen <b>Reference group</b>
+                (Welch t-test or Mann-Whitney U) — <code>* ≤.05, ** ≤.01, *** ≤.001, **** ≤.0001, ns</code></li>
+            <li><b>Controls:</b> max genes, sort (Original input order / Symbol / Mean / |log2FC|),
+                error bars (SEM / SD / None), show/hide points, log-scale Y</li>
+            <li><b>Values:</b> raw counts by default; supports <b>3+ groups</b> including Multi-Group datasets</li>
+            <li><b>Export:</b> figure (PNG / PDF / SVG / TIFF, 300 dpi) and per-group
+                mean / SD / SEM / n + p-value table (CSV / Excel)</li>
+        </ul>
+
         <h2>Common Features (All Plots)</h2>
         <ul>
             <li><b>High z-order:</b> Tooltips always appear above plot elements and colorbars</li>

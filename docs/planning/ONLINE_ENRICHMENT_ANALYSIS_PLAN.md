@@ -179,3 +179,79 @@ gseapy/GOATOOLS 원본 결과를 기존 StandardColumns로 매핑:
 | `GOEnrichmentWorker` (stub) | 실제 구현으로 교체 |
 | Bar Chart / Dot Plot / Clustering 다이얼로그 | 결과 시각화 그대로 재사용 |
 | `DatasetManagerWidget` | 분석 결과 자동 로드 |
+
+---
+
+## 검토 및 보완사항 (Gap Analysis)
+
+> 본 계획을 코드베이스와 대조 검토한 결과. 큰 방향(StandardColumns 재사용, 시각화 다이얼로그 재활용, `GOEnrichmentWorker` stub 교체)은 **정확하고 실현 가능**하나, 배포·통합·통계 정확성 측면에서 아래 항목을 보완해야 한다.
+
+### 🔴 Critical — 반드시 추가/수정
+
+#### G1. PyInstaller 프리징 배포 영향 누락 (가장 큰 구멍)
+이 앱은 PyInstaller로 빌드되어 GitHub Actions(`.github/workflows/build.yml`, `v*` 태그 트리거)에서 Windows/macOS 배포물로 나간다. 계획에 이 사실이 없다.
+- `rna-seq-viewer.spec`, `cmg-seqviewer-macos.spec` **양쪽** `hiddenimports`에 `gseapy`, `goatools`, `mygene` 추가 필요. 두 패키지는 동적 import·데이터 파일이 많아 `collect_data_files`/`--collect-all` 검토 필요.
+- `requirements.txt`, `setup.py` 양쪽 갱신. **`statsmodels`는 현재 미설치**(본문 "이미 있을 수 있음"은 오류), `requests`도 미설치.
+- `go-basic.obo`(~8MB)·`gene2go`(수MB)를 번들 포함 vs 런타임 다운로드 결정 필요 → 빌드 크기·CI 영향. **런타임 캐시 다운로드 권장**.
+
+#### G2. 캐시 디렉토리 규칙 충돌
+본문의 신규 경로 `~/.cmg_seqviewer/`는 기존 규칙과 충돌:
+- `src/utils/data_path_config.py` (frozen 시 실행파일 옆 `data/`)
+- `~/.rna_seq_analyzer/column_mappings.json`, `QSettings("RNASeqDataView", ...)`
+
+→ 신규 경로 난립 대신 `data_path_config.py` 확장 또는 한 규칙으로 통일. frozen 환경에서 **쓰기 가능한** 경로(예: `QStandardPaths.AppDataLocation`)인지 검증(프로그램 폴더는 보통 쓰기 불가).
+
+#### G3. DEG 입력 — 기존 RNA 로딩 인프라 재사용 미반영
+워크플로우가 "DE 결과 파일 **로드**"로 시작하나, 앱엔 이미:
+- `StandardColumns`: `SYMBOL`, `LOG2FC`, `ADJ_PVALUE`, `PVALUE`
+- `src/utils/data_loader.py` alias 자동매핑(`padj/fdr/qvalue → adj_pvalue`, `logfc/fc → log2fc`)
+- 메모리에 로드된 `DatasetType.RNA_ANALYSIS` 데이터셋
+
+→ 새 파일 로드 대신 **이미 로드된 RNA 데이터셋 + 기존 필터 패널**에서 DEG를 추출해 enrichment로 넘기는 흐름으로 설계. 진짜 재사용 포인트.
+
+#### G4. `_gene_set` 내부 컬럼 생성 누락 (clustering/network 깨짐)
+`GOClusteringDialog`/`GONetworkDialog`는 `gene_symbols`가 아니라 **`_gene_set`(Python set)** 컬럼을 요구(`go_kegg_loader._parse_gene_symbols`가 `/` 구분자로 생성). 데이터 변환 표에 이 단계가 없다.
+→ gseapy `Genes`(`;` 구분)를 `/`로 통일 후 `_gene_set` set 컬럼까지 생성해야 클러스터링 재사용 성립.
+
+#### G5. `gene_set` 라벨 + 멀티시트 Dataset 구조 미설계
+기존 결과는 gene set(예: `UP_BP`, `KEGG_DOWN`)별 시트로 적재되고 `direction`/`ontology`는 그 라벨에서 파싱되며 dataset tree에 시트/탭으로 표시된다. 계획은 컬럼 매핑만 언급하고 **여러 (direction × ontology × DB) 결과를 하나의 `DatasetType.GO_ANALYSIS` Dataset의 시트들로 묶는 규칙**과 `gene_set` 컬럼 채우기를 정의하지 않음.
+
+### 🟠 Important — 통계·매핑 정확성
+
+#### G6. `bg_ratio` / `fold_enrichment` 누락 → Bar/Dot Plot 지표 결손
+`GOBarChartDialog`·`GODotPlotDialog`는 `gene_ratio`뿐 아니라 **`fold_enrichment`**(= gene_ratio/bg_ratio)를 지표로 사용. 매핑 표엔 `Overlap → gene_ratio`만 있음.
+→ `Overlap`("5/200")에서 gene_ratio, term/배경 크기로 bg_ratio 산출 후 기존 `_compute_fold_enrichment` 재사용. gseapy `Odds Ratio`/`Combined Score` 보존도 검토.
+
+#### G7. Enrichr `term_id` 추출 한계
+- GO: term_id가 별도 컬럼이 아니라 `Term` 문자열 괄호 안(`... (GO:0008150)`)에 있음 → 정규식 파싱.
+- **KEGG: Enrichr Term에 KEGG ID(hsa#####)가 아예 없음** → KEGG `term_id`는 빔. 본문의 "GO:XXXXXXX 추출"은 KEGG 미적용. 빈 term_id의 다운스트림(클러스터링 키 등) 영향 확인.
+
+#### G8. Enrichr 온라인 + 커스텀 background 비호환 위험
+계획 핵심인 "DE 전체 유전자를 background로"는 gseapy `enrichr()`(온라인)에서 무시될 수 있음(전통적으로 Enrichr 고정 background 사용; 커스텀은 로컬 `enrich()`/speedrichr 경로). → 커스텀 background를 반영하려면 GOATOOLS 또는 gseapy 로컬 모드. **버전별 background 지원을 PoC로 검증**, 미지원 시 UI에 해석 주의 명시.
+
+#### G9. GOATOOLS "완전 오프라인" 주장과 mygene 모순
+GOATOOLS는 Entrez ID 기반인데 symbol→Entrez에 `mygene`(온라인 API)을 쓰면 "오프라인/재현성" 장점이 사라짐. → 진짜 오프라인엔 NCBI `gene_info`(local) 기반 매핑 캐시 필요.
+
+#### G10. Species(Mouse) 처리 디테일
+- Enrichr: mouse는 라이브러리/심볼 casing이 human과 다름(modEnrichr 또는 mouse 전용 gene set) → 라이브러리명 매핑 테이블 필요.
+- GOATOOLS: gene2go taxid 필터(human 9606 / mouse 10090) 명시.
+
+### 🟡 Minor — 정합성/완성도
+
+- **G11. 명칭 오류:** `DatasetManagerWidget`는 존재하지 않음. 실제는 `DatasetTreePanel`(`src/gui/dataset_tree_panel.py`) + `main_presenter.load_go_kegg_data()` + main_window Analysis 메뉴(`_on_cluster_go_terms` 패턴, `main_window.py` ~440줄).
+- **G12. Worker 시그니처:** 기존 `GOEnrichmentWorker(gene_list, background_genes, organism)`의 `finished`는 단일 DataFrame만 emit. 다중 gene_set/ontology를 한 번에 다루려면 시그널/반환 구조 재설계(또는 gene_set별 순차 실행).
+- **G13. 테스트 전략:** pytest/pytest-qt 사용. 네트워크 의존 테스트는 mock 필요(Enrichr/mygene 응답 고정). Phase 3에 mock·픽스처 위치 명시.
+- **G14. 에러/빈 결과 UX:** 매핑 0건, enrichment 0건, 타임아웃/rate-limit 처리 미정의. 오프라인 fallback 시 **KEGG는 GOATOOLS 미지원**이라 불가임을 UI에 알려야 함.
+- **G15. 재현성 메타데이터:** obo 버전·gene2go 다운로드 일자·Enrichr 라이브러리 버전을 결과에 기록(`Analysis_Info` 시트 관행과 일치).
+
+### ✅ 코드 대조로 확인된 정확한 전제 (수정 불필요)
+- `StandardColumns` 재사용 — 모든 컬럼 상수 실재
+- `GOEnrichmentWorker`가 stub이며 교체 대상 — `src/workers/go_workers.py:84-136`, dummy 결과 + TODO
+- Bar/Dot/Clustering/Network 다이얼로그가 `Dataset`(표준 컬럼) 입력으로 재사용 가능
+- gseapy는 gene symbol만 전송(expression 미전송) — 프라이버시 서술 정확
+- 결과 캐싱으로 rate-limit 완화
+
+### 권장 다음 단계
+1. 위 🔴/🟠 항목을 본문 해당 섹션에 반영(특히 G1 배포, G3 DEG 입력 재사용, G4 `_gene_set`, G8 background).
+2. **PoC**: 실제 DEG로 gseapy `enrichr()` 1회 호출 → 반환 컬럼 확인 → StandardColumns 변환(bg_ratio/fold_enrichment/term_id/`_gene_set`)이 기존 `GOBarChartDialog`/`GOClusteringDialog`에서 깨지지 않는지 검증.
+3. PoC 후 Phase 1~3 일정 확정.

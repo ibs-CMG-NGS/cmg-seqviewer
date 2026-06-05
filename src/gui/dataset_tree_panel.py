@@ -91,7 +91,8 @@ class DatasetTreePanel(QWidget):
     dataset_selected(str)     : 루트 dataset 전환 (dataset_name)
     sheet_selected(int)       : child 시트 선택 → 탭 활성화 요청 (tab_index)
     dataset_removed(str)      : 루트 dataset 제거 요청 (dataset_name)
-    rename_requested(str, str): 이름 변경 요청 (old_name, new_name)
+    rename_requested(str, str): 루트 dataset 이름 변경 요청 (old_name, new_name)
+    sheet_rename_requested(int, str): child 시트 이름 변경 요청 (tab_index, new_label)
     add_requested()           : Add Dataset 버튼 클릭
     file_dropped(str)         : 파일 드롭 (file_path)
     """
@@ -101,6 +102,7 @@ class DatasetTreePanel(QWidget):
     sheet_selected = pyqtSignal(int)
     dataset_removed = pyqtSignal(str)
     rename_requested = pyqtSignal(str, str)
+    sheet_rename_requested = pyqtSignal(int, str)  # (tab_index, new_label)
     add_requested = pyqtSignal()
     file_dropped = pyqtSignal(str)
 
@@ -154,7 +156,7 @@ class DatasetTreePanel(QWidget):
 
         self.rename_dataset_btn = QPushButton()
         self.rename_dataset_btn.setIcon(_make_icon("pencil"))
-        self.rename_dataset_btn.setToolTip("Rename selected dataset")
+        self.rename_dataset_btn.setToolTip("Rename selected dataset or sheet")
         self.rename_dataset_btn.setFixedSize(26, 26)
         self.rename_dataset_btn.setStyleSheet(_btn_style)
         self.rename_dataset_btn.clicked.connect(self._on_rename_clicked)
@@ -499,7 +501,17 @@ class DatasetTreePanel(QWidget):
             self.remove_root_dataset(name)
 
     def _on_rename_clicked(self):
-        current = self.get_current_root_dataset()
+        """선택 항목이 루트면 dataset 이름을, child 시트면 시트 이름을 변경한다."""
+        item = self.dataset_tree.currentItem()
+        if item is None:
+            return
+        if item.data(0, _ROLE_KIND) == "root":
+            self._rename_root_item(item)
+        else:
+            self._rename_sheet_item(item)
+
+    def _rename_root_item(self, item: QTreeWidgetItem):
+        current = item.data(0, _ROLE_DATA)
         if not current:
             return
         new_name, ok = QInputDialog.getText(
@@ -516,3 +528,38 @@ class DatasetTreePanel(QWidget):
             return
         actual_new = self.rename_root_dataset(current, new_name)
         self.rename_requested.emit(current, actual_new)
+
+    def _rename_sheet_item(self, item: QTreeWidgetItem):
+        """child 시트(필터/비교/클러스터 탭)의 이름을 변경한다."""
+        tab_index = item.data(0, _ROLE_DATA)
+        if tab_index is None:
+            return
+        kind = item.data(0, _ROLE_KIND)
+        # 표시 텍스트는 "{icon} {label}" 형식 → 아이콘을 제거해 현재 라벨 추출
+        current_label = self._strip_sheet_icon(item.text(0))
+        new_label, ok = QInputDialog.getText(
+            self,
+            "Rename Sheet",
+            "Enter a new name for this sheet:",
+            text=current_label,
+        )
+        if not (ok and new_label and new_label != current_label):
+            return
+        # 같은 부모 아래 형제 시트와 이름 중복 방지
+        parent = item.parent()
+        if parent is not None:
+            for i in range(parent.childCount()):
+                sib = parent.child(i)
+                if sib is not item and self._strip_sheet_icon(sib.text(0)) == new_label:
+                    QMessageBox.warning(
+                        self, "Duplicate Name",
+                        f"A sheet named '{new_label}' already exists under this dataset.")
+                    return
+        icon = _SHEET_ICONS.get(kind, "📄")
+        item.setText(0, f"{icon} {new_label}")
+        self.sheet_rename_requested.emit(tab_index, new_label)
+
+    @staticmethod
+    def _strip_sheet_icon(text: str) -> str:
+        """트리 시트 라벨("{icon} {label}")에서 선행 아이콘을 제거한다."""
+        return text.split(" ", 1)[1] if " " in text else text

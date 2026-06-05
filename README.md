@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![PyQt6](https://img.shields.io/badge/PyQt-6-green.svg)](https://www.riverbankcomputing.com/software/pyqt/)
-[![Release](https://img.shields.io/badge/release-v1.2.0-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
+[![Release](https://img.shields.io/badge/release-v1.2.3-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
 
 ---
 
@@ -13,7 +13,26 @@
 
 ---
 
-## Latest Update: v1.2.0 (Apr 2026)
+## Latest Update: v1.2.3 (Jun 2026)
+
+- [NEW] **Gene Expression Bar + Scatter (Grouped)**: Per-gene grouped bar (mean) + individual replicate points for DE / Multi-Group datasets. Most useful on a *Filtered* sheet (small gene set). Features: significance stars vs a reference group (Welch t-test / Mann-Whitney U), **manual group reassignment**, **per-group colors**, sort by Original / Symbol / Mean / |log2FC|, log-scale toggle, raw counts by default. Supports **3+ groups** (incl. Multi-Group datasets). `Visualization → 📊 Gene Expression Bar+Scatter (Grouped)`
+- [NEW] **Initial group auto-detection**: Sample columns are grouped automatically from dataset metadata → dataset name (`A vs B`) → column-name prefix, so balanced 3:3 / 4:4 designs are recognized on open
+- [NEW] **Rename derived sheets**: Filtered / Comparison / Clustered sheets can now be renamed directly in the Dataset Tree (previously only root datasets)
+- [FIX] **Filtered tabs no longer overwrite across datasets**: Applying the same filter to two different datasets keeps both result tabs (overwrite is now scoped to the same parent dataset)
+- [FIX] Clicking a root dataset in the tree reliably switches to its **Whole Dataset** view
+
+### Previous: v1.2.2 (May 2026)
+
+- [NEW] **Dataset Tree Panel**: Hierarchical tree of datasets and their derived sheets (Filtered / Comparison / Clustered / Plot). Click a node to switch tabs; drag & drop files to load; rename / remove from the tree
+- [NEW] **Pin Plot to Tab**: Keep Volcano / Heatmap plots as persistent tabs registered under their parent dataset; restored when the project is reopened
+- [NEW] **Plot Settings Dock**: Right-side panel with live controls that appears automatically when a pinned plot tab is active
+
+### Previous: v1.2.1 (Apr 2026)
+
+- [NEW] **Multi-Omics Integration (RNA-seq + ATAC-seq)**: Integrate DE and DA results on shared genes — **Quadrant Plot** (log2FC RNA vs ATAC), **Integrated Volcano**, and concordance views; export integrated tables
+- [NEW] **IGV Integration**: Send peaks / genes to a running IGV session via the HTTP remote-control API (host / port configurable in IGV Settings)
+
+### Previous: v1.2.0 (Apr 2026)
 
 - [NEW] **ATAC-seq DA Support**: Load and explore ATAC-seq differential accessibility results (Excel / Parquet). Auto-detected from `peak_id` column; supports HOMER-annotated DESeq2 output format
 - [NEW] **ATAC-seq Filters**: Annotation category (Intergenic / Intron / Promoter-TSS / …), Distance to TSS (|TSS| ≤ N bp), Peak Width range — all in the Statistical filter tab
@@ -101,7 +120,13 @@
 - **Volcano Plot**: log2FC vs -log10(padj) — works for both RNA-seq and ATAC-seq
 - **MA Plot**: log₂(base mean) vs log₂FC — ATAC-seq and RNA-seq
 - **Heatmap**: Expression patterns with hierarchical clustering
+- **Gene Expression Bar + Scatter (Grouped)**: Per-gene grouped bar (mean) + replicate points with significance stars, manual group reassignment, and per-group colors (DE / Multi-Group)
 - **P-adj Histogram**: Distribution of significance values
+
+### Multi-Omics Integration (RNA-seq + ATAC-seq)
+- **Quadrant Plot**: log2FC (RNA) vs log2FC (ATAC) on shared genes, with concordance quadrants
+- **Integrated Volcano**: Combined RNA + ATAC significance view
+- **IGV Integration**: Send peaks / genes to a running IGV session via HTTP remote control
 
 ---
 
@@ -463,12 +488,15 @@ pytest test/test_data_loader.py -v
 - [x] MA Plot dialog
 - [x] Genomic Distribution + TSS Distance Plot
 - [x] Column Display Level unified to Basic / Stat / Full
+- [x] Multi-Omics Integration (RNA + ATAC) + IGV integration (v1.2.1)
+- [x] Dataset Tree Panel: tree-based dataset/sheet navigation (v1.2.2)
+- [x] Project save/load (.seqproj) + Pin Plot to Tab (v1.2.2)
+- [x] Gene Expression Bar + Scatter (Grouped) visualization (v1.2.3)
 
 ### v1.3 (Q3 2026)
-- [ ] Dataset Tree Panel: tree-based dataset/sheet navigation
-- [ ] Session save/load functionality
 - [ ] Batch export (multiple visualizations at once)
 - [ ] GO enrichment analysis (run enrichment from within app)
+- [ ] Per-gene facet layout & z-score normalization for expression bar plot
 
 ### v2.0 (Future)
 - [ ] KEGG pathway diagram overlay
@@ -513,7 +541,7 @@ MIT License -- see [LICENSE](LICENSE).
   title   = {CMG-SeqViewer: RNA-Seq Data Analysis and Visualization Tool},
   year    = {2026},
   url     = {https://github.com/ibs-CMG-NGS/cmg-seqviewer},
-  version = {1.1.6}
+  version = {1.2.3}
 }
 ```
 

@@ -161,6 +161,7 @@ class MainWindow(QMainWindow):
         self.dataset_manager.add_requested.connect(self._on_add_dataset)
         self.dataset_manager.dataset_removed.connect(self._on_dataset_removed)
         self.dataset_manager.rename_requested.connect(self._on_dataset_renamed)
+        self.dataset_manager.sheet_rename_requested.connect(self._on_sheet_renamed)
         self.dataset_manager.file_dropped.connect(self._on_file_dropped)
         self.dataset_manager.sheet_selected.connect(self._on_tree_sheet_selected)
         self.dataset_manager.dataset_added.connect(self._on_dataset_tree_root_added)
@@ -558,7 +559,11 @@ class MainWindow(QMainWindow):
         self.pca_action.setShortcut("Ctrl+P")
         self.pca_action.triggered.connect(lambda: self._on_visualization_requested("pca"))
         viz_menu.addAction(self.pca_action)
-        
+
+        self.expr_bar_action = QAction("📊 Gene Expression Bar+Scatter (Grouped)", self)
+        self.expr_bar_action.triggered.connect(self._on_gene_expression_bar)
+        viz_menu.addAction(self.expr_bar_action)
+
         viz_menu.addSeparator()
         
         # 비교 데이터 시각화
@@ -1184,8 +1189,17 @@ class MainWindow(QMainWindow):
             self.presenter.load_gene_list(Path(file_path))
     
     def _on_dataset_selected(self, dataset_name: str):
-        """데이터셋 선택"""
+        """데이터셋 선택 → 해당 데이터로 전환하고 공유 'Whole Dataset' 탭으로 이동.
+
+        'Whole Dataset' 탭은 데이터셋마다 따로 있지 않고 하나를 공유한다
+        (switch_dataset → _update_view_with_dataset가 현재 데이터로 다시 채움).
+        루트 클릭 시 그 공유 탭으로 활성 탭을 전환해 데이터를 바로 보여준다.
+        """
         self.presenter.switch_dataset(dataset_name)
+        for i in range(self.data_tabs.count()):
+            if self.data_tabs.tabText(i) == "Whole Dataset":
+                self.data_tabs.setCurrentIndex(i)
+                break
     
     def _on_dataset_removed(self, dataset_name: str):
         """데이터셋 제거"""
@@ -1228,9 +1242,24 @@ class MainWindow(QMainWindow):
             # Comparison Panel의 dataset 리스트 업데이트
             all_datasets = self.dataset_manager.get_all_datasets()
             self.comparison_panel.update_dataset_list(all_datasets)
-            
+
             self.logger.info(f"Dataset renamed: {old_name} -> {new_name}")
-    
+
+    def _on_sheet_renamed(self, tab_index: int, new_label: str):
+        """child 시트(필터/비교/클러스터 탭) 이름 변경을 탭/데이터에 반영"""
+        if not (0 <= tab_index < self.data_tabs.count()):
+            return
+        # 탭 텍스트 변경
+        self.data_tabs.setTabText(tab_index, new_label)
+        # tab_data의 라벨과 Dataset 객체 이름 동기화
+        entry = self.tab_data.get(tab_index)
+        if entry is not None:
+            entry['sheet_label'] = new_label
+            ds = entry.get('dataset')
+            if ds is not None:
+                ds.name = new_label
+        self.logger.info(f"Sheet renamed: tab {tab_index} -> {new_label}")
+
     def _on_filter_requested(self):
         """필터링 요청"""
         criteria = self.filter_panel.get_filter_criteria()
@@ -2869,6 +2898,42 @@ class MainWindow(QMainWindow):
             self.logger.error(f"Multi-Group Heatmap failed: {e}")
             QMessageBox.critical(self, "Error", f"Failed to open Multi-Group Heatmap:\n{str(e)}")
 
+    def _on_gene_expression_bar(self):
+        """Gene Expression Bar+Scatter (Grouped) 다이얼로그 열기.
+
+        현재 탭의 데이터셋에 샘플별 발현 컬럼이 있어야 한다. filtered DE 시트에서
+        소수 유전자를 그룹별 막대(mean)+개별 점으로 비교하는 데 가장 유용하다.
+        """
+        try:
+            current_index = self.data_tabs.currentIndex()
+            if current_index < 0 or current_index not in self.tab_data:
+                QMessageBox.warning(self, "No Data", "Please open a dataset tab first.")
+                return
+            dataset = self.tab_data[current_index]['dataset']
+            if dataset is None or dataset.dataframe is None or dataset.dataframe.empty:
+                QMessageBox.warning(self, "No Data", "The current tab has no data.")
+                return
+
+            from gui.gene_expression_bar_dialog import GeneExpressionBarDialog
+            # 부모 데이터셋 이름("CTX200A vs CTX0A DE")을 그룹 라벨 시드 힌트로 전달
+            # (filtered 시트는 자기 이름에 그룹 정보가 없으므로 부모 이름이 핵심 단서)
+            name_hint = self.tab_data[current_index].get('parent_dataset') or dataset.name
+            dialog = GeneExpressionBarDialog(dataset, parent=self, name_hint=name_hint)
+            if not dialog.has_data:
+                QMessageBox.warning(
+                    self, "No Sample Columns",
+                    "This plot needs per-sample expression columns "
+                    "(e.g. Ctrl_1, Ctrl_2, Treat_1 ...).\n\n"
+                    "The current dataset has none that could be detected. "
+                    "Open a DE dataset (or its Filtered sheet) that keeps sample-level counts."
+                )
+                return
+            dialog.exec()
+            self.logger.info("Visualization opened: gene_expression_bar")
+        except Exception as e:
+            self.logger.error(f"Gene Expression Bar failed: {e}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"Failed to open Gene Expression Bar plot:\n{str(e)}")
+
     def _on_dotplot_requested(self):
         """Dot Plot 시각화 (Comparison Data)"""
         # 현재 탭이 Comparison sheet인지 확인
@@ -4251,27 +4316,27 @@ class MainWindow(QMainWindow):
     def _on_filter_completed(self, filtered_df: pd.DataFrame, tab_name: str):
         """필터링/클러스터링 완료 시 새 탭에 결과 표시"""
         try:
-            # 기존 동일한 이름의 탭이 있는지 확인하고 제거
+            # 데이터셋 생성 - 현재 활성 데이터셋의 타입을 유지
+            from models.data_models import Dataset, DatasetType
+            current_dataset = self.presenter.current_dataset
+            _par = current_dataset.name if current_dataset else None
+
+            # 덮어쓰기 대상: "같은 부모 데이터셋"에서 나온 동일 이름의 필터 탭만.
+            # (다른 데이터셋에 같은 필터를 적용한 결과는 이름이 같아도 보존한다)
             existing_indices = []
-            
-            # 동일한 이름의 탭이 있는지 확인 (덮어쓰기용)
             for i in range(self.data_tabs.count()):
-                current_name = self.data_tabs.tabText(i)
-                # 정확히 같은 이름의 탭이면 제거 대상 (덮어쓰기)
-                if current_name == tab_name:
+                if self.data_tabs.tabText(i) != tab_name:
+                    continue
+                entry = self.tab_data.get(i)
+                if entry is not None and entry.get('parent_dataset') == _par:
                     existing_indices.append(i)
-            
+
             # 기존 동일 이름 탭 제거 (역순 처리 + tab_data 재정렬)
             if existing_indices:
                 for idx in reversed(existing_indices):
                     self._remove_tab_safely(idx)
-            
-            # 데이터셋 생성 - 현재 활성 데이터셋의 타입을 유지
-            from models.data_models import Dataset, DatasetType
-            current_dataset = self.presenter.current_dataset
 
             # 새 탭 생성
-            _par = current_dataset.name if current_dataset else None
             table = self._create_data_tab(tab_name, sheet_type='filtered',
                                           parent_dataset=_par)
             new_tab_index = self.data_tabs.indexOf(table)
