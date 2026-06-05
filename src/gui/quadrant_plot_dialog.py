@@ -7,25 +7,19 @@ X축: ATAC log2FC, Y축: RNA log2FC
 
 import logging
 import numpy as np
-import matplotlib
-matplotlib.use('Qt5Agg')
-logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
-from matplotlib.figure import Figure
 import matplotlib.patches as mpatches
 
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
-    QLabel, QLineEdit, QSpinBox, QDoubleSpinBox, QFileDialog, QMessageBox,
+    QVBoxLayout, QGroupBox, QFormLayout, QSpinBox, QDoubleSpinBox,
 )
 from PyQt6.QtCore import Qt
 import pandas as pd
 
 from models.multi_omics_dataset import ConcordanceCategory, IntegratedColumns
+from gui.base_plot_dialog import BasePlotDialog
 
 
-class QuadrantPlotDialog(QDialog):
+class QuadrantPlotDialog(BasePlotDialog):
     """
     RNA log2FC vs ATAC log2FC Quadrant Plot
 
@@ -36,75 +30,44 @@ class QuadrantPlotDialog(QDialog):
     """
 
     def __init__(self, integrated_df: pd.DataFrame, title: str = "Quadrant Plot", parent=None):
-        super().__init__(parent)
         self.logger = logging.getLogger(__name__)
         self.df = integrated_df.copy()
         self.plot_title = title
-        self.setWindowTitle("Quadrant Plot — RNA vs ATAC log2FC")
-        self.resize(720, 620)
-        self.setWindowFlags(
-            self.windowFlags()
-            | Qt.WindowType.WindowMaximizeButtonHint
-            | Qt.WindowType.WindowMinimizeButtonHint
-        )
-        self._scatter_data = []   # hover용 데이터 저장
+
+        self._scatter_data = []
         self._annot = None
         self._ax = None
         self._cid_mouse = None
-        self._init_ui()
-        self._plot()
 
-    def _init_ui(self):
-        layout = QVBoxLayout(self)
+        super().__init__("Quadrant Plot — RNA vs ATAC log2FC", parent, figsize=(7, 6))
+        self._update_plot()
 
-        # Canvas
-        self.figure = Figure(figsize=(7, 6), dpi=100)
-        self.canvas = FigureCanvas(self.figure)
-        self.toolbar = NavigationToolbar(self.canvas, self)
+    # ── Controls ──────────────────────────────────────────────────────────
 
-        # 옵션 바 (타이틀 편집 / 점 크기 / 투명도)
-        opt_layout = QHBoxLayout()
-        opt_layout.addWidget(QLabel("Title:"))
-        self.title_edit = QLineEdit(self.plot_title)
-        self.title_edit.setMinimumWidth(180)
-        self.title_edit.textChanged.connect(self._update_title)
-        opt_layout.addWidget(self.title_edit)
-        opt_layout.addSpacing(12)
-        opt_layout.addWidget(QLabel("Point size:"))
+    def _setup_controls(self, layout: QVBoxLayout):
+        settings_group = QGroupBox("Plot Settings")
+        settings_layout = QFormLayout()
+
         self.point_size_spin = QSpinBox()
         self.point_size_spin.setRange(5, 200)
         self.point_size_spin.setValue(30)
-        self.point_size_spin.setFixedWidth(60)
-        self.point_size_spin.valueChanged.connect(self._plot)
-        opt_layout.addWidget(self.point_size_spin)
-        opt_layout.addSpacing(12)
-        opt_layout.addWidget(QLabel("Alpha:"))
+        self.point_size_spin.valueChanged.connect(self._update_plot)
+        settings_layout.addRow("Point size:", self.point_size_spin)
+
         self.alpha_spin = QDoubleSpinBox()
         self.alpha_spin.setRange(0.05, 1.0)
         self.alpha_spin.setDecimals(2)
         self.alpha_spin.setSingleStep(0.05)
         self.alpha_spin.setValue(0.70)
-        self.alpha_spin.setFixedWidth(65)
-        self.alpha_spin.valueChanged.connect(self._plot)
-        opt_layout.addWidget(self.alpha_spin)
-        opt_layout.addStretch()
-        layout.addLayout(opt_layout)
+        self.alpha_spin.valueChanged.connect(self._update_plot)
+        settings_layout.addRow("Alpha:", self.alpha_spin)
 
-        layout.addWidget(self.toolbar)
-        layout.addWidget(self.canvas)
+        settings_group.setLayout(settings_layout)
+        layout.addWidget(settings_group)
 
-        # 버튼
-        btn_layout = QHBoxLayout()
-        save_btn = QPushButton("💾 Save Figure")
-        save_btn.clicked.connect(self._on_save)
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(self.close)
-        btn_layout.addWidget(save_btn)
-        btn_layout.addStretch()
-        btn_layout.addWidget(close_btn)
-        layout.addLayout(btn_layout)
+    # ── Plot ──────────────────────────────────────────────────────────────
 
-    def _plot(self):
+    def _do_plot(self):
         self.figure.clear()
         self._scatter_data = []
         ax = self.figure.add_subplot(111)
@@ -117,7 +80,6 @@ class QuadrantPlotDialog(QDialog):
         col_padj = IntegratedColumns.RNA_PADJ
 
         df = self.df.dropna(subset=[col_rna, col_atac])
-
         colors = ConcordanceCategory.COLORS
 
         for cat in ConcordanceCategory.ALL:
@@ -131,7 +93,6 @@ class QuadrantPlotDialog(QDialog):
                 edgecolors="white", label=f"{cat} (n={len(sub)})",
                 zorder=3,
             )
-            # hover용 데이터 저장
             padj_vals = sub[col_padj].values if col_padj in sub.columns else np.full(len(sub), np.nan)
             self._scatter_data.append({
                 'x': sub[col_atac].values.astype(float),
@@ -141,15 +102,13 @@ class QuadrantPlotDialog(QDialog):
                 'concordance': sub[col_cat].values.astype(str),
             })
 
-        # 기준선
         ax.axhline(0, color="gray", linewidth=0.8, linestyle="--", zorder=1)
         ax.axvline(0, color="gray", linewidth=0.8, linestyle="--", zorder=1)
 
         ax.set_xlabel("ATAC-seq log2FC (chromatin accessibility)", fontsize=11)
         ax.set_ylabel("RNA-seq log2FC (gene expression)", fontsize=11)
-        ax.set_title(self.title_edit.text(), fontsize=13, fontweight="bold")
+        ax.set_title(self.plot_title, fontsize=13, fontweight="bold")
 
-        # 사분면 레이블
         xlim = ax.get_xlim()
         ylim = ax.get_ylim()
         xpad = (xlim[1] - xlim[0]) * 0.03
@@ -166,7 +125,6 @@ class QuadrantPlotDialog(QDialog):
         ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", fontsize=8, framealpha=0.7)
         self.figure.tight_layout()
 
-        # 어노테이션 (hover 툴팁)
         self._annot = ax.annotate(
             "",
             xy=(0, 0), xytext=(12, 12), textcoords="offset points",
@@ -192,8 +150,6 @@ class QuadrantPlotDialog(QDialog):
         ylim = self._ax.get_ylim()
         x_range = xlim[1] - xlim[0]
         y_range = ylim[1] - ylim[0]
-        # 화면 범위의 2.5% 이내 점을 가장 가까운 점으로 인식
-        threshold = 0.025 * min(x_range, y_range)
 
         best_dist = float('inf')
         best_info = None
@@ -216,7 +172,6 @@ class QuadrantPlotDialog(QDialog):
                     data['padj'][idx],
                 )
 
-        # 실제 거리 임계값: 축 범위의 2.5%
         real_threshold = 0.025
         if best_dist < real_threshold and best_info is not None:
             x, y, sym, cat, padj = best_info
@@ -230,7 +185,6 @@ class QuadrantPlotDialog(QDialog):
             )
             self._annot.xy = (x, y)
             self._annot.set_text(text)
-            # 점이 오른쪽/위쪽에 있으면 툴팁을 반대 방향으로
             xlim = self._ax.get_xlim()
             ylim = self._ax.get_ylim()
             xoff = -90 if (x > (xlim[0] + xlim[1]) / 2) else 12
@@ -239,20 +193,7 @@ class QuadrantPlotDialog(QDialog):
             self._annot.set_visible(True)
             self.canvas.draw_idle()
         else:
-            if self._annot.get_visible():
+            if self._annot and self._annot.get_visible():
                 self._annot.set_visible(False)
                 self.canvas.draw_idle()
 
-    def _update_title(self, text: str):
-        if self._ax:
-            self._ax.set_title(text, fontsize=13, fontweight="bold")
-            self.canvas.draw_idle()
-
-    def _on_save(self):
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Save Figure", "quadrant_plot.png",
-            "PNG (*.png);;SVG (*.svg);;PDF (*.pdf)"
-        )
-        if path:
-            self.figure.savefig(path, dpi=150, bbox_inches="tight")
-            self.logger.info(f"Quadrant plot saved: {path}")

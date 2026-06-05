@@ -2,7 +2,7 @@
 ### 중앙 테마 + 정확한 Export + 팔레트
 
 **Parent**: [FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md](FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md)
-**Status**: 📋 Planned (code-level design; not yet implemented)
+**Status**: ✅ Implemented (2026-06-05)
 **Scope**: P1만. P2(FigureSpec/프리셋/round-trip)는 별도.
 
 ---
@@ -15,7 +15,7 @@ P1 완료 시:
 - 색은 **colorblind-safe 팔레트** 기본.
 - 13개 다이얼로그의 `_save_figure` 중복이 **단일 export 유틸**로 수렴(점진).
 
-**신규 파일 3개 + 파일럿 적용 2개:**
+**신규 파일 3개 + 파일럿 적용 2개 (계획) → 실제는 아래 §10 참조:**
 | 파일 | 종류 | 내용 |
 |---|---|---|
 | `src/utils/figure_theme.py` | 신규 | rcParams 테마 프리셋 + `theme_context()` + 팔레트 |
@@ -297,3 +297,96 @@ class FigureStylePanel(QWidget):
 - **저장 시 figure 크기 영구 변경**: 화면 표시 크기 변동 허용 여부(허용 권장, 단순).
 - **테마 누수**: 반드시 `rc_context`만 사용, 전역 `rcParams` 직접 수정 금지.
 - **명시색 vs 팔레트**: group_colors 등 명시색은 팔레트보다 우선(현 동작 유지).
+
+---
+
+## 10. 구현 결과 (2026-06-05 완료)
+
+계획 대비 범위가 대폭 확장됨. 파일럿 2개 → **전체 다이얼로그 일괄 마이그레이션**으로 결정.
+
+### 10-1. 계획 대비 추가 구현
+
+| 항목 | 내용 |
+|---|---|
+| `src/gui/widgets/theme_customize_dialog.py` | **Custom 테마 편집 UI** — 폰트 크기·linewidth·tick·spine·grid를 UI에서 직접 수정, QSettings 영속화 |
+| `Custom` 테마 | `figure_theme.py`에 `CUSTOM_DEFAULTS`, `update_custom_theme()`, `save_custom_params()`, `load_custom_params()` 추가 |
+| `FigureStylePanel` Edit 버튼 | Custom 테마 선택 시 강조, 클릭 시 ThemeCustomizeDialog 열림 |
+| `src/gui/base_plot_dialog.py` | **새 기반 클래스** — 모든 플롯 다이얼로그 공통 레이아웃(좌우 분할, maximize+minimize 플래그, FigureStylePanel, Refresh/Save Figure/Export Data/Close 버튼 바) 제공 |
+| Volcano Plot 클리핑 수정 | dock 최대폭 제거, 스크롤바 정책 수정, 색상 버튼 2행 레이아웃 |
+| HeatmapWidget FigureStylePanel | 기존에 없던 테마 드롭다운 추가 |
+
+### 10-2. §9 리스크 결정 내용
+
+| 리스크 | 결정 |
+|---|---|
+| inch vs mm 일원화 | **mm 단일화** — inch SpinBox 완전 제거, FigureStylePanel의 mm 입력으로 대체 |
+| 저장 시 figure 크기 변경 | **백업·복원** 채택 — `save_figure()`에서 `old_size = fig.get_size_inches()` 후 `try/finally`로 복원 |
+| 테마 누수 | `rc_context` 전용, 전역 수정 없음 ✅ |
+| 명시색 vs 팔레트 | 명시색 우선 유지 ✅ |
+
+### 10-3. 전체 다이얼로그 마이그레이션 결과
+
+**`BasePlotDialog` 상속 (15개):**
+
+| 파일 | 특이사항 |
+|---|---|
+| `gene_expression_bar_dialog.py` | 파일럿, 먼저 적용됨 |
+| `go_bar_chart_dialog.py` | 파일럿, 먼저 적용됨 |
+| `go_dot_plot_dialog.py` | `_export_data` → `_extra_buttons` |
+| `go_comparison_dot_plot_dialog.py` | `_export_data` → `_extra_buttons` |
+| `go_network_dialog.py` | `_export_network` → `_extra_buttons` |
+| `pca_dialog.py` | `_export_csv` + `_export_image` → `_extra_buttons` |
+| `ma_plot_dialog.py` | 클래스 수준 `_saved_settings` 유지 |
+| `multi_group_heatmap_dialog.py` | 다중 export → `_extra_buttons` |
+| `integrated_volcano_dialog.py` | 구 좌측 패널(maxWidth 210) → `_setup_controls`로 통합 |
+| `concordance_heatmap_dialog.py` | 구 수평 옵션 바 → `_setup_controls` 수직 폼으로 재배치 |
+| `quadrant_plot_dialog.py` | 구 수평 옵션 바 → `_setup_controls` 재배치 |
+| `venn_dialog.py` | 기존 저장 버튼 없음 → BasePlotDialog로 추가됨 |
+| `venn_dialog_comparison.py` | 동일 |
+| `tss_distance_dialog.py` | 플롯 다이얼로그 확인 후 마이그레이션 |
+| `genomic_distribution_dialog.py` | 동일 |
+
+**`visualization_dialog.py` 내 위젯 (QWidget, BasePlotDialog 미적용):**
+- `VolcanoPlotWidget`: FigureStylePanel 및 테마 컨텍스트 적용 (QWidget 구조 유지)
+- `HeatmapWidget`: FigureStylePanel 및 테마 컨텍스트 적용
+- `PadjHistogramDialog`, `DotPlotDialog`: BasePlotDialog 상속
+- backend `Qt5Agg → QtAgg` 수정
+
+**최소 retrofit (BasePlotDialog 미적용):**
+- `go_clustering_dialog.py`: 레이아웃이 너무 복잡(QSplitter + QTabWidget + ClusteringWorker). WindowMinimizeButtonHint 추가, 좌측 패널에 FigureStylePanel 삽입, `_save_figure()` 추가, `_update_network_graph()` → theme_context 래핑.
+
+### 10-4. 모든 다이얼로그 공통 UI 사양 (달성)
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  [최소화] [최대화] [닫기]                               │ ← WindowFlags
+├────────────────┬────────────────────────────────────────┤
+│  설정 패널     │  NavigationToolbar                     │
+│  (스크롤 가능) │  ──────────────────────────────────    │
+│                │  matplotlib canvas (stretch)           │
+│  [도메인 컨트롤]│                                        │
+│                │  ──────────────────────────────────    │
+│  ┌ Figure     ┐│  [Refresh Plot] [Save Figure]          │
+│  │ Style &   │ │  [Export Data (있는 경우)]  [Close]    │
+│  │ Export    │ │                                        │
+│  │ Theme ▼   │ │                                        │
+│  │ Export size│ │                                        │
+│  │ DPI / Fmt │ │                                        │
+│  └───────────┘ │                                        │
+└────────────────┴────────────────────────────────────────┘
+```
+
+### 10-5. 작업 체크리스트 최종 상태
+
+| # | 작업 | 상태 |
+|---|---|---|
+| 1 | `figure_theme.py` 작성 | ✅ 완료 (Custom 테마 + QSettings 영속화 포함) |
+| 2 | `figure_export.py` 작성 | ✅ 완료 (크기 백업·복원, EPS+transparent 처리 포함) |
+| 3 | `widgets/__init__.py` + `figure_style_panel.py` | ✅ 완료 |
+| 3a | `theme_customize_dialog.py` | ✅ 추가 완료 |
+| 3b | `base_plot_dialog.py` | ✅ 추가 완료 |
+| 4 | gene_expression_bar 파일럿 통합 | ✅ 완료 |
+| 5 | go_bar_chart 파일럿 통합 | ✅ 완료 |
+| 6 | headless 검증 스크립트 | ⏳ 미완료 |
+| 7 | QSettings 영속화 | ✅ 완료 (Custom 테마 파라미터) |
+| 8 | 나머지 다이얼로그 확산 | ✅ 전체 완료 (15개 + 1개 retrofit) |

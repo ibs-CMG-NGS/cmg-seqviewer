@@ -18,12 +18,17 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QBrush, QColor, QPixmap, QIcon
 
 from models.standard_columns import StandardColumns
+from gui.widgets.figure_style_panel import FigureStylePanel
+from utils import figure_theme, figure_export
 import pandas as pd
 import matplotlib
 import matplotlib.patches
-matplotlib.use('Qt5Agg')
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+matplotlib.use('QtAgg')
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+try:
+    from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
+except ImportError:
+    from matplotlib.backends.backend_qt import NavigationToolbar2QT as NavigationToolbar  # type: ignore
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
@@ -148,8 +153,11 @@ class GOClusteringDialog(QDialog):
         
         self.setWindowTitle("GO Term Clustering")
         self.resize(1400, 900)
-        # Enable maximize button
-        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint)
+        self.setWindowFlags(
+            self.windowFlags()
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowMinimizeButtonHint
+        )
         self._init_ui()
         
     def _init_ui(self):
@@ -359,9 +367,17 @@ class GOClusteringDialog(QDialog):
         guide_layout.addWidget(help_content)
         
         layout.addWidget(guide_group)
-        
+
+        # ── Figure Style & Export ────────────────────────────────────
+        self._style = FigureStylePanel()
+        self._style.changed.connect(self._on_style_changed)
+        style_group = QGroupBox("Figure Style & Export")
+        sv = QVBoxLayout(style_group)
+        sv.addWidget(self._style)
+        layout.addWidget(style_group)
+
         layout.addStretch()
-        
+
         return panel
         
     def _create_results_panel(self):
@@ -466,7 +482,7 @@ class GOClusteringDialog(QDialog):
                 color: #666666;
             }
         """)
-        self.refresh_button.clicked.connect(self._update_network_graph)
+        self.refresh_button.clicked.connect(self._draw_network_graph)
         self.refresh_button.setEnabled(False)
         self.refresh_button.setToolTip("Update the network visualization with current settings")
         settings_layout.addWidget(self.refresh_button)
@@ -475,7 +491,7 @@ class GOClusteringDialog(QDialog):
         
         layout.addWidget(settings_group)
 
-        # Matplotlib figure — 실제 크기는 클러스터 수에 따라 _update_network_graph에서 동적 조정
+        # Matplotlib figure — 실제 크기는 클러스터 수에 따라 _draw_network_graph에서 동적 조정
         self.figure = Figure(figsize=(10, 8))
         self.canvas = FigureCanvas(self.figure)
         self.canvas.mpl_connect('motion_notify_event', self._on_network_hover)
@@ -549,10 +565,32 @@ class GOClusteringDialog(QDialog):
         layout.addWidget(self.representative_table)
         return tab
         
+    def _on_style_changed(self):
+        """테마 변경 시 네트워크 그래프 다시 그리기."""
+        self._draw_network_graph()
+
+    def _save_figure(self):
+        opts = self._style.export_opts()
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Figure",
+            f"go_network.{opts['fmt']}",
+            figure_export.filter_string(),
+        )
+        if not path:
+            return
+        try:
+            saved = figure_export.save_figure(self.figure, path, **opts)
+            QMessageBox.information(self, "Saved", f"Figure saved to:\n{saved}")
+        except Exception as e:
+            QMessageBox.critical(self, "Save Error", str(e))
+
     def _create_buttons(self):
         """Create bottom button layout"""
         layout = QHBoxLayout()
         layout.addStretch()
+        save_figure_btn = QPushButton("Save Figure")
+        save_figure_btn.clicked.connect(self._save_figure)
+        layout.addWidget(save_figure_btn)
         self.export_button = QPushButton("Export Clusters")
         self.export_button.setEnabled(False)
         self.export_button.clicked.connect(self._export_clusters)
@@ -621,7 +659,7 @@ class GOClusteringDialog(QDialog):
         """Update all result displays"""
         if self.clustered_df is None:
             return
-        self._update_network_graph()
+        self._draw_network_graph()
         self._update_summary()
         self._update_cluster_table()
         self._update_representative_table()
@@ -631,6 +669,11 @@ class GOClusteringDialog(QDialog):
         return self.clustered_df
 
     def _update_network_graph(self):
+        theme = self._style.theme_name() if hasattr(self, '_style') else 'Journal (sans-serif)'
+        with figure_theme.theme_context(theme):
+            self._draw_network_graph()
+
+    def _draw_network_graph(self):
         """Update the network visualization with current settings"""
         if self.clustered_df is None or self.clusters is None:
             return

@@ -9,33 +9,27 @@ Concordance Heatmap Dialog
 
 import logging
 import numpy as np
-import matplotlib
-matplotlib.use('Qt5Agg')
-logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
-from matplotlib.figure import Figure
 import matplotlib.patches as mpatches
 import matplotlib.colors as mcolors
 
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
-    QLabel, QLineEdit, QSpinBox, QCheckBox, QFileDialog,
+    QVBoxLayout, QHBoxLayout, QPushButton,
+    QLabel, QSpinBox, QCheckBox,
 )
 from PyQt6.QtCore import Qt
 import pandas as pd
 
 from models.multi_omics_dataset import ConcordanceCategory, IntegratedColumns
+from gui.base_plot_dialog import BasePlotDialog
 
 
-class ConcordanceHeatmapDialog(QDialog):
+class ConcordanceHeatmapDialog(BasePlotDialog):
     """
     Concordance Heatmap
 
     유의한(sig) 유전자만 표시하며 concordance 카테고리 순으로 정렬합니다.
     """
 
-    # 표시 순서 (Not_significant 제외)
     _CATEGORY_ORDER = [
         ConcordanceCategory.CONCORDANT_BOTH_UP,
         ConcordanceCategory.CONCORDANT_BOTH_DOWN,
@@ -46,68 +40,33 @@ class ConcordanceHeatmapDialog(QDialog):
     ]
 
     def __init__(self, integrated_df: pd.DataFrame, title: str = "Concordance Heatmap", parent=None):
-        super().__init__(parent)
         self.logger = logging.getLogger(__name__)
         self.df = integrated_df.copy()
         self.plot_title = title
-        self.setWindowTitle("Concordance Heatmap")
-        self.resize(700, 750)
-        self.setWindowFlags(
-            self.windowFlags()
-            | Qt.WindowType.WindowMaximizeButtonHint
-            | Qt.WindowType.WindowMinimizeButtonHint
-        )
         self._ax_heat = None
-        self._init_ui()
-        self._plot()
 
-    def _init_ui(self):
-        layout = QVBoxLayout(self)
+        super().__init__("Concordance Heatmap", parent, figsize=(7, 8))
+        self._update_plot()
 
-        # Options
-        opt_layout = QHBoxLayout()
-        opt_layout.addWidget(QLabel("Title:"))
-        self.title_edit = QLineEdit(self.plot_title)
-        self.title_edit.setMinimumWidth(160)
-        self.title_edit.textChanged.connect(self._update_title)
-        opt_layout.addWidget(self.title_edit)
-        opt_layout.addSpacing(12)
-        opt_layout.addWidget(QLabel("Max genes:"))
+    # ── Controls ──────────────────────────────────────────────────────────
+
+    def _setup_controls(self, layout: QVBoxLayout):
+        max_layout = QHBoxLayout()
+        max_layout.addWidget(QLabel("Max genes:"))
         self.max_genes_spin = QSpinBox()
         self.max_genes_spin.setRange(10, 500)
         self.max_genes_spin.setValue(100)
         self.max_genes_spin.setSuffix(" genes")
-        opt_layout.addWidget(self.max_genes_spin)
+        max_layout.addWidget(self.max_genes_spin)
+        layout.addLayout(max_layout)
 
         self.show_labels_cb = QCheckBox("Show gene labels")
         self.show_labels_cb.setChecked(False)
-        opt_layout.addWidget(self.show_labels_cb)
+        layout.addWidget(self.show_labels_cb)
 
-        refresh_btn = QPushButton("↺ Refresh")
-        refresh_btn.clicked.connect(self._plot)
-        opt_layout.addWidget(refresh_btn)
-        opt_layout.addStretch()
-        layout.addLayout(opt_layout)
+    # ── Plot ──────────────────────────────────────────────────────────────
 
-        # Canvas
-        self.figure = Figure(figsize=(7, 8), dpi=100)
-        self.canvas = FigureCanvas(self.figure)
-        self.toolbar = NavigationToolbar(self.canvas, self)
-        layout.addWidget(self.toolbar)
-        layout.addWidget(self.canvas)
-
-        # 버튼
-        btn_layout = QHBoxLayout()
-        save_btn = QPushButton("💾 Save Figure")
-        save_btn.clicked.connect(self._on_save)
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(self.close)
-        btn_layout.addWidget(save_btn)
-        btn_layout.addStretch()
-        btn_layout.addWidget(close_btn)
-        layout.addLayout(btn_layout)
-
-    def _plot(self):
+    def _do_plot(self):
         self.figure.clear()
 
         col_rna   = IntegratedColumns.RNA_LOG2FC
@@ -116,12 +75,10 @@ class ConcordanceHeatmapDialog(QDialog):
         col_sym   = IntegratedColumns.GENE_SYMBOL
         max_genes = self.max_genes_spin.value()
 
-        # Not_significant 제외, 카테고리 순 정렬
         df = self.df[
             self.df[col_cat].isin(self._CATEGORY_ORDER)
         ].dropna(subset=[col_rna, col_atac])
 
-        # 카테고리 순서대로 정렬
         cat_order = {c: i for i, c in enumerate(self._CATEGORY_ORDER)}
         df = df.copy()
         df["_cat_order"] = df[col_cat].map(cat_order)
@@ -135,18 +92,16 @@ class ConcordanceHeatmapDialog(QDialog):
             self.canvas.draw()
             return
 
-        # 히트맵 데이터
         heatmap_data = df[[col_rna, col_atac]].values
         gene_names   = df[col_sym].values
         categories   = df[col_cat].values
 
-        # figure 레이아웃: [heatmap | annotation bar]
         gs = self.figure.add_gridspec(1, 2, width_ratios=[10, 1], wspace=0.05)
         ax_heat = self.figure.add_subplot(gs[0])
         ax_ann  = self.figure.add_subplot(gs[1])
         self._ax_heat = ax_heat
 
-        # 색상 스케일 (대칭)
+        import matplotlib
         vmax = np.nanpercentile(np.abs(heatmap_data), 95)
         if vmax == 0:
             vmax = 1.0
@@ -157,13 +112,11 @@ class ConcordanceHeatmapDialog(QDialog):
             vmin=-vmax, vmax=vmax, interpolation="nearest",
         )
 
-        # 컬럼 레이블
         ax_heat.set_xticks([0, 1])
         ax_heat.set_xticklabels(["RNA log2FC", "ATAC log2FC"], fontsize=9)
-        ax_heat.set_title(self.title_edit.text(), fontsize=11, fontweight="bold")
+        ax_heat.set_title(self.plot_title, fontsize=11, fontweight="bold")
 
-        # 유전자 레이블
-        if self.show_labels_cb.isChecked():
+        if hasattr(self, 'show_labels_cb') and self.show_labels_cb.isChecked():
             ax_heat.set_yticks(range(len(gene_names)))
             ax_heat.set_yticklabels(gene_names, fontsize=6)
         else:
@@ -171,11 +124,8 @@ class ConcordanceHeatmapDialog(QDialog):
 
         ax_heat.set_ylabel(f"Genes (n={len(df)})", fontsize=9)
 
-        # Colorbar
-        self.figure.colorbar(im, ax=ax_heat, fraction=0.03, pad=0.02,
-                             label="log2FC")
+        self.figure.colorbar(im, ax=ax_heat, fraction=0.03, pad=0.02, label="log2FC")
 
-        # Annotation bar
         cat_colors = ConcordanceCategory.COLORS
         ann_colors = np.array([[
             mcolors.to_rgb(cat_colors.get(c, "#CCCCCC"))
@@ -186,7 +136,6 @@ class ConcordanceHeatmapDialog(QDialog):
         ax_ann.set_xticklabels(["Cat."], fontsize=7)
         ax_ann.set_yticks([])
 
-        # Legend
         patches = [
             mpatches.Patch(
                 color=cat_colors.get(c, "#CCCCCC"),
@@ -203,16 +152,3 @@ class ConcordanceHeatmapDialog(QDialog):
         self.figure.tight_layout()
         self.canvas.draw()
 
-    def _update_title(self, text: str):
-        if self._ax_heat:
-            self._ax_heat.set_title(text, fontsize=11, fontweight="bold")
-            self.canvas.draw_idle()
-
-    def _on_save(self):
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Save Figure", "concordance_heatmap.png",
-            "PNG (*.png);;SVG (*.svg);;PDF (*.pdf)"
-        )
-        if path:
-            self.figure.savefig(path, dpi=150, bbox_inches="tight")
-            self.logger.info(f"Concordance heatmap saved: {path}")

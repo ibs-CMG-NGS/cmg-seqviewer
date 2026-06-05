@@ -1,17 +1,5 @@
 """
 Gene Expression Bar + Scatter Visualization Dialog
-
-filtered DE 데이터셋의 샘플별 발현값을 그룹별 막대(mean) + 개별 점(scatter)으로
-그린다. X축은 gene symbol, 각 유전자마다 그룹별로 묶인(clustered) 막대를 그리고
-그 위에 replicate 값을 점으로 덧그린다. 값은 raw count를 기본으로 사용한다.
-
-지원 기능:
-  - 그룹 수동 재지정 UI (샘플 컬럼 → 그룹 이름 편집, 빈 값이면 제외)
-  - 그룹별 색 커스터마이즈
-  - 기준 그룹 대비 유의성 별표 (Welch t-test / Mann-Whitney U)
-
-샘플 컬럼/그룹 추론은 DE 표준 컬럼(StandardColumns.get_de_all())을 정확히 제외해
-샘플 컬럼만 남긴다.
 """
 
 import re
@@ -21,28 +9,23 @@ from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
-    QLabel, QSpinBox, QComboBox, QPushButton, QCheckBox, QMessageBox,
-    QFormLayout, QLineEdit, QColorDialog, QScrollArea, QWidget,
+    QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
+    QLabel, QComboBox, QPushButton, QCheckBox, QMessageBox,
+    QFormLayout, QColorDialog,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
 )
 from PyQt6.QtGui import QColor
 from PyQt6.QtCore import Qt
 import matplotlib
-matplotlib.use('QtAgg')
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-try:
-    from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
-except ImportError:  # pragma: no cover - matplotlib 버전별 대체 경로
-    from matplotlib.backends.backend_qt import NavigationToolbar2QT as NavigationToolbar  # type: ignore
-from matplotlib.figure import Figure
 
 from models.data_models import Dataset
 from models.standard_columns import StandardColumns
+from gui.base_plot_dialog import BasePlotDialog
+
+# Import QSpinBox here so _setup_controls can use it
+from PyQt6.QtWidgets import QSpinBox
 
 
-# 샘플 컬럼 추론 시 제외할 통계/주석 컬럼명 (소문자, 별칭 포함).
-# 표준 DE 컬럼 + MultiGroup 등 비표준 파일의 원시 컬럼명을 함께 커버한다.
 _NON_SAMPLE_COLS = frozenset({
     'gene_id', 'symbol', 'gene_symbol', 'gene_name', 'genesymbol',
     'base_mean', 'basemean',
@@ -54,12 +37,10 @@ _NON_SAMPLE_COLS = frozenset({
     'lfcse', 'se',
 })
 
-# gene 식별 컬럼 후보 (symbol 우선)
 _SYMBOL_ALIASES = ('symbol', 'gene_symbol', 'gene_name', 'genesymbol')
 
 
 def _p_to_stars(p: float) -> str:
-    """p-value → 별표 표기."""
     if p is None or (isinstance(p, float) and np.isnan(p)):
         return ''
     if p > 0.05:
@@ -73,18 +54,14 @@ def _p_to_stars(p: float) -> str:
     return '*'
 
 
-class GeneExpressionBarDialog(QDialog):
+class GeneExpressionBarDialog(BasePlotDialog):
     """유전자별 그룹 막대(mean) + scatter 다이얼로그."""
 
     def __init__(self, dataset: Dataset, parent=None, name_hint: str = None):
-        super().__init__(parent)
         self.dataset = dataset
         self.df = dataset.dataframe.copy() if dataset.dataframe is not None else pd.DataFrame()
-        # 그룹 라벨 시드용 힌트: 보통 부모 데이터셋 이름("CTX200A vs CTX0A DE").
-        # filtered 시트는 자기 이름이 "Filtered: ..."라 그룹 정보가 없으므로 부모 이름을 받는다.
         self.name_hint = name_hint or dataset.name or ""
 
-        # 유전자 식별 컬럼 (symbol 별칭 우선, 없으면 gene_id) — 대소문자 무시
         lower_map = {str(c).lower(): c for c in self.df.columns}
         self.gene_col = None
         for alias in _SYMBOL_ALIASES:
@@ -94,14 +71,12 @@ class GeneExpressionBarDialog(QDialog):
         if self.gene_col is None and 'gene_id' in lower_map:
             self.gene_col = lower_map['gene_id']
 
-        # 샘플 컬럼과 초기 그룹 추론 → 컬럼→그룹 매핑(col_to_group)으로 보관
         self.sample_columns, initial_groups = self._resolve_sample_groups(
             dataset, self.df, self.name_hint)
         self.col_to_group: "OrderedDict[str, str]" = OrderedDict()
         for grp, cols in initial_groups.items():
             for c in cols:
                 self.col_to_group[c] = grp
-        # 추론에서 빠진 샘플 컬럼이 있으면 자기 이름을 그룹으로
         for c in self.sample_columns:
             self.col_to_group.setdefault(c, c)
 
@@ -110,56 +85,37 @@ class GeneExpressionBarDialog(QDialog):
         self._rebuild_sample_groups()
         self._rebuild_group_colors()
 
-        self.setWindowTitle("Gene Expression Bar + Scatter")
-        self.setMinimumSize(1080, 820)
-
-        self.figure = Figure(figsize=(10, 8))
-        self.canvas = FigureCanvas(self.figure)
-
-        self._init_ui()
+        super().__init__("Gene Expression Bar + Scatter", parent, figsize=(10, 8))
         self._update_plot()
 
-    # ------------------------------------------------------------------
-    # 샘플 컬럼 / 그룹 해석
-    # ------------------------------------------------------------------
+    # ── Sample / group resolution ─────────────────────────────────────────
+
     @staticmethod
     def _groups_from_name(name_hint: str, sample_columns: List[str]):
-        """데이터셋 이름의 'X vs Y' 규칙으로 그룹을 시드한다.
-
-        예: "CTX200A vs CTX0A DE" → 후보 라벨 [CTX200A, CTX0A].
-        각 샘플 컬럼을 자신을 포함하는 후보(긴 것 우선)에 배정한다.
-        모든 샘플 컬럼이 2개 이상 그룹으로 빠짐없이 배정될 때만 반환, 아니면 None.
-        """
         if not name_hint or not sample_columns:
             return None
-        # 'Filtered:' / 'Comparison:' 접두는 그룹 정보가 없음
         norm = str(name_hint).replace('_', ' ')
         m = re.split(r'\bvs\b', norm, flags=re.IGNORECASE)
         if len(m) != 2:
             return None
-        # 그룹명은 'vs'에 인접한 토큰: "... CTX200A" vs "CTX0A DE ..."
         left = [t for t in m[0].strip().split() if t]
         right = [t for t in m[1].strip().split() if t]
         if not left or not right:
             return None
         candidates = [left[-1], right[0]]
-        # 중복/포함관계 대비: 긴 후보 우선 매칭
         ranked = sorted(set(candidates), key=len, reverse=True)
-
         assign: "OrderedDict[str, List[str]]" = OrderedDict((c, []) for c in candidates)
         for col in sample_columns:
             cl = str(col).lower()
             chosen = next((c for c in ranked if c.lower() in cl), None)
             if chosen is None:
-                return None  # 하나라도 못 맞추면 이름 기반 폐기
+                return None
             assign[chosen].append(col)
-        # 빈 후보 제거 후 2그룹 이상이어야 유효
         assign = OrderedDict((g, cols) for g, cols in assign.items() if cols)
         return assign if len(assign) >= 2 else None
 
     @staticmethod
     def _resolve_sample_groups(dataset: Dataset, df: pd.DataFrame, name_hint: str = ""):
-        """그룹 결정 우선순위: metadata → 데이터셋 이름('X vs Y') → 컬럼명 정규식."""
         sample_columns: List[str] = list(dataset.metadata.get('sample_columns', []) or [])
         sample_groups: Dict[str, List[str]] = dict(dataset.metadata.get('sample_groups', {}) or {})
 
@@ -174,13 +130,11 @@ class GeneExpressionBarDialog(QDialog):
                 and pd.api.types.is_numeric_dtype(df[c])
             ]
 
-        # 1) 이름 기반 시드 (가장 신뢰도 높음 — 올바른 그룹 라벨 보장)
         if sample_columns and not sample_groups:
             named = GeneExpressionBarDialog._groups_from_name(name_hint, sample_columns)
             if named is not None:
                 sample_groups = named
 
-        # 2) 컬럼명 정규식 폴백
         if sample_columns and not sample_groups:
             groups: "OrderedDict[str, List[str]]" = OrderedDict()
             for col in sample_columns:
@@ -199,11 +153,10 @@ class GeneExpressionBarDialog(QDialog):
         return sample_columns, sample_groups
 
     def _rebuild_sample_groups(self):
-        """col_to_group → 순서 있는 sample_groups 사전 재구성 (빈 그룹명은 제외)."""
         groups: "OrderedDict[str, List[str]]" = OrderedDict()
         for col in self.sample_columns:
             grp = (self.col_to_group.get(col) or '').strip()
-            if not grp:  # 빈 그룹명 = 플롯에서 제외
+            if not grp:
                 continue
             groups.setdefault(grp, []).append(col)
         self.sample_groups = groups
@@ -213,7 +166,6 @@ class GeneExpressionBarDialog(QDialog):
         return QColor(int(rgba[0] * 255), int(rgba[1] * 255), int(rgba[2] * 255))
 
     def _rebuild_group_colors(self):
-        """현재 그룹에 맞춰 색을 정리 — 기존 선택은 유지, 신규 그룹은 팔레트 기본색."""
         new_colors: Dict[str, QColor] = {}
         for i, grp in enumerate(self.sample_groups.keys()):
             new_colors[grp] = self.group_colors.get(grp, self._default_color(i))
@@ -223,21 +175,10 @@ class GeneExpressionBarDialog(QDialog):
     def has_data(self) -> bool:
         return bool(self.sample_groups) and self.gene_col is not None and not self.df.empty
 
-    # ------------------------------------------------------------------
-    # UI
-    # ------------------------------------------------------------------
-    def _init_ui(self):
-        main_layout = QHBoxLayout(self)
+    # ── Controls ──────────────────────────────────────────────────────────
 
-        # 좌측 패널은 항목이 많아 스크롤 영역으로 감싼다
-        left_container = QWidget()
-        left_panel = QVBoxLayout(left_container)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setWidget(left_container)
-        scroll.setFixedWidth(330)
-
-        # --- Chart Settings ---
+    def _setup_controls(self, layout: QVBoxLayout):
+        # Chart Settings
         settings_group = QGroupBox("Chart Settings")
         settings_layout = QFormLayout()
 
@@ -270,9 +211,9 @@ class GeneExpressionBarDialog(QDialog):
         settings_layout.addRow("", self.logy_check)
 
         settings_group.setLayout(settings_layout)
-        left_panel.addWidget(settings_group)
+        layout.addWidget(settings_group)
 
-        # --- Significance ---
+        # Significance
         sig_group = QGroupBox("Significance")
         sig_layout = QFormLayout()
 
@@ -291,10 +232,10 @@ class GeneExpressionBarDialog(QDialog):
 
         sig_layout.addRow(QLabel("vs reference: * ≤.05  ** ≤.01\n*** ≤.001  **** ≤.0001  ns"))
         sig_group.setLayout(sig_layout)
-        left_panel.addWidget(sig_group)
+        layout.addWidget(sig_group)
         self._rebuild_reference_combo()
 
-        # --- Groups (수동 재지정) ---
+        # Groups
         groups_box = QGroupBox("Sample Groups (editable)")
         groups_layout = QVBoxLayout()
         groups_layout.addWidget(QLabel("Edit group per sample, then Apply.\nEmpty group = exclude from plot."))
@@ -317,74 +258,21 @@ class GeneExpressionBarDialog(QDialog):
         groups_layout.addWidget(apply_btn)
 
         groups_box.setLayout(groups_layout)
-        left_panel.addWidget(groups_box)
+        layout.addWidget(groups_box)
 
-        # --- Group Colors (동적) ---
+        # Group Colors (dynamic)
         self.colors_box = QGroupBox("Group Colors")
         self.colors_layout = QGridLayout()
         self.colors_box.setLayout(self.colors_layout)
-        left_panel.addWidget(self.colors_box)
+        layout.addWidget(self.colors_box)
         self._rebuild_color_buttons()
 
-        # --- Plot Customization ---
-        custom_group = QGroupBox("Plot Customization")
-        custom_layout = QFormLayout()
 
-        self.title_edit = QLineEdit("Gene Expression by Group")
-        self.title_edit.textChanged.connect(self._update_plot)
-        custom_layout.addRow("Title:", self.title_edit)
+    def _extra_buttons(self) -> list:
+        return [("Export Data", self._export_data)]
 
-        self.ylabel_edit = QLineEdit("Expression (raw count)")
-        self.ylabel_edit.textChanged.connect(self._update_plot)
-        custom_layout.addRow("Y Label:", self.ylabel_edit)
+    # ── Group / color / reference UI helpers ─────────────────────────────
 
-        size_layout = QHBoxLayout()
-        self.width_spin = QSpinBox()
-        self.width_spin.setRange(6, 24)
-        self.width_spin.setValue(12)
-        self.width_spin.valueChanged.connect(self._on_figure_size_changed)
-        size_layout.addWidget(QLabel("W:"))
-        size_layout.addWidget(self.width_spin)
-        self.height_spin = QSpinBox()
-        self.height_spin.setRange(4, 16)
-        self.height_spin.setValue(8)
-        self.height_spin.valueChanged.connect(self._on_figure_size_changed)
-        size_layout.addWidget(QLabel("H:"))
-        size_layout.addWidget(self.height_spin)
-        custom_layout.addRow("Figure (in):", size_layout)
-
-        custom_group.setLayout(custom_layout)
-        left_panel.addWidget(custom_group)
-
-        left_panel.addStretch()
-        main_layout.addWidget(scroll)
-
-        # --- Plot area ---
-        right_panel = QVBoxLayout()
-        right_panel.addWidget(self.canvas)
-        right_panel.addWidget(NavigationToolbar(self.canvas, self))
-
-        button_layout = QHBoxLayout()
-        refresh_btn = QPushButton("Refresh Plot")
-        refresh_btn.clicked.connect(self._update_plot)
-        button_layout.addWidget(refresh_btn)
-        save_btn = QPushButton("Save Figure")
-        save_btn.clicked.connect(self._save_figure)
-        button_layout.addWidget(save_btn)
-        export_btn = QPushButton("Export Data")
-        export_btn.clicked.connect(self._export_data)
-        button_layout.addWidget(export_btn)
-        button_layout.addStretch()
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(self.accept)
-        button_layout.addWidget(close_btn)
-        right_panel.addLayout(button_layout)
-
-        main_layout.addLayout(right_panel, stretch=3)
-
-    # ------------------------------------------------------------------
-    # 그룹 재지정 / 색 / 기준그룹 UI
-    # ------------------------------------------------------------------
     def _populate_group_table(self):
         self.group_table.setRowCount(len(self.sample_columns))
         for r, col in enumerate(self.sample_columns):
@@ -407,13 +295,11 @@ class GeneExpressionBarDialog(QDialog):
         self._update_plot()
 
     def _rebuild_color_buttons(self):
-        # 기존 위젯 제거
         while self.colors_layout.count():
             item = self.colors_layout.takeAt(0)
             w = item.widget()
             if w is not None:
                 w.deleteLater()
-        # 그룹별 색 버튼
         for i, grp in enumerate(self.sample_groups.keys()):
             self.colors_layout.addWidget(QLabel(grp), i, 0)
             btn = QPushButton(self.group_colors[grp].name())
@@ -438,16 +324,14 @@ class GeneExpressionBarDialog(QDialog):
             self.ref_combo.setCurrentText(prev)
         self.ref_combo.blockSignals(False)
 
-    # ------------------------------------------------------------------
-    # 데이터 준비
-    # ------------------------------------------------------------------
+    # ── Data helpers ──────────────────────────────────────────────────────
+
     def _gene_total(self) -> int:
         if self.gene_col is None or self.df.empty:
             return 1
         return int(self.df[self.gene_col].nunique())
 
     def _selected_genes_df(self) -> pd.DataFrame:
-        """정렬/상한을 적용해 표시할 유전자 행만 반환한다 (유전자당 1행)."""
         df = self.df.copy()
         if self.gene_col is None:
             return df.iloc[0:0]
@@ -466,7 +350,6 @@ class GeneExpressionBarDialog(QDialog):
             df = df.sort_values('_abs_fc', ascending=False).drop(columns='_abs_fc')
         elif sort_by == "Symbol (A-Z)":
             df = df.sort_values(self.gene_col, ascending=True, key=lambda s: s.astype(str).str.lower())
-        # "Original (input order)" → 정렬하지 않고 입력 DataFrame 순서를 그대로 유지
 
         df = df.head(self.top_n_spin.value())
         return df.drop(columns='_row_mean', errors='ignore')
@@ -488,9 +371,8 @@ class GeneExpressionBarDialog(QDialog):
         except Exception:
             return float('nan')
 
-    # ------------------------------------------------------------------
-    # 플롯
-    # ------------------------------------------------------------------
+    # ── Plot ──────────────────────────────────────────────────────────────
+
     def _message(self, text: str):
         self.figure.clear()
         ax = self.figure.add_subplot(111)
@@ -498,7 +380,7 @@ class GeneExpressionBarDialog(QDialog):
         ax.axis('off')
         self.canvas.draw()
 
-    def _update_plot(self):
+    def _do_plot(self):
         self.figure.clear()
 
         if not self.has_data:
@@ -527,7 +409,6 @@ class GeneExpressionBarDialog(QDialog):
 
         ax = self.figure.add_subplot(111)
 
-        # 각 (group_idx, gene_idx)의 막대 중심 x와 상단 y(오차/점 포함)를 기록
         bar_center: Dict[Tuple[int, int], float] = {}
         bar_top: Dict[Tuple[int, int], float] = {}
         global_top = 0.0
@@ -574,7 +455,6 @@ class GeneExpressionBarDialog(QDialog):
                                s=18, color='black', alpha=0.7, zorder=3,
                                edgecolors='white', linewidths=0.3)
 
-        # 유의성 별표 (기준 그룹 대비)
         if self.sig_check.isChecked() and n_groups >= 2:
             ref_name = self.ref_combo.currentText()
             if ref_name in self.sample_groups:
@@ -593,62 +473,26 @@ class GeneExpressionBarDialog(QDialog):
                         cx = bar_center[(gi, ci)]
                         top = bar_top[(gi, ci)]
                         ty = top * 1.08 if is_log else top + y_off
-                        ax.text(cx, ty, star, ha='center', va='bottom',
-                                fontsize=9, color='black')
-                # 별표가 잘리지 않도록 상단 여유 확보
+                        ax.text(cx, ty, star, ha='center', va='bottom', color='black')
                 if not is_log and global_top > 0:
                     ax.set_ylim(top=global_top * 1.25)
 
         ax.set_xticks(x)
-        ax.set_xticklabels(genes, rotation=45, ha='right', fontsize=9)
-        ax.set_ylabel(self.ylabel_edit.text(), fontsize=11, fontweight='bold')
-        ax.set_title(self.title_edit.text(), fontsize=13, fontweight='bold')
+        ax.set_xticklabels(genes, rotation=45, ha='right')
+        ax.set_ylabel("Expression (raw count)", fontweight='bold')
+        gene_label = genes[0] if len(genes) == 1 else self.name_hint or "Gene Expression"
+        ax.set_title(f"{gene_label} — Expression by Group" if len(genes) == 1 else "Gene Expression by Group", fontweight='bold')
         if is_log:
             ax.set_yscale('log')
         ax.grid(axis='y', alpha=0.3, linestyle='--')
-        ax.legend(title="Group", fontsize=9, framealpha=0.9)
+        ax.legend(title="Group")
 
         self.figure.tight_layout()
         self.canvas.draw()
 
-    # ------------------------------------------------------------------
-    # Figure / Data Export
-    # ------------------------------------------------------------------
-    def _on_figure_size_changed(self):
-        self.figure.set_size_inches(self.width_spin.value(), self.height_spin.value())
-        self.canvas.draw()
-
-    def _save_figure(self):
-        from PyQt6.QtWidgets import QFileDialog
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "Save Figure",
-            f"gene_expression_bar_{self.dataset.name}.png",
-            "PNG Files (*.png);;PDF Files (*.pdf);;SVG Files (*.svg);;TIFF Files (*.tiff);;All Files (*)"
-        )
-        if not file_path:
-            return
-        if '.' not in file_path.split('/')[-1].split('\\')[-1]:
-            file_path += '.png'
-        fmt = file_path.rsplit('.', 1)[-1].lower()
-        supported = self.figure.canvas.get_supported_filetypes()
-        if fmt not in supported:
-            QMessageBox.warning(
-                self, "Unsupported Format",
-                f"The format '.{fmt}' is not supported.\n"
-                f"Supported: {', '.join(sorted(supported.keys()))}"
-            )
-            return
-        try:
-            if fmt in ('png', 'tiff', 'tif', 'jpg', 'jpeg'):
-                self.figure.savefig(file_path, dpi=300, bbox_inches='tight')
-            else:
-                self.figure.savefig(file_path, bbox_inches='tight')
-            QMessageBox.information(self, "Success", f"Figure saved to:\n{file_path}")
-        except Exception as e:
-            QMessageBox.critical(self, "Save Error", f"Failed to save figure:\n{str(e)}")
+    # ── Export ────────────────────────────────────────────────────────────
 
     def _export_data(self):
-        """그룹별 mean/SD/SEM/n + 기준 그룹 대비 p-value를 long-format으로 내보낸다."""
         from PyQt6.QtWidgets import QFileDialog
 
         if not self.has_data:

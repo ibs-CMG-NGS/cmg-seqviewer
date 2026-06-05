@@ -251,8 +251,7 @@ class MainWindow(QMainWindow):
             QDockWidget.DockWidgetFeature.DockWidgetFloatable |
             QDockWidget.DockWidgetFeature.DockWidgetClosable
         )
-        self.plot_settings_dock.setMinimumWidth(250)
-        self.plot_settings_dock.setMaximumWidth(380)
+        self.plot_settings_dock.setMinimumWidth(300)
         # 빈 placeholder 위젯으로 초기화
         _dock_placeholder = QLabel("No plot settings")
         _dock_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)

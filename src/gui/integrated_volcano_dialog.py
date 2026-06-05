@@ -12,26 +12,21 @@ Y축: -log10(RNA padj)
 
 import logging
 import numpy as np
-import matplotlib
-matplotlib.use('Qt5Agg')
-logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
-from matplotlib.figure import Figure
 import matplotlib.patches as mpatches
 
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
-    QLabel, QLineEdit, QDoubleSpinBox, QGroupBox, QFormLayout,
-    QFileDialog, QCheckBox, QSpinBox, QWidget,
+    QVBoxLayout, QHBoxLayout, QPushButton,
+    QDoubleSpinBox, QGroupBox, QFormLayout,
+    QCheckBox, QSpinBox,
 )
 from PyQt6.QtCore import Qt
 import pandas as pd
 
 from models.multi_omics_dataset import ConcordanceCategory, IntegratedColumns
+from gui.base_plot_dialog import BasePlotDialog
 
 
-class IntegratedVolcanoDialog(QDialog):
+class IntegratedVolcanoDialog(BasePlotDialog):
     """
     Integrated Volcano Plot
 
@@ -41,33 +36,21 @@ class IntegratedVolcanoDialog(QDialog):
     """
 
     def __init__(self, integrated_df: pd.DataFrame, title: str = "Integrated Volcano Plot", parent=None):
-        super().__init__(parent)
         self.logger = logging.getLogger(__name__)
         self.df = integrated_df.copy()
         self.plot_title = title
-        self.setWindowTitle("Integrated Volcano Plot — RNA-seq with ATAC concordance")
-        self.resize(900, 700)
-        self.setWindowFlags(
-            self.windowFlags()
-            | Qt.WindowType.WindowMaximizeButtonHint
-            | Qt.WindowType.WindowMinimizeButtonHint
-        )
+
         self._ax = None
         self._cid_hover = None
-        self._init_ui()
-        self._plot()
+        self._scatter_data = []
 
-    def _init_ui(self):
-        main_layout = QHBoxLayout(self)
+        super().__init__("Integrated Volcano Plot — RNA-seq with ATAC concordance", parent, figsize=(7, 6))
+        self._update_plot()
 
-        # ── 왼쪽: 설정 패널 ────────────────────────────────────────────
-        left = QVBoxLayout()
-        title_group = QGroupBox("Plot Title")
-        title_form = QFormLayout(title_group)
-        self.title_edit = QLineEdit(self.plot_title)
-        self.title_edit.textChanged.connect(self._update_title)
-        title_form.addRow(self.title_edit)
-        left.addWidget(title_group)
+    # ── Controls ──────────────────────────────────────────────────────────
+
+    def _setup_controls(self, layout: QVBoxLayout):
+        # Thresholds
         thresh_group = QGroupBox("Thresholds")
         thresh_form = QFormLayout(thresh_group)
 
@@ -75,73 +58,38 @@ class IntegratedVolcanoDialog(QDialog):
         self.padj_spin.setRange(0.0001, 1.0)
         self.padj_spin.setDecimals(4)
         self.padj_spin.setValue(0.05)
-        self.padj_spin.valueChanged.connect(self._plot)
+        self.padj_spin.valueChanged.connect(self._update_plot)
         thresh_form.addRow("RNA padj ≤", self.padj_spin)
 
         self.lfc_spin = QDoubleSpinBox()
         self.lfc_spin.setRange(0.0, 10.0)
         self.lfc_spin.setDecimals(2)
         self.lfc_spin.setValue(1.0)
-        self.lfc_spin.valueChanged.connect(self._plot)
+        self.lfc_spin.valueChanged.connect(self._update_plot)
         thresh_form.addRow("RNA |log2FC| ≥", self.lfc_spin)
 
-        left.addWidget(thresh_group)
+        layout.addWidget(thresh_group)
 
+        # Point Size
         size_group = QGroupBox("Point Size")
         size_form = QFormLayout(size_group)
 
         self.base_size_spin = QSpinBox()
         self.base_size_spin.setRange(5, 200)
         self.base_size_spin.setValue(30)
-        self.base_size_spin.valueChanged.connect(self._plot)
+        self.base_size_spin.valueChanged.connect(self._update_plot)
         size_form.addRow("Base size:", self.base_size_spin)
 
         self.scale_by_peak_cb = QCheckBox("Scale by peak count")
         self.scale_by_peak_cb.setChecked(True)
-        self.scale_by_peak_cb.stateChanged.connect(self._plot)
+        self.scale_by_peak_cb.stateChanged.connect(self._update_plot)
         size_form.addRow("", self.scale_by_peak_cb)
 
-        left.addWidget(size_group)
+        layout.addWidget(size_group)
 
-        self.legend_cb = QCheckBox("Show legend")
-        self.legend_cb.setChecked(True)
-        self.legend_cb.stateChanged.connect(self._plot)
-        left.addWidget(self.legend_cb)
+    # ── Plot ──────────────────────────────────────────────────────────────
 
-        left.addStretch()
-
-        save_btn = QPushButton("💾 Save Figure")
-        save_btn.clicked.connect(self._on_save)
-        left.addWidget(save_btn)
-
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(self.close)
-        left.addWidget(close_btn)
-
-        left_widget = QWidget()
-        left_widget.setLayout(left)
-        left_widget.setMaximumWidth(210)
-        main_layout.addWidget(left_widget)
-
-        # ── 오른쪽: 캔버스 ─────────────────────────────────────────────
-        right = QVBoxLayout()
-        self.figure = Figure(figsize=(7, 6), dpi=100)
-        self.canvas = FigureCanvas(self.figure)
-        self.toolbar = NavigationToolbar(self.canvas, self)
-        right.addWidget(self.toolbar)
-        right.addWidget(self.canvas)
-
-        right_widget = QWidget()
-        right_widget.setLayout(right)
-        main_layout.addWidget(right_widget, stretch=1)
-
-        # hover annotation
-        self._annot = None
-        self._scatter_data = []
-
-    def _plot(self):
-        if not hasattr(self, 'figure'):
-            return
+    def _do_plot(self):
         self.figure.clear()
         self._scatter_data = []
         ax = self.figure.add_subplot(111)
@@ -179,12 +127,11 @@ class IntegratedVolcanoDialog(QDialog):
                 c=colors.get(cat, "#CCCCCC"),
                 s=sizes, alpha=0.75, linewidths=0.3,
                 edgecolors="white",
-                label=f"{cat.replace('_',' ')} (n={len(sub)})",
+                label=f"{cat.replace('_', ' ')} (n={len(sub)})",
                 zorder=3,
             )
             self._scatter_data.append((sc, sub))
 
-        # 기준선
         ax.axhline(-np.log10(padj_thr), color="black",
                    linestyle="--", linewidth=0.8, alpha=0.6)
         ax.axvline( lfc_thr, color="black", linestyle="--", linewidth=0.8, alpha=0.6)
@@ -192,12 +139,11 @@ class IntegratedVolcanoDialog(QDialog):
 
         ax.set_xlabel("RNA-seq log2FC", fontsize=11)
         ax.set_ylabel("-log10(RNA padj)", fontsize=11)
-        ax.set_title(self.title_edit.text(), fontsize=13, fontweight="bold")
+        ax.set_title(self.plot_title, fontsize=13, fontweight="bold")
         ax.grid(True, alpha=0.25)
 
-        if self.legend_cb.isChecked():
-            ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left",
-                      fontsize=7.5, framealpha=0.7)
+        ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left",
+                  fontsize=7.5, framealpha=0.7)
 
         # Hover annotation
         self._annot = ax.annotate(
@@ -216,7 +162,7 @@ class IntegratedVolcanoDialog(QDialog):
         self.canvas.draw()
 
     def _on_hover(self, event):
-        if event.inaxes is None or self._annot is None:
+        if event.inaxes is None or not hasattr(self, '_annot') or self._annot is None:
             return
 
         col_sym  = IntegratedColumns.GENE_SYMBOL
@@ -250,20 +196,7 @@ class IntegratedVolcanoDialog(QDialog):
                 found = True
                 break
 
-        if not found and self._annot.get_visible():
+        if not found and hasattr(self, '_annot') and self._annot.get_visible():
             self._annot.set_visible(False)
             self.figure.canvas.draw_idle()
 
-    def _update_title(self, text: str):
-        if self._ax:
-            self._ax.set_title(text, fontsize=13, fontweight="bold")
-            self.canvas.draw_idle()
-
-    def _on_save(self):
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Save Figure", "integrated_volcano.png",
-            "PNG (*.png);;SVG (*.svg);;PDF (*.pdf)"
-        )
-        if path:
-            self.figure.savefig(path, dpi=150, bbox_inches="tight")
-            self.logger.info(f"Integrated volcano saved: {path}")

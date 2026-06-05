@@ -10,52 +10,59 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QIcon, QPixmap, QPainter, QFont
 import matplotlib
-matplotlib.use('Qt5Agg')
+matplotlib.use('QtAgg')
 # matplotlib의 font_manager DEBUG 로그 억제
 import logging
 logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+try:
+    from matplotlib.backends.backend_qt import NavigationToolbar2QT as NavigationToolbar
+except ImportError:
+    from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar  # type: ignore
 from matplotlib.figure import Figure
 import pandas as pd
 import numpy as np
 
 from models.standard_columns import StandardColumns
+from utils import figure_theme, figure_export
+from gui.widgets.figure_style_panel import FigureStylePanel
+from gui.widgets.plot_labels_panel import PlotLabelsPanel
+from gui.base_plot_dialog import BasePlotDialog
 
 
 def create_plot_icon(emoji: str, bg_color: QColor = None) -> QIcon:
     """플롯 다이얼로그용 아이콘 생성
-    
+
     Args:
         emoji: 아이콘에 표시할 이모지
         bg_color: 배경 색상 (기본값: Steel Blue)
-    
+
     Returns:
         QIcon 객체
     """
     if bg_color is None:
         bg_color = QColor(70, 130, 180)  # Steel Blue
-    
+
     pixmap = QPixmap(64, 64)
     pixmap.fill(Qt.GlobalColor.transparent)
-    
+
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    
+
     # 배경 원
     painter.setBrush(bg_color)
     painter.setPen(Qt.PenStyle.NoPen)
     painter.drawEllipse(2, 2, 60, 60)
-    
+
     # 이모지/텍스트
     painter.setPen(QColor(255, 255, 255))
     font = QFont("Segoe UI Emoji", 28, QFont.Weight.Bold)
     painter.setFont(font)
     from PyQt6.QtCore import QRect
     painter.drawText(QRect(0, 0, 64, 64), Qt.AlignmentFlag.AlignCenter, emoji)
-    
+
     painter.end()
-    
+
     return QIcon(pixmap)
 
 
@@ -115,25 +122,33 @@ class VolcanoPlotWidget(QWidget):
         self.x_max = settings['x_max']
         self.y_min = settings['y_min']
         self.y_max = settings['y_max']
-        # Plot customization
-        self.plot_title = settings['title']
-        self.plot_xlabel = settings['xlabel']
-        self.plot_ylabel = settings['ylabel']
-        self.show_legend = settings['show_legend']
-        self.fig_width = settings['fig_width']
-        self.fig_height = settings['fig_height']
+        # Plot customization (compat: used for _labels defaults in _init_ui)
+        self.plot_title = settings.get('title', 'Volcano Plot')
+        self.plot_xlabel = settings.get('xlabel', 'Log2 Fold Change')
+        self.plot_ylabel = settings.get('ylabel', '-Log10(Padj)')
+        self.show_legend = settings.get('show_legend', True)
+        self.fig_width = settings.get('fig_width', 12)
+        self.fig_height = settings.get('fig_height', 8)
         # Gene annotation
         self.annotation_mode = settings['annotation_mode']
         self.annotation_top_n = settings['annotation_top_n']
         self.annotation_label_size = settings['annotation_label_size']
         self.annotation_custom_genes = list(settings['annotation_custom_genes'])
 
+        # 저장된 label params (Pin to Tab 복원 시)
+        self._pending_label_params = {k: v for k, v in settings.items()
+                                      if k.startswith('labels_') or k in
+                                      ('show_xticklabels', 'show_yticklabels', 'legend_position')}
+
         self._init_ui()
+        # _init_ui 이후에 저장된 label params 복원
+        if self._pending_label_params:
+            self._labels.load_params(self._pending_label_params)
         self._plot()
 
     def get_plot_params(self) -> dict:
         """현재 설정을 직렬화 가능한 dict로 반환 (프로젝트 저장 / 탭 고정에 사용)."""
-        return {
+        params = {
             'padj_threshold': self.padj_threshold,
             'log2fc_threshold': self.log2fc_threshold,
             'down_color': self.down_color.name(),
@@ -144,17 +159,14 @@ class VolcanoPlotWidget(QWidget):
             'x_max': self.x_max,
             'y_min': self.y_min,
             'y_max': self.y_max,
-            'title': self.plot_title,
-            'xlabel': self.plot_xlabel,
-            'ylabel': self.plot_ylabel,
-            'show_legend': self.show_legend,
-            'fig_width': self.fig_width,
-            'fig_height': self.fig_height,
             'annotation_mode': self.annotation_mode,
             'annotation_top_n': self.annotation_top_n,
             'annotation_label_size': self.annotation_label_size,
             'annotation_custom_genes': list(self.annotation_custom_genes),
         }
+        if hasattr(self, '_labels'):
+            params.update(self._labels.get_params())
+        return params
 
     def get_settings_panel(self) -> 'QWidget | None':
         """설정 패널 반환 (embed_settings=False일 때 외부 배치용)."""
@@ -203,25 +215,21 @@ class VolcanoPlotWidget(QWidget):
         self.log2fc_spin.valueChanged.connect(self._on_settings_changed)
         settings_layout.addRow("Log2FC Threshold:", self.log2fc_spin)
 
-        # Color 설정
-        color_layout = QHBoxLayout()
-
+        # Color 설정 (3행 세로)
         self.down_btn = QPushButton("Down-regulation")
         self.down_btn.setStyleSheet(f"background-color: {self.down_color.name()};")
         self.down_btn.clicked.connect(lambda: self._choose_color('down'))
-        color_layout.addWidget(self.down_btn)
+        settings_layout.addRow("Down:", self.down_btn)
 
         self.up_btn = QPushButton("Up-regulation")
         self.up_btn.setStyleSheet(f"background-color: {self.up_color.name()};")
         self.up_btn.clicked.connect(lambda: self._choose_color('up'))
-        color_layout.addWidget(self.up_btn)
+        settings_layout.addRow("Up:", self.up_btn)
 
         self.ns_btn = QPushButton("Not Significant")
         self.ns_btn.setStyleSheet(f"background-color: {self.ns_color.name()};")
         self.ns_btn.clicked.connect(lambda: self._choose_color('ns'))
-        color_layout.addWidget(self.ns_btn)
-
-        settings_layout.addRow("Colors:", color_layout)
+        settings_layout.addRow("NS:", self.ns_btn)
 
         # Dot size
         self.size_spin = QSpinBox()
@@ -230,105 +238,56 @@ class VolcanoPlotWidget(QWidget):
         self.size_spin.valueChanged.connect(self._on_settings_changed)
         settings_layout.addRow("Dot Size:", self.size_spin)
 
-        # X축 범위
-        x_layout = QHBoxLayout()
+        # X축 범위 (Min/Max 세로 2행 + Auto)
         self.x_min_spin = QDoubleSpinBox()
         self.x_min_spin.setRange(-1000, 1000)
         self.x_min_spin.setDecimals(1)
         self.x_min_spin.setValue(self.x_min if self.x_min is not None else -10)
         self.x_min_spin.valueChanged.connect(self._on_settings_changed)
-        x_layout.addWidget(QLabel("Min:"))
-        x_layout.addWidget(self.x_min_spin)
+        settings_layout.addRow("X Min:", self.x_min_spin)
 
         self.x_max_spin = QDoubleSpinBox()
         self.x_max_spin.setRange(-1000, 1000)
         self.x_max_spin.setDecimals(1)
         self.x_max_spin.setValue(self.x_max if self.x_max is not None else 10)
         self.x_max_spin.valueChanged.connect(self._on_settings_changed)
-        x_layout.addWidget(QLabel("Max:"))
-        x_layout.addWidget(self.x_max_spin)
-
-        # X축 Auto 버튼
         self.x_auto_btn = QPushButton("Auto")
-        self.x_auto_btn.setMaximumWidth(60)
+        self.x_auto_btn.setMaximumWidth(48)
         self.x_auto_btn.clicked.connect(self._auto_x_range)
-        x_layout.addWidget(self.x_auto_btn)
+        x_max_row = QWidget()
+        xm = QHBoxLayout(x_max_row)
+        xm.setContentsMargins(0, 0, 0, 0)
+        xm.setSpacing(4)
+        xm.addWidget(self.x_max_spin)
+        xm.addWidget(self.x_auto_btn)
+        settings_layout.addRow("X Max:", x_max_row)
 
-        settings_layout.addRow("X-axis Range:", x_layout)
-
-        # Y축 범위
-        y_layout = QHBoxLayout()
+        # Y축 범위 (Min/Max 세로 2행 + Auto)
         self.y_min_spin = QDoubleSpinBox()
         self.y_min_spin.setRange(0, 1000)
         self.y_min_spin.setDecimals(1)
         self.y_min_spin.setValue(self.y_min if self.y_min is not None else 0)
         self.y_min_spin.valueChanged.connect(self._on_settings_changed)
-        y_layout.addWidget(QLabel("Min:"))
-        y_layout.addWidget(self.y_min_spin)
+        settings_layout.addRow("Y Min:", self.y_min_spin)
 
         self.y_max_spin = QDoubleSpinBox()
         self.y_max_spin.setRange(0, 1000)
         self.y_max_spin.setDecimals(1)
         self.y_max_spin.setValue(self.y_max if self.y_max is not None else 50)
         self.y_max_spin.valueChanged.connect(self._on_settings_changed)
-        y_layout.addWidget(QLabel("Max:"))
-        y_layout.addWidget(self.y_max_spin)
-
-        # Y축 Auto 버튼
         self.y_auto_btn = QPushButton("Auto")
-        self.y_auto_btn.setMaximumWidth(60)
+        self.y_auto_btn.setMaximumWidth(48)
         self.y_auto_btn.clicked.connect(self._auto_y_range)
-        y_layout.addWidget(self.y_auto_btn)
-
-        settings_layout.addRow("Y-axis Range:", y_layout)
+        y_max_row = QWidget()
+        ym = QHBoxLayout(y_max_row)
+        ym.setContentsMargins(0, 0, 0, 0)
+        ym.setSpacing(4)
+        ym.addWidget(self.y_max_spin)
+        ym.addWidget(self.y_auto_btn)
+        settings_layout.addRow("Y Max:", y_max_row)
 
         settings_group.setLayout(settings_layout)
         left_panel.addWidget(settings_group)
-
-        # Plot Customization 패널
-        custom_group = QGroupBox("Plot Customization")
-        custom_layout = QFormLayout()
-
-        # Title
-        self.title_edit = QLineEdit(self.plot_title)
-        self.title_edit.textChanged.connect(self._on_settings_changed)
-        custom_layout.addRow("Title:", self.title_edit)
-
-        # X Label
-        self.xlabel_edit = QLineEdit(self.plot_xlabel)
-        self.xlabel_edit.textChanged.connect(self._on_settings_changed)
-        custom_layout.addRow("X Label:", self.xlabel_edit)
-
-        # Y Label
-        self.ylabel_edit = QLineEdit(self.plot_ylabel)
-        self.ylabel_edit.textChanged.connect(self._on_settings_changed)
-        custom_layout.addRow("Y Label:", self.ylabel_edit)
-
-        # Legend on/off
-        self.legend_check = QCheckBox("Show Legend")
-        self.legend_check.setChecked(self.show_legend)
-        self.legend_check.stateChanged.connect(self._on_settings_changed)
-        custom_layout.addRow("", self.legend_check)
-
-        # Figure size
-        size_layout = QHBoxLayout()
-        self.width_spin = QSpinBox()
-        self.width_spin.setRange(6, 20)
-        self.width_spin.setValue(self.fig_width)
-        self.width_spin.valueChanged.connect(self._on_figure_size_changed)
-        size_layout.addWidget(QLabel("Width:"))
-        size_layout.addWidget(self.width_spin)
-
-        self.height_spin = QSpinBox()
-        self.height_spin.setRange(4, 16)
-        self.height_spin.setValue(self.fig_height)
-        self.height_spin.valueChanged.connect(self._on_figure_size_changed)
-        size_layout.addWidget(QLabel("Height:"))
-        size_layout.addWidget(self.height_spin)
-        custom_layout.addRow("Figure Size (inches):", size_layout)
-
-        custom_group.setLayout(custom_layout)
-        left_panel.addWidget(custom_group)
 
         # ── Gene Annotation 패널 ──────────────────────────────────────
         annot_group = QGroupBox("Gene Annotation")
@@ -374,14 +333,37 @@ class VolcanoPlotWidget(QWidget):
         left_panel.addWidget(annot_group)
         self._on_annot_mode_changed()   # 초기 위젯 표시 상태 반영
 
+        # ── Plot Labels & Legend ─────────────────────────────────────
+        self._labels = PlotLabelsPanel()
+        self._labels.set_defaults(
+            title=self.plot_title,
+            xlabel=self.plot_xlabel,
+            ylabel=self.plot_ylabel,
+        )
+        self._labels.legend_check.setChecked(self.show_legend)
+        self._labels.changed.connect(self._plot)
+        labels_group = QGroupBox("Plot Labels & Legend")
+        lv = QVBoxLayout(labels_group)
+        lv.addWidget(self._labels)
+        left_panel.addWidget(labels_group)
+
+        # ── Figure Style & Export ────────────────────────────────────
+        self._style = FigureStylePanel()
+        self._style.changed.connect(self._plot)
+        style_group = QGroupBox("Figure Style & Export")
+        sv = QVBoxLayout(style_group)
+        sv.addWidget(self._style)
+        left_panel.addWidget(style_group)
+
         left_panel.addStretch()  # 아래 여백
 
         # embed_settings에 따라 설정 패널을 레이아웃에 추가하거나 외부 접근용으로 보관
         scroll = QScrollArea()
         scroll.setWidget(settings_container)
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setMinimumWidth(200)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setMinimumWidth(220)
+        scroll.setMaximumWidth(300)
 
         if self._embed_settings:
             main_splitter.addWidget(scroll)
@@ -428,8 +410,8 @@ class VolcanoPlotWidget(QWidget):
         right_panel.addLayout(button_layout)
 
         main_splitter.addWidget(right_widget)
-        # 초기 스플리터 비율: 설정 280px, 나머지 플롯
-        main_splitter.setSizes([280, 9999])
+        # 초기 스플리터 비율: 설정 300px, 나머지 플롯
+        main_splitter.setSizes([300, 9999])
         main_splitter.setStretchFactor(0, 0)
         main_splitter.setStretchFactor(1, 1)
 
@@ -525,12 +507,6 @@ class VolcanoPlotWidget(QWidget):
         self.y_min = self.y_min_spin.value()
         self.y_max = self.y_max_spin.value()
 
-        # Plot customization
-        self.plot_title = self.title_edit.text()
-        self.plot_xlabel = self.xlabel_edit.text()
-        self.plot_ylabel = self.ylabel_edit.text()
-        self.show_legend = self.legend_check.isChecked()
-
         # Gene annotation (위젯이 아직 없을 수 있으므로 guard)
         if hasattr(self, 'annot_mode_combo'):
             _mode_names = ['none', 'top_n', 'custom']
@@ -550,10 +526,6 @@ class VolcanoPlotWidget(QWidget):
             'x_max': self.x_max,
             'y_min': self.y_min,
             'y_max': self.y_max,
-            'title': self.plot_title,
-            'xlabel': self.plot_xlabel,
-            'ylabel': self.plot_ylabel,
-            'show_legend': self.show_legend,
             'annotation_mode': self.annotation_mode,
             'annotation_top_n': self.annotation_top_n,
             'annotation_label_size': self.annotation_label_size,
@@ -562,26 +534,17 @@ class VolcanoPlotWidget(QWidget):
 
         self._plot()
 
-    def _on_figure_size_changed(self):
-        """Figure 크기 변경 시"""
-        self.fig_width = self.width_spin.value()
-        self.fig_height = self.height_spin.value()
-
-        # 설정 저장
-        self.__class__._saved_settings.update({
-            'fig_width': self.fig_width,
-            'fig_height': self.fig_height
-        })
-
-        # Figure 크기 변경
-        self.figure.set_size_inches(self.fig_width, self.fig_height)
-        self.canvas.draw()
-
     def _plot(self):
         """Volcano Plot 그리기"""
         # _init_ui 완료 전 호출 방지
         if not hasattr(self, 'figure'):
             return
+        theme = self._style.theme_name() if hasattr(self, '_style') else 'Journal (sans-serif)'
+        with figure_theme.theme_context(theme):
+            self._draw_plot()
+
+    def _draw_plot(self):
+        """실제 matplotlib 그리기 (theme_context 안에서 호출)."""
         self.figure.clear()
         ax = self.figure.add_subplot(111)
 
@@ -629,20 +592,12 @@ class VolcanoPlotWidget(QWidget):
         ax.axvline(-self.log2fc_threshold, color='black',
                   linestyle='--', linewidth=1, alpha=0.5)
 
-        # 축 레이블 (커스터마이징)
-        ax.set_xlabel(self.plot_xlabel, fontsize=12)
-        ax.set_ylabel(self.plot_ylabel, fontsize=12)
-        ax.set_title(self.plot_title, fontsize=14, fontweight='bold')
-
         # 축 범위 설정
         if self.x_min is not None and self.x_max is not None:
             ax.set_xlim(self.x_min, self.x_max)
         if self.y_min is not None and self.y_max is not None:
             ax.set_ylim(self.y_min, self.y_max)
 
-        # 범례 (on/off)
-        if self.show_legend:
-            ax.legend(loc='best', fontsize=10)
         ax.grid(True, alpha=0.3)
 
         # Annotation 텍스트 (hover용) - zorder 높게 설정하여 최상위 레이어로
@@ -659,10 +614,14 @@ class VolcanoPlotWidget(QWidget):
         # Hover 이벤트 연결 (DEG만)
         self.figure.canvas.mpl_connect("motion_notify_event", self._on_hover)
 
+        # PlotLabelsPanel 적용 (title/xlabel/ylabel/ticks/legend)
+        if hasattr(self, '_labels'):
+            self._labels.apply_to_axes(ax)
+
         self.figure.tight_layout()
         self.canvas.draw()
 
-    # ── Gene Annotation 관련 메서드 ───────────────────────────────────────
+    # ── Gene Annotation 관련 메서드 ───────────────────────────────────────────
 
     def _on_annot_mode_changed(self):
         """Annotation mode 콤보박스 변경 시 관련 위젯 활성/비활성"""
@@ -838,43 +797,21 @@ class VolcanoPlotWidget(QWidget):
     def _save_figure(self):
         """Figure 저장"""
         from PyQt6.QtWidgets import QFileDialog, QMessageBox
-        import matplotlib
-
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Save Figure",
-            "volcano_plot.png",
-            "PNG Files (*.png);;PDF Files (*.pdf);;SVG Files (*.svg);;TIFF Files (*.tiff);;All Files (*)"
+        opts = self._style.export_opts()
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Figure",
+            f"volcano_plot.{opts['fmt']}",
+            figure_export.filter_string(),
         )
-
-        if not file_path:
+        if not path:
             return
-
-        if '.' not in file_path.split('/')[-1].split('\\')[-1]:
-            file_path += '.png'
-
-        fmt = file_path.rsplit('.', 1)[-1].lower()
-        supported = self.figure.canvas.get_supported_filetypes()
-        if fmt not in supported:
-            QMessageBox.warning(
-                self, "Unsupported Format",
-                f"The format '.{fmt}' is not supported by your matplotlib {matplotlib.__version__}.\n"
-                f"Supported formats: {', '.join(sorted(supported.keys()))}"
-            )
-            return
-
         try:
-            if fmt in ('png', 'tiff', 'tif', 'jpg', 'jpeg'):
-                self.figure.savefig(file_path, dpi=300, bbox_inches='tight')
-            else:
-                self.figure.savefig(file_path, bbox_inches='tight')
-            QMessageBox.information(self, "Success", f"Figure saved to:\n{file_path}")
+            saved = figure_export.save_figure(self.figure, path, **opts)
+            QMessageBox.information(self, "Saved", f"Figure saved to:\n{saved}")
+        except ValueError as e:
+            QMessageBox.warning(self, "Unsupported Format", str(e))
         except Exception as e:
-            QMessageBox.critical(
-                self, "Save Error",
-                f"Failed to save figure:\n{str(e)}\n\n"
-                f"matplotlib version: {matplotlib.__version__}"
-            )
+            QMessageBox.critical(self, "Save Error", str(e))
 
     def _export_data(self):
         """현재 표시된 데이터 내보내기"""
@@ -932,38 +869,31 @@ class VolcanoPlotDialog(QDialog):
         self.close()
 
 
+class PadjHistogramDialog(BasePlotDialog):
+    """P-value Histogram 시각화 다이얼로그 — inherits BasePlotDialog."""
 
-class PadjHistogramDialog(QDialog):
-    """P-value Histogram 시각화 다이얼로그"""
-    
     def __init__(self, dataframe, parent=None):
-        super().__init__(parent)
+        # Domain state must be set before super().__init__() calls _setup_controls()
         self.dataframe = dataframe
-        self.setWindowTitle("📊 P-value Histogram")
-        self.setWindowIcon(create_plot_icon("📊", QColor(34, 139, 34)))  # Forest Green
-        self.setMinimumSize(900, 700)
-        
-        # 기본 설정값
-        self.pvalue_type = 'padj'  # 'pvalue' 또는 'padj'
+        self.pvalue_type = 'padj'
         self.bin_count = 50
-        
-        self._init_ui()
-        self._plot()
-    
-    def _init_ui(self):
-        """UI 초기화"""
-        layout = QVBoxLayout(self)
-        
-        # 설정 패널
+
+        super().__init__("P-value Histogram", parent, figsize=(10, 6))
+        self.setWindowIcon(create_plot_icon("📊", QColor(34, 139, 34)))  # Forest Green
+        self._update_plot()
+
+    # ── Controls ──────────────────────────────────────────────────────────
+
+    def _setup_controls(self, layout: QVBoxLayout):
         settings_group = QGroupBox("Histogram Settings")
         settings_layout = QFormLayout()
-        
+
         # P-value 타입 선택
         self.pvalue_combo = QComboBox()
         self.pvalue_combo.addItems(["Adjusted P-value (padj)", "Original P-value (pvalue)"])
         self.pvalue_combo.currentIndexChanged.connect(self._on_settings_changed)
         settings_layout.addRow("P-value Type:", self.pvalue_combo)
-        
+
         # Bin 개수 설정
         self.bin_spin = QSpinBox()
         self.bin_spin.setRange(10, 200)
@@ -971,62 +901,41 @@ class PadjHistogramDialog(QDialog):
         self.bin_spin.setSingleStep(10)
         self.bin_spin.valueChanged.connect(self._on_settings_changed)
         settings_layout.addRow("Number of Bins:", self.bin_spin)
-        
+
         settings_group.setLayout(settings_layout)
         layout.addWidget(settings_group)
-        
-        # Matplotlib Figure
-        self.figure = Figure(figsize=(10, 6))
-        self.canvas = FigureCanvas(self.figure)
-        self.toolbar = NavigationToolbar(self.canvas, self)
-        
-        layout.addWidget(self.toolbar)
-        layout.addWidget(self.canvas)
-        
-        # 버튼
-        button_layout = QHBoxLayout()
-        
-        refresh_btn = QPushButton("Refresh Plot")
-        refresh_btn.clicked.connect(self._plot)
-        button_layout.addWidget(refresh_btn)
-        
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(self.close)
-        button_layout.addWidget(close_btn)
-        
-        layout.addLayout(button_layout)
-    
+
+    # ── Slots ─────────────────────────────────────────────────────────────
+
     def _on_settings_changed(self):
         """설정 변경 시 자동 업데이트"""
-        # P-value 타입
         if self.pvalue_combo.currentIndex() == 0:
             self.pvalue_type = 'padj'
         else:
             self.pvalue_type = 'pvalue'
-        
-        # Bin 개수
         self.bin_count = self.bin_spin.value()
-        
-        self._plot()
-    
-    def _plot(self):
+        self._update_plot()
+
+    # ── Plot ──────────────────────────────────────────────────────────────
+
+    def _do_plot(self):
         """Histogram 그리기"""
         self.figure.clear()
         ax = self.figure.add_subplot(111)
-        
+
         df = self.dataframe.copy()
-        
+
         # 컬럼 확인
         if self.pvalue_type not in df.columns:
-            ax.text(0.5, 0.5, f'Required column not found: {self.pvalue_type}', 
+            ax.text(0.5, 0.5, f'Required column not found: {self.pvalue_type}',
                    ha='center', va='center', fontsize=14)
             self.canvas.draw()
             return
-        
+
         # Histogram
         data = df[self.pvalue_type].dropna()
         ax.hist(data, bins=self.bin_count, color='steelblue', edgecolor='black', alpha=0.7)
-        
+
         # 축 레이블
         if self.pvalue_type == 'padj':
             xlabel = 'Adjusted P-value'
@@ -1034,19 +943,19 @@ class PadjHistogramDialog(QDialog):
         else:
             xlabel = 'Original P-value'
             title = 'Distribution of Original P-values'
-        
+
         ax.set_xlabel(xlabel, fontsize=12)
         ax.set_ylabel('Frequency', fontsize=12)
         ax.set_title(title, fontsize=14, fontweight='bold')
         ax.grid(True, alpha=0.3)
-        
+
         # 통계 정보 추가
         stats_text = f'Total: {len(data)}\nMean: {data.mean():.4f}\nMedian: {data.median():.4f}'
         ax.text(0.98, 0.98, stats_text, transform=ax.transAxes,
                verticalalignment='top', horizontalalignment='right',
                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5),
                fontsize=10)
-        
+
         self.figure.tight_layout()
         self.canvas.draw()
 
@@ -1064,13 +973,15 @@ class HeatmapWidget(QWidget):
         'colormap': 'RdBu_r',
         'colorbar_min': -3.0,
         'colorbar_max': 3.0,
-        'title': 'Expression Heatmap',
-        'xlabel': 'Samples',
-        'ylabel': 'Genes',
         'show_legend': True,
         'fig_width': 12,
         'fig_height': 8
     }
+
+    # PlotLabelsPanel 기본값 (set_defaults에 사용)
+    _default_title = 'Expression Heatmap'
+    _default_xlabel = 'Samples'
+    _default_ylabel = 'Genes'
 
     def __init__(self, dataframe, plot_params=None, parent=None, show_pin_button=True, embed_settings=True):
         super().__init__(parent)
@@ -1095,19 +1006,26 @@ class HeatmapWidget(QWidget):
         self.colormap = merged['colormap']
         self.colorbar_min = merged['colorbar_min']
         self.colorbar_max = merged['colorbar_max']
-        self.plot_title = merged['title']
-        self.plot_xlabel = merged['xlabel']
-        self.plot_ylabel = merged['ylabel']
         self.show_legend = merged['show_legend']
         self.fig_width = merged['fig_width']
         self.fig_height = merged['fig_height']
 
         self._init_ui()
+
+        # PlotLabelsPanel 기본값 설정 (plot_params 복원 포함)
+        self._labels.set_defaults(
+            merged.get('labels_title', self._default_title),
+            merged.get('labels_xlabel', self._default_xlabel),
+            merged.get('labels_ylabel', self._default_ylabel),
+        )
+        if plot_params:
+            self._labels.load_params(plot_params)
+
         self._plot()
 
     def get_plot_params(self) -> dict:
         """현재 설정값을 JSON 직렬화 가능한 dict로 반환"""
-        return {
+        params = {
             'n_genes': self.n_genes,
             'normalization': self.normalization,
             'transpose': self.transpose,
@@ -1115,13 +1033,12 @@ class HeatmapWidget(QWidget):
             'colormap': self.colormap,
             'colorbar_min': self.colorbar_min,
             'colorbar_max': self.colorbar_max,
-            'title': self.plot_title,
-            'xlabel': self.plot_xlabel,
-            'ylabel': self.plot_ylabel,
             'show_legend': self.show_legend,
             'fig_width': self.fig_width,
             'fig_height': self.fig_height,
         }
+        params.update(self._labels.get_params())
+        return params
 
     def get_settings_panel(self) -> 'QWidget | None':
         """설정 패널 반환 (embed_settings=False일 때 외부 배치용)."""
@@ -1231,53 +1148,45 @@ class HeatmapWidget(QWidget):
         settings_group.setLayout(settings_layout)
         left_panel.addWidget(settings_group)
 
-        # Plot Customization 패널
-        custom_group = QGroupBox("Plot Customization")
+        # Colorbar 표시 옵션
+        custom_group = QGroupBox("Plot Options")
         custom_layout = QFormLayout()
-
-        self.title_edit = QLineEdit(self.plot_title)
-        self.title_edit.textChanged.connect(self._on_settings_changed)
-        custom_layout.addRow("Title:", self.title_edit)
-
-        self.xlabel_edit = QLineEdit(self.plot_xlabel)
-        self.xlabel_edit.textChanged.connect(self._on_settings_changed)
-        custom_layout.addRow("X Label:", self.xlabel_edit)
-
-        self.ylabel_edit = QLineEdit(self.plot_ylabel)
-        self.ylabel_edit.textChanged.connect(self._on_settings_changed)
-        custom_layout.addRow("Y Label:", self.ylabel_edit)
 
         self.legend_check = QCheckBox("Show Colorbar")
         self.legend_check.setChecked(self.show_legend)
         self.legend_check.stateChanged.connect(self._on_settings_changed)
         custom_layout.addRow("", self.legend_check)
 
-        size_layout = QHBoxLayout()
-        self.width_spin = QSpinBox()
-        self.width_spin.setRange(8, 24)
-        self.width_spin.setValue(self.fig_width)
-        self.width_spin.valueChanged.connect(self._on_figure_size_changed)
-        size_layout.addWidget(QLabel("Width:"))
-        size_layout.addWidget(self.width_spin)
-
-        self.height_spin = QSpinBox()
-        self.height_spin.setRange(6, 20)
-        self.height_spin.setValue(self.fig_height)
-        self.height_spin.valueChanged.connect(self._on_figure_size_changed)
-        size_layout.addWidget(QLabel("Height:"))
-        size_layout.addWidget(self.height_spin)
-        custom_layout.addRow("Figure Size (inches):", size_layout)
-
         custom_group.setLayout(custom_layout)
         left_panel.addWidget(custom_group)
+
+        # --- Plot Labels & Legend ---
+        labels_group = QGroupBox("Plot Labels & Legend")
+        labels_vbox = QVBoxLayout()
+        self._labels = PlotLabelsPanel()
+        self._labels.changed.connect(self._plot)
+        labels_vbox.addWidget(self._labels)
+        labels_group.setLayout(labels_vbox)
+        left_panel.addWidget(labels_group)
+
+        # --- Figure Style & Export ---
+        style_group = QGroupBox("Figure Style & Export")
+        style_vbox = QVBoxLayout()
+        self._style = FigureStylePanel()
+        self._style.changed.connect(self._plot)
+        style_vbox.addWidget(self._style)
+        style_group.setLayout(style_vbox)
+        left_panel.addWidget(style_group)
+
         left_panel.addStretch()
 
         # embed_settings에 따라 설정 패널을 레이아웃에 추가하거나 외부 접근용으로 보관
         scroll = QScrollArea()
         scroll.setWidget(settings_container)
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setMinimumWidth(200)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setMinimumWidth(220)
+        scroll.setMaximumWidth(300)
 
         if self._embed_settings:
             main_splitter.addWidget(scroll)
@@ -1303,6 +1212,10 @@ class HeatmapWidget(QWidget):
         refresh_btn.clicked.connect(self._plot)
         button_layout.addWidget(refresh_btn)
 
+        save_btn = QPushButton("Save Figure")
+        save_btn.clicked.connect(self._save_figure)
+        button_layout.addWidget(save_btn)
+
         export_btn = QPushButton("Export Data")
         export_btn.clicked.connect(self._export_heatmap_data)
         button_layout.addWidget(export_btn)
@@ -1316,8 +1229,8 @@ class HeatmapWidget(QWidget):
         right_panel.addLayout(button_layout)
 
         main_splitter.addWidget(right_widget)
-        # 초기 스플리터 비율: 설정 280px, 나머지 플롯
-        main_splitter.setSizes([280, 9999])
+        # 초기 스플리터 비율: 설정 300px, 나머지 플롯
+        main_splitter.setSizes([300, 9999])
         main_splitter.setStretchFactor(0, 0)
         main_splitter.setStretchFactor(1, 1)
 
@@ -1349,9 +1262,6 @@ class HeatmapWidget(QWidget):
         self.colorbar_min = self.colorbar_min_spin.value()
         self.colorbar_max = self.colorbar_max_spin.value()
         self.transpose = self.transpose_check.isChecked()
-        self.plot_title = self.title_edit.text()
-        self.plot_xlabel = self.xlabel_edit.text()
-        self.plot_ylabel = self.ylabel_edit.text()
         self.show_legend = self.legend_check.isChecked()
 
         self.__class__._saved_settings.update({
@@ -1362,28 +1272,16 @@ class HeatmapWidget(QWidget):
             'colormap': self.colormap,
             'colorbar_min': self.colorbar_min,
             'colorbar_max': self.colorbar_max,
-            'title': self.plot_title,
-            'xlabel': self.plot_xlabel,
-            'ylabel': self.plot_ylabel,
             'show_legend': self.show_legend
         })
 
         self._plot()
 
-    def _on_figure_size_changed(self):
-        """Figure 크기 변경 시"""
-        self.fig_width = self.width_spin.value()
-        self.fig_height = self.height_spin.value()
-
-        self.__class__._saved_settings.update({
-            'fig_width': self.fig_width,
-            'fig_height': self.fig_height
-        })
-
-        self.figure.set_size_inches(self.fig_width, self.fig_height)
-        self.canvas.draw()
-
     def _plot(self):
+        with figure_theme.theme_context(self._style.theme_name()):
+            self._draw_heatmap()
+
+    def _draw_heatmap(self):
         """Heatmap 그리기"""
         self.figure.clear()
         ax = self.figure.add_subplot(111)
@@ -1475,12 +1373,8 @@ class HeatmapWidget(QWidget):
             except ImportError:
                 pass
 
-        plot_xlabel = self.plot_xlabel
-        plot_ylabel = self.plot_ylabel
-
         if self.transpose:
             heatmap_data = heatmap_data.T
-            plot_xlabel, plot_ylabel = plot_ylabel, plot_xlabel
 
         im = ax.imshow(heatmap_data, cmap=self.colormap, aspect='auto',
                       interpolation='nearest', vmin=self.colorbar_min, vmax=self.colorbar_max)
@@ -1503,9 +1397,7 @@ class HeatmapWidget(QWidget):
                 ax.set_yticks(range(len(gene_labels)))
                 ax.set_yticklabels(gene_labels, fontsize=8)
 
-        ax.set_xlabel(plot_xlabel, fontsize=12)
-        ax.set_ylabel(plot_ylabel, fontsize=12)
-        ax.set_title(self.plot_title, fontsize=14, fontweight='bold')
+        self._labels.apply_to_axes(ax)
 
         if self.show_legend:
             cbar = self.figure.colorbar(im, ax=ax)
@@ -1524,6 +1416,23 @@ class HeatmapWidget(QWidget):
 
         self.figure.tight_layout()
         self.canvas.draw()
+
+    def _save_figure(self):
+        opts = self._style.export_opts()
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Figure",
+            f"heatmap.{opts['fmt']}",
+            figure_export.filter_string()
+        )
+        if not path:
+            return
+        try:
+            saved = figure_export.save_figure(self.figure, path, **opts)
+            QMessageBox.information(self, "Saved", f"Figure saved to:\n{saved}")
+        except ValueError as e:
+            QMessageBox.warning(self, "Unsupported Format", str(e))
+        except Exception as e:
+            QMessageBox.critical(self, "Save Error", f"Failed to save figure:\n{e}")
 
     def _export_heatmap_data(self):
         """현재 화면에 표시된 heatmap 데이터를 Excel로 내보내기"""
@@ -1664,16 +1573,15 @@ class HeatmapDialog(QDialog):
         self.close()
 
 
+class DotPlotDialog(BasePlotDialog):
+    """Dot Plot for Comparison Data Visualization — inherits BasePlotDialog.
 
-class DotPlotDialog(QDialog):
-    """Dot Plot for Comparison Data Visualization
-    
     Displays genes from comparison sheet with:
     - Dot size: based on -log10(Padj) thresholds (0.05, 0.01, 0.001, <0.001)
     - Dot color: based on log2FoldChange (colormap)
     - Supports multiple datasets in one plot
     """
-    
+
     # 클래스 변수로 설정값 저장
     _saved_settings = {
         'colormap': 'RdBu_r',
@@ -1687,15 +1595,10 @@ class DotPlotDialog(QDialog):
         'fig_width': 12,
         'fig_height': 10
     }
-    
+
     def __init__(self, comparison_df, parent=None):
-        super().__init__(parent)
+        # Domain state must be set before super().__init__() calls _setup_controls()
         self.comparison_df = comparison_df
-        self.setWindowTitle("⚫ Dot Plot - Comparison Data")
-        self.setWindowIcon(create_plot_icon("⚫", QColor(138, 43, 226)))  # Blue Violet
-        self.setMinimumSize(1000, 800)
-        
-        # 설정값 불러오기
         self.colormap = self._saved_settings['colormap']
         self.transpose = self._saved_settings['transpose']
         self.colorbar_min = self._saved_settings['colorbar_min']
@@ -1704,42 +1607,39 @@ class DotPlotDialog(QDialog):
         self.plot_xlabel = self._saved_settings['xlabel']
         self.plot_ylabel = self._saved_settings['ylabel']
         self.show_legend = self._saved_settings['show_legend']
-        
+
         # Dataset 이름 추출
         self.dataset_names = self._extract_dataset_names()
-        
+
         if not self.dataset_names:
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, "No Data", 
-                              "No valid dataset columns found in comparison sheet.")
-            self.reject()
-            return
-        
-        self._init_ui()
-        self._plot()
-    
+            # Defer warning — cannot show QMessageBox before QApplication is ready
+            # The dialog will show an empty plot with an error message
+            pass
+
+        fig_width = self._saved_settings['fig_width']
+        fig_height = self._saved_settings['fig_height']
+
+        super().__init__("Dot Plot - Comparison Data", parent, figsize=(fig_width, fig_height))
+        self.setWindowIcon(create_plot_icon("⚫", QColor(138, 43, 226)))  # Blue Violet
+        self._update_plot()
+
     def _extract_dataset_names(self):
         """컬럼명에서 데이터셋 이름 추출"""
         dataset_names = []
         for col in self.comparison_df.columns:
             if '_log2FC' in col or '_log2fc' in col:
-                # Dataset name 추출
                 dataset_name = col.replace('_log2FC', '').replace('_log2fc', '')
                 if dataset_name and dataset_name not in dataset_names:
                     dataset_names.append(dataset_name)
         return dataset_names
-    
-    def _init_ui(self):
-        """UI 초기화 - 좌우 분할"""
-        layout = QHBoxLayout(self)
-        
-        # 좌측 패널: 설정
-        left_panel = QVBoxLayout()
-        
+
+    # ── Controls ──────────────────────────────────────────────────────────
+
+    def _setup_controls(self, layout: QVBoxLayout):
         # === Settings 그룹 ===
         settings_group = QGroupBox("Dot Plot Settings")
         settings_layout = QFormLayout()
-        
+
         # Colormap 선택
         self.colormap_combo = QComboBox()
         self.colormap_combo.addItems([
@@ -1754,7 +1654,7 @@ class DotPlotDialog(QDialog):
             self.colormap_combo.setCurrentIndex(colormap_names.index(self.colormap))
         self.colormap_combo.currentIndexChanged.connect(self._on_settings_changed)
         settings_layout.addRow("Colormap:", self.colormap_combo)
-        
+
         # Colorbar Min/Max
         colorbar_layout = QHBoxLayout()
         self.colorbar_min_spin = QDoubleSpinBox()
@@ -1763,117 +1663,81 @@ class DotPlotDialog(QDialog):
         self.colorbar_min_spin.setDecimals(1)
         self.colorbar_min_spin.setSingleStep(0.5)
         self.colorbar_min_spin.valueChanged.connect(self._on_settings_changed)
-        
+
         self.colorbar_max_spin = QDoubleSpinBox()
         self.colorbar_max_spin.setRange(-100, 100)
         self.colorbar_max_spin.setValue(self.colorbar_max)
         self.colorbar_max_spin.setDecimals(1)
         self.colorbar_max_spin.setSingleStep(0.5)
         self.colorbar_max_spin.valueChanged.connect(self._on_settings_changed)
-        
+
         colorbar_layout.addWidget(QLabel("Min:"))
         colorbar_layout.addWidget(self.colorbar_min_spin)
         colorbar_layout.addWidget(QLabel("Max:"))
         colorbar_layout.addWidget(self.colorbar_max_spin)
         settings_layout.addRow("Colorbar Range:", colorbar_layout)
-        
+
         # Transpose
         self.transpose_check = QCheckBox("Transpose (Swap Datasets ↔ Genes)")
         self.transpose_check.setChecked(self.transpose)
         self.transpose_check.stateChanged.connect(self._on_settings_changed)
         settings_layout.addRow("", self.transpose_check)
-        
+
         # Gene Clustering
         self.cluster_genes_check = QCheckBox("Cluster Genes (Reorder by similarity)")
         self.cluster_genes_check.setChecked(False)
         self.cluster_genes_check.setToolTip("Reorder genes based on hierarchical clustering")
         self.cluster_genes_check.stateChanged.connect(self._on_settings_changed)
         settings_layout.addRow("", self.cluster_genes_check)
-        
+
         settings_group.setLayout(settings_layout)
-        left_panel.addWidget(settings_group)
-        
+        layout.addWidget(settings_group)
+
         # === Plot Customization 그룹 ===
         custom_group = QGroupBox("Plot Customization")
         custom_layout = QFormLayout()
-        
-        # Title
+
         self.title_edit = QLineEdit(self.plot_title)
         self.title_edit.textChanged.connect(self._on_settings_changed)
         custom_layout.addRow("Title:", self.title_edit)
-        
-        # X Label
+
         self.xlabel_edit = QLineEdit(self.plot_xlabel)
         self.xlabel_edit.textChanged.connect(self._on_settings_changed)
         custom_layout.addRow("X Label:", self.xlabel_edit)
-        
-        # Y Label
+
         self.ylabel_edit = QLineEdit(self.plot_ylabel)
         self.ylabel_edit.textChanged.connect(self._on_settings_changed)
         custom_layout.addRow("Y Label:", self.ylabel_edit)
-        
-        # Legend
+
         self.legend_check = QCheckBox("Show Legend")
         self.legend_check.setChecked(self.show_legend)
         self.legend_check.stateChanged.connect(self._on_settings_changed)
         custom_layout.addRow("", self.legend_check)
-        
+
         custom_group.setLayout(custom_layout)
-        left_panel.addWidget(custom_group)
-        
+        layout.addWidget(custom_group)
+
         # Figure Size
         size_group = QGroupBox("Figure Size")
         size_layout = QFormLayout()
-        
+
         self.width_spin = QSpinBox()
         self.width_spin.setRange(6, 20)
         self.width_spin.setValue(self._saved_settings['fig_width'])
         self.width_spin.valueChanged.connect(self._on_figure_size_changed)
         size_layout.addRow("Width:", self.width_spin)
-        
+
         self.height_spin = QSpinBox()
         self.height_spin.setRange(6, 20)
         self.height_spin.setValue(self._saved_settings['fig_height'])
         self.height_spin.valueChanged.connect(self._on_figure_size_changed)
         size_layout.addRow("Height:", self.height_spin)
-        
+
         size_group.setLayout(size_layout)
-        left_panel.addWidget(size_group)
-        
-        left_panel.addStretch()
-        
-        # 우측 패널: Plot
-        right_panel = QVBoxLayout()
-        
-        # Matplotlib Figure
-        fig_width = self._saved_settings['fig_width']
-        fig_height = self._saved_settings['fig_height']
-        self.figure = Figure(figsize=(fig_width, fig_height))
-        self.canvas = FigureCanvas(self.figure)
-        self.toolbar = NavigationToolbar(self.canvas, self)
-        
-        right_panel.addWidget(self.toolbar)
-        right_panel.addWidget(self.canvas, stretch=3)
-        
-        # 하단 버튼 영역
-        button_layout = QHBoxLayout()
-        button_layout.addStretch()
-        
-        refresh_btn = QPushButton("Refresh")
-        refresh_btn.setToolTip("Refresh the plot with current settings")
-        refresh_btn.clicked.connect(self._plot)
-        button_layout.addWidget(refresh_btn)
-        
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(self.accept)
-        button_layout.addWidget(close_btn)
-        
-        right_panel.addLayout(button_layout)
-        
-        # Layout 구성
-        layout.addLayout(left_panel, stretch=1)
-        layout.addLayout(right_panel, stretch=3)
-    
+        layout.addWidget(size_group)
+
+    # ── Slots ─────────────────────────────────────────────────────────────
+
     def _on_settings_changed(self):
         """설정 변경 시 자동 업데이트"""
         colormap_names = ['RdBu_r', 'viridis', 'plasma', 'coolwarm', 'seismic']
@@ -1885,8 +1749,7 @@ class DotPlotDialog(QDialog):
         self.plot_xlabel = self.xlabel_edit.text()
         self.plot_ylabel = self.ylabel_edit.text()
         self.show_legend = self.legend_check.isChecked()
-        
-        # 설정값 저장
+
         self._saved_settings.update({
             'colormap': self.colormap,
             'colorbar_min': self.colorbar_min,
@@ -1897,65 +1760,73 @@ class DotPlotDialog(QDialog):
             'ylabel': self.plot_ylabel,
             'show_legend': self.show_legend
         })
-        
-        self._plot()
-    
+
+        self._update_plot()
+
     def _on_figure_size_changed(self):
         """Figure 크기 변경"""
         width = self.width_spin.value()
         height = self.height_spin.value()
-        
+
         self._saved_settings['fig_width'] = width
         self._saved_settings['fig_height'] = height
-        
+
         self.figure.set_size_inches(width, height)
         self.canvas.draw()
-    
-    def _plot(self):
+
+    # ── Plot ──────────────────────────────────────────────────────────────
+
+    def _do_plot(self):
         """Dot Plot 그리기"""
         self.figure.clear()
         ax = self.figure.add_subplot(111)
-        
+
+        if not self.dataset_names:
+            ax.text(0.5, 0.5, 'No valid dataset columns found in comparison sheet.',
+                    ha='center', va='center', fontsize=14)
+            self.canvas.draw()
+            return
+
         # 데이터 준비
         genes = []
         dataset_data = {name: {'log2fc': [], 'padj': []} for name in self.dataset_names}
-        
+
         # 각 유전자에 대해 데이터 수집
         for idx, row in self.comparison_df.iterrows():
             gene_symbol = row.get('symbol', row.get('gene_id', f'Gene_{idx}'))
             genes.append(gene_symbol)
-            
+
             for dataset_name in self.dataset_names:
                 log2fc_col = f"{dataset_name}_log2FC"
                 padj_col = f"{dataset_name}_padj"
-                
+
                 # 대소문자 변형 확인
                 if log2fc_col not in self.comparison_df.columns:
                     log2fc_col = f"{dataset_name}_log2fc"
                 if padj_col not in self.comparison_df.columns:
                     padj_col = f"{dataset_name}_Padj"
-                
+
                 log2fc = row.get(log2fc_col, np.nan)
                 padj = row.get(padj_col, np.nan)
-                
+
                 dataset_data[dataset_name]['log2fc'].append(log2fc)
                 dataset_data[dataset_name]['padj'].append(padj)
-        
+
         # Gene Clustering (선택 시)
         gene_order = list(range(len(genes)))
         if self.cluster_genes_check.isChecked() and len(genes) > 1:
             try:
                 # log2fc 데이터를 행렬로 변환
                 log2fc_matrix = np.array([dataset_data[name]['log2fc'] for name in self.dataset_names]).T
-                
+
                 # NaN 값을 0으로 대체 (클러스터링을 위해)
                 log2fc_matrix_clean = np.nan_to_num(log2fc_matrix, nan=0.0)
-                
+
                 # 최소 2개 이상의 유전자와 유효한 데이터가 있을 때만 클러스터링
                 if log2fc_matrix_clean.shape[0] >= 2 and not np.all(log2fc_matrix_clean == 0):
                     from scipy.cluster.hierarchy import linkage, dendrogram
                     from scipy.spatial.distance import pdist
-                    
+
                     # 계층적 클러스터링
                     linkage_matrix = linkage(log2fc_matrix_clean, method='average', metric='euclidean')
                     dendro = dendrogram(linkage_matrix, no_plot=True)
@@ -1963,14 +1834,14 @@ class DotPlotDialog(QDialog):
             except Exception:
                 # 클러스터링 실패 시 원래 순서 유지 (사용자에게 알리지 않음)
                 gene_order = list(range(len(genes)))
-        
+
         # 순서에 따라 genes 재정렬
         genes_ordered = [genes[i] for i in gene_order]
-        
+
         # 전체 dot 개수를 고려하여 크기 조정
         total_dots = len(genes) * len(self.dataset_names)
         base_size = 200 if total_dots < 100 else 100 if total_dots < 500 else 50
-        
+
         # Padj threshold별 크기 정의
         def get_dot_size(padj):
             """Padj 값에 따라 dot 크기 반환"""
@@ -1984,92 +1855,89 @@ class DotPlotDialog(QDialog):
                 return base_size * 0.8
             else:
                 return base_size * 0.4
-        
+
+        scatter = None
+
         # Plot 데이터 생성
         if not self.transpose:
             # Genes on Y-axis, Datasets on X-axis
             for dataset_idx, dataset_name in enumerate(self.dataset_names):
                 log2fcs = dataset_data[dataset_name]['log2fc']
                 padjs = dataset_data[dataset_name]['padj']
-                
+
                 for display_idx, original_gene_idx in enumerate(gene_order):
                     log2fc = log2fcs[original_gene_idx]
                     padj = padjs[original_gene_idx]
-                    
+
                     if not pd.isna(log2fc):
                         size = get_dot_size(padj)
-                        scatter = ax.scatter(dataset_idx, display_idx, 
-                                           s=size, c=[log2fc], 
-                                           cmap=self.colormap, 
-                                           vmin=self.colorbar_min, 
+                        scatter = ax.scatter(dataset_idx, display_idx,
+                                           s=size, c=[log2fc],
+                                           cmap=self.colormap,
+                                           vmin=self.colorbar_min,
                                            vmax=self.colorbar_max,
                                            alpha=0.7, edgecolors='black', linewidths=0.5)
-            
+
             # 축 설정
             ax.set_xticks(range(len(self.dataset_names)))
             ax.set_xticklabels(self.dataset_names, rotation=45, ha='right')
-            
+
             if len(genes) <= 50:
                 ax.set_yticks(range(len(genes)))
                 ax.set_yticklabels(genes_ordered, fontsize=8)
-            
+
             ax.set_xlabel(self.plot_xlabel, fontsize=12)
             ax.set_ylabel(self.plot_ylabel, fontsize=12)
-            
+
         else:
             # Datasets on Y-axis, Genes on X-axis (Transposed)
             for display_idx, original_gene_idx in enumerate(gene_order):
                 for dataset_idx, dataset_name in enumerate(self.dataset_names):
                     log2fc = dataset_data[dataset_name]['log2fc'][original_gene_idx]
                     padj = dataset_data[dataset_name]['padj'][original_gene_idx]
-                    
+
                     if not pd.isna(log2fc):
                         size = get_dot_size(padj)
-                        scatter = ax.scatter(display_idx, dataset_idx, 
-                                           s=size, c=[log2fc], 
-                                           cmap=self.colormap, 
-                                           vmin=self.colorbar_min, 
+                        scatter = ax.scatter(display_idx, dataset_idx,
+                                           s=size, c=[log2fc],
+                                           cmap=self.colormap,
+                                           vmin=self.colorbar_min,
                                            vmax=self.colorbar_max,
                                            alpha=0.7, edgecolors='black', linewidths=0.5)
-            
+
             # 축 설정
             if len(genes) <= 50:
                 ax.set_xticks(range(len(genes)))
                 ax.set_xticklabels(genes_ordered, rotation=90, ha='right', fontsize=8)
-            
+
             ax.set_yticks(range(len(self.dataset_names)))
             ax.set_yticklabels(self.dataset_names, fontsize=10)
-            
+
             ax.set_xlabel(self.plot_ylabel, fontsize=12)  # Swapped
             ax.set_ylabel(self.plot_xlabel, fontsize=12)  # Swapped
-        
+
         # 축 범위 조정 (간격 좁히기)
         if not self.transpose:
-            # X축(Datasets) 범위를 좁게 설정
             num_datasets = len(self.dataset_names)
-            margin = 0.3  # 양쪽 여백
+            margin = 0.3
             ax.set_xlim(-margin, num_datasets - 1 + margin)
-            
-            # Y축(Genes) 범위
             num_genes = len(genes)
             ax.set_ylim(-0.5, num_genes - 0.5)
         else:
-            # Transpose: X축(Genes), Y축(Datasets)
             num_genes = len(genes)
             margin = 0.3
             ax.set_xlim(-margin, num_genes - 1 + margin)
-            
             num_datasets = len(self.dataset_names)
             ax.set_ylim(-0.5, num_datasets - 0.5)
-        
+
         # Title
         ax.set_title(self.plot_title, fontsize=14, fontweight='bold')
-        
+
         # Colorbar
-        if hasattr(self, 'scatter') or 'scatter' in locals():
+        if scatter is not None:
             cbar = self.figure.colorbar(scatter, ax=ax)
             cbar.set_label('Log2 Fold Change', fontsize=10)
-        
+
         # Legend for dot sizes
         if self.show_legend:
             from matplotlib.lines import Line2D
@@ -2083,9 +1951,8 @@ class DotPlotDialog(QDialog):
                 Line2D([0], [0], marker='o', color='w', label='Padj ≥ 0.05',
                       markerfacecolor='gray', markersize=5, markeredgecolor='black')
             ]
-            ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(1.15, 1), 
+            ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(1.15, 1),
                      fontsize=9, title='Significance')
-        
+
         self.figure.tight_layout()
         self.canvas.draw()
-

@@ -5,22 +5,12 @@ ATAC-seq peak의 annotation 카테고리 분포를 Pie chart로 시각화합니�
 """
 import logging
 
-import matplotlib
-matplotlib.use('Qt5Agg')
-logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
-
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
-from matplotlib.figure import Figure
-import matplotlib.pyplot as plt
-
-from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QMessageBox, QSizePolicy
-)
+import pandas as pd
+from PyQt6.QtWidgets import QVBoxLayout
 from PyQt6.QtCore import Qt
 
 from models.data_models import Dataset
+from gui.base_plot_dialog import BasePlotDialog
 
 _ANNOTATION_COLORS = [
     '#4e79a7', '#f28e2b', '#e15759', '#76b7b2',
@@ -29,7 +19,7 @@ _ANNOTATION_COLORS = [
 ]
 
 
-class GenomicDistributionDialog(QDialog):
+class GenomicDistributionDialog(BasePlotDialog):
     """
     Annotation 분포 Pie chart 다이얼로그.
 
@@ -38,58 +28,19 @@ class GenomicDistributionDialog(QDialog):
     """
 
     def __init__(self, dataset: Dataset, parent=None):
-        super().__init__(parent)
         self.logger = logging.getLogger(__name__)
         self.dataset = dataset
-        self.setWindowTitle(f"Genomic Distribution — {dataset.name}")
-        self.resize(700, 580)
-        self._init_ui()
 
-    # ------------------------------------------------------------------ #
-    #  UI
-    # ------------------------------------------------------------------ #
+        super().__init__(f"Genomic Distribution — {dataset.name}", parent, figsize=(7, 5))
+        self._update_plot()
 
-    def _init_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setSpacing(8)
+    # ── Controls ──────────────────────────────────────────────────────────
 
-        # 데이터 유효성 확인
-        if not self._has_annotation_column():
-            msg = QLabel(
-                "<b>Annotation data not available.</b><br>"
-                "This dataset does not contain an 'annotation' column.<br>"
-                "Load a full-format ATAC-seq Excel file to enable this plot."
-            )
-            msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            msg.setStyleSheet("color: #888; padding: 40px; font-size: 11pt;")
-            layout.addWidget(msg)
-            close_btn = QPushButton("Close")
-            close_btn.clicked.connect(self.accept)
-            layout.addWidget(close_btn, alignment=Qt.AlignmentFlag.AlignRight)
-            return
+    def _setup_controls(self, layout: QVBoxLayout):
+        # No extra controls needed for this simple pie chart
+        pass
 
-        # Figure
-        self.figure = Figure(figsize=(7, 5), tight_layout=True)
-        self.canvas = FigureCanvas(self.figure)
-        self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        layout.addWidget(self.canvas)
-
-        toolbar = NavigationToolbar(self.canvas, self)
-        layout.addWidget(toolbar)
-
-        # 하단 버튼
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(self.accept)
-        btn_layout.addWidget(close_btn)
-        layout.addLayout(btn_layout)
-
-        self._draw()
-
-    # ------------------------------------------------------------------ #
-    #  Drawing
-    # ------------------------------------------------------------------ #
+    # ── Plot ──────────────────────────────────────────────────────────────
 
     @staticmethod
     def _normalize_annotation(raw: str) -> str:
@@ -101,18 +52,30 @@ class GenomicDistributionDialog(QDialog):
         """
         if not isinstance(raw, str):
             return "Unknown"
-        # 괄호 앞 부분만 취하고 앞뒤 공백 제거
         category = raw.split('(')[0].strip()
-        # 첫 글자만 대문자 통일 (intron → Intron, Promoter-TSS는 유지)
         return category[0].upper() + category[1:] if category else "Unknown"
 
-    def _draw(self):
-        import pandas as pd
+    def _do_plot(self):
+        self.figure.clear()
+        ax = self.figure.add_subplot(111)
+
+        if not self._has_annotation_column():
+            ax.text(
+                0.5, 0.5,
+                "Annotation data not available.\n"
+                "This dataset does not contain an 'annotation' column.\n"
+                "Load a full-format ATAC-seq Excel file to enable this plot.",
+                ha='center', va='center', transform=ax.transAxes,
+                fontsize=10, color='#888888',
+                bbox=dict(boxstyle='round', fc='#f8f8f8', ec='#cccccc', alpha=0.8),
+            )
+            self.canvas.draw()
+            return
+
         df = self.dataset.dataframe
         normalized = df['annotation'].dropna().map(self._normalize_annotation)
         counts = normalized.value_counts()
 
-        # Others 묶기 (상위 9개 초과분)
         if len(counts) > 9:
             top9 = counts.iloc[:9]
             others = counts.iloc[9:].sum()
@@ -122,7 +85,6 @@ class GenomicDistributionDialog(QDialog):
         sizes = counts.values.tolist()
         colors = (_ANNOTATION_COLORS * ((len(labels) // len(_ANNOTATION_COLORS)) + 1))[:len(labels)]
 
-        ax = self.figure.add_subplot(111)
         wedges, texts, autotexts = ax.pie(
             sizes,
             labels=None,
@@ -134,7 +96,6 @@ class GenomicDistributionDialog(QDialog):
         for at in autotexts:
             at.set_fontsize(8)
 
-        # 범례: 카테고리명 + 개수
         legend_labels = [f"{lbl}  ({cnt:,})" for lbl, cnt in zip(labels, sizes)]
         ax.legend(
             wedges, legend_labels,
@@ -152,9 +113,7 @@ class GenomicDistributionDialog(QDialog):
         )
         self.canvas.draw()
 
-    # ------------------------------------------------------------------ #
-    #  Helpers
-    # ------------------------------------------------------------------ #
+    # ── Helpers ───────────────────────────────────────────────────────────
 
     def _has_annotation_column(self) -> bool:
         return (self.dataset.dataframe is not None and

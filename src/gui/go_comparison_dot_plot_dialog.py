@@ -5,62 +5,42 @@ Wide-format comparison DataFrame (from _compare_go_terms) 을 받아
 Y축: GO term, X축: dataset, 크기: FE, 색: -log10(FDR) 형태의 bubble plot 생성.
 """
 
-from typing import List, Optional
+from typing import List
 import pandas as pd
 import numpy as np
 
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QGroupBox,
-    QLabel, QSpinBox, QComboBox, QPushButton,
-    QDoubleSpinBox, QMessageBox, QFormLayout, QLineEdit
+    QVBoxLayout, QHBoxLayout, QGroupBox,
+    QWidget, QSpinBox, QComboBox, QPushButton, QCheckBox,
+    QDoubleSpinBox, QMessageBox, QFormLayout
 )
 from PyQt6.QtCore import Qt
-import matplotlib
-matplotlib.use('QtAgg')
-import logging
-logging.getLogger('matplotlib').setLevel(logging.WARNING)
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-try:
-    from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
-except ImportError:
-    from matplotlib.backends.backend_qt import NavigationToolbar2QT as NavigationToolbar  # type: ignore
-from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
 from models.data_models import Dataset
+from gui.base_plot_dialog import BasePlotDialog
 
 
-class GOComparisonDotPlotDialog(QDialog):
+class GOComparisonDotPlotDialog(BasePlotDialog):
     """GO/KEGG Multi-Dataset Comparison Dot Plot 다이얼로그"""
 
     def __init__(self, dataset: Dataset, parent=None):
-        super().__init__(parent)
         self.dataset = dataset
         self.df = dataset.dataframe.copy() if dataset.dataframe is not None else pd.DataFrame()
 
         meta = dataset.metadata or {}
         self.dataset_names: List[str] = meta.get('dataset_names', [])
         self.safe_names: List[str] = meta.get('safe_names', [])
-
-        # GO/KEGG suffix 제거한 표시용 이름
         self.display_names: List[str] = meta.get(
             'display_names',
             [self._clean_display_name(n) for n in self.dataset_names]
         )
 
-        self.setWindowTitle("GO/KEGG Comparison Dot Plot")
-        self.setMinimumSize(1100, 850)
-
-        self.figure = Figure(figsize=(12, 9), constrained_layout=False)
-        self.canvas = FigureCanvas(self.figure)
-
-        self._init_ui()
+        super().__init__("GO/KEGG Comparison Dot Plot", parent, figsize=(12, 9))
         self._update_plot()
 
     @staticmethod
     def _clean_display_name(name: str) -> str:
-        """dataset 이름에서 GO/KEGG 분석 타입 suffix 제거"""
         import re
         cleaned = re.sub(
             r'\s+(GO\+KEGG|KEGG\+GO|GO|KEGG|GO_KEGG|KEGG_GO)\s*$',
@@ -68,16 +48,9 @@ class GOComparisonDotPlotDialog(QDialog):
         )
         return cleaned.strip()
 
-    # ──────────────────────────────────────────────────────────────────────────
-    #  UI
-    # ──────────────────────────────────────────────────────────────────────────
+    # ── Controls ──────────────────────────────────────────────────────────
 
-    def _init_ui(self):
-        main_layout = QHBoxLayout(self)
-
-        # ── Left panel ────────────────────────────────────────────────────────
-        left_panel = QVBoxLayout()
-
+    def _setup_controls(self, layout: QVBoxLayout):
         # Plot Settings
         settings_group = QGroupBox("Plot Settings")
         settings_layout = QFormLayout()
@@ -109,14 +82,13 @@ class GOComparisonDotPlotDialog(QDialog):
         self.size_combo.currentTextChanged.connect(self._update_plot)
         settings_layout.addRow("Dot Size:", self.size_combo)
 
-        from PyQt6.QtWidgets import QCheckBox
         self.transpose_check = QCheckBox("Transpose (X: Terms, Y: Datasets)")
         self.transpose_check.setChecked(False)
         self.transpose_check.toggled.connect(self._on_transpose_changed)
         settings_layout.addRow("", self.transpose_check)
 
         settings_group.setLayout(settings_layout)
-        left_panel.addWidget(settings_group)
+        layout.addWidget(settings_group)
 
         # Color Bar Settings
         colorbar_group = QGroupBox("Color Bar Settings (-log10 FDR)")
@@ -129,15 +101,13 @@ class GOComparisonDotPlotDialog(QDialog):
         self.palette_combo.currentTextChanged.connect(self._update_plot)
         colorbar_layout.addRow("Color Palette:", self.palette_combo)
 
-        color_range_layout = QHBoxLayout()
         self.color_min_spin = QDoubleSpinBox()
         self.color_min_spin.setRange(0, 100)
         self.color_min_spin.setDecimals(2)
         self.color_min_spin.setValue(0.0)
         self.color_min_spin.setSingleStep(0.5)
         self.color_min_spin.valueChanged.connect(self._update_plot)
-        color_range_layout.addWidget(QLabel("Min:"))
-        color_range_layout.addWidget(self.color_min_spin)
+        colorbar_layout.addRow("-log10(FDR) Min:", self.color_min_spin)
 
         self.color_max_spin = QDoubleSpinBox()
         self.color_max_spin.setRange(0, 100)
@@ -145,92 +115,73 @@ class GOComparisonDotPlotDialog(QDialog):
         self.color_max_spin.setValue(5.0)
         self.color_max_spin.setSingleStep(0.5)
         self.color_max_spin.valueChanged.connect(self._update_plot)
-        color_range_layout.addWidget(QLabel("Max:"))
-        color_range_layout.addWidget(self.color_max_spin)
-
         color_auto_btn = QPushButton("Auto")
         color_auto_btn.setMaximumWidth(55)
         color_auto_btn.clicked.connect(self._auto_color_range)
-        color_range_layout.addWidget(color_auto_btn)
-
-        colorbar_layout.addRow("-log10(FDR) Range:", color_range_layout)
+        fdr_max_row = QWidget()
+        fdr_max_rl = QHBoxLayout(fdr_max_row)
+        fdr_max_rl.setContentsMargins(0, 0, 0, 0)
+        fdr_max_rl.setSpacing(4)
+        fdr_max_rl.addWidget(self.color_max_spin)
+        fdr_max_rl.addWidget(color_auto_btn)
+        colorbar_layout.addRow("-log10(FDR) Max:", fdr_max_row)
         colorbar_group.setLayout(colorbar_layout)
-        left_panel.addWidget(colorbar_group)
+        layout.addWidget(colorbar_group)
+
+        # track axis labels for use in _do_plot (updated by transpose toggle)
+        self._xlabel_text = "Dataset"
+        self._ylabel_text = "GO/KEGG Terms"
 
         # Plot Customization
         custom_group = QGroupBox("Plot Customization")
         custom_layout = QFormLayout()
 
-        self.title_edit = QLineEdit("GO/KEGG Term Comparison")
-        self.title_edit.textChanged.connect(self._update_plot)
-        custom_layout.addRow("Title:", self.title_edit)
-
-        self.xlabel_edit = QLineEdit("Dataset")
-        self.xlabel_edit.textChanged.connect(self._update_plot)
-        custom_layout.addRow("X Label:", self.xlabel_edit)
-
-        self.ylabel_edit = QLineEdit("GO/KEGG Terms")
-        self.ylabel_edit.textChanged.connect(self._update_plot)
-        custom_layout.addRow("Y Label:", self.ylabel_edit)
-
-        size_layout = QHBoxLayout()
         self.width_spin = QSpinBox()
         self.width_spin.setRange(6, 24)
         self.width_spin.setValue(12)
         self.width_spin.valueChanged.connect(self._on_figure_size_changed)
-        size_layout.addWidget(QLabel("W:"))
-        size_layout.addWidget(self.width_spin)
+        custom_layout.addRow("Width (in):", self.width_spin)
 
         self.height_spin = QSpinBox()
         self.height_spin.setRange(4, 20)
         self.height_spin.setValue(9)
         self.height_spin.valueChanged.connect(self._on_figure_size_changed)
-        size_layout.addWidget(QLabel("H:"))
-        size_layout.addWidget(self.height_spin)
-        custom_layout.addRow("Figure Size (in):", size_layout)
+        custom_layout.addRow("Height (in):", self.height_spin)
 
         custom_group.setLayout(custom_layout)
-        left_panel.addWidget(custom_group)
+        layout.addWidget(custom_group)
 
-        left_panel.addStretch()
-        main_layout.addLayout(left_panel)
+    def _extra_buttons(self) -> list:
+        return [("Export Data", self._export_data)]
 
-        # ── Right panel ───────────────────────────────────────────────────────
-        right_panel = QVBoxLayout()
-        right_panel.addWidget(self.canvas)
+    # ── Slots ─────────────────────────────────────────────────────────────
 
-        toolbar = NavigationToolbar(self.canvas, self)
-        right_panel.addWidget(toolbar)
+    def _on_transpose_changed(self, checked: bool):
+        if checked:
+            self._xlabel_text = "GO/KEGG Terms"
+            self._ylabel_text = "Dataset"
+        else:
+            self._xlabel_text = "Dataset"
+            self._ylabel_text = "GO/KEGG Terms"
+        self._update_plot()
 
-        btn_layout = QHBoxLayout()
+    def _auto_color_range(self):
+        long_df = self._build_long_df()
+        fdr_vals = long_df['fdr'].dropna()
+        fdr_vals = fdr_vals[fdr_vals > 0]
+        if len(fdr_vals) > 0:
+            log_vals = -np.log10(fdr_vals)
+            self.color_min_spin.setValue(float(log_vals.min()))
+            self.color_max_spin.setValue(float(log_vals.max()))
+            self._update_plot()
 
-        refresh_btn = QPushButton("Refresh Plot")
-        refresh_btn.clicked.connect(self._update_plot)
-        btn_layout.addWidget(refresh_btn)
+    def _on_figure_size_changed(self):
+        self.figure.set_size_inches(self.width_spin.value(), self.height_spin.value())
+        self.canvas.draw()
 
-        save_btn = QPushButton("Save Figure")
-        save_btn.clicked.connect(self._save_figure)
-        btn_layout.addWidget(save_btn)
-
-        export_btn = QPushButton("Export Data")
-        export_btn.clicked.connect(self._export_data)
-        btn_layout.addWidget(export_btn)
-
-        btn_layout.addStretch()
-
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(self.accept)
-        btn_layout.addWidget(close_btn)
-
-        right_panel.addLayout(btn_layout)
-        main_layout.addLayout(right_panel, stretch=3)
-
-    # ──────────────────────────────────────────────────────────────────────────
-    #  Data helpers
-    # ──────────────────────────────────────────────────────────────────────────
+    # ── Data helpers ──────────────────────────────────────────────────────
 
     def _build_long_df(self) -> pd.DataFrame:
-        """Wide-format → long-format 변환"""
         df = self.df
         id_cols = ['term_id', 'description']
         if 'ontology' in df.columns:
@@ -259,11 +210,8 @@ class GOComparisonDotPlotDialog(QDialog):
         return pd.concat(records, ignore_index=True)
 
     def _get_plot_data(self):
-        """Top-N 필터 + present-in-N 필터 적용 후 long_df 반환"""
         long_df = self._build_long_df()
-        n_ds = len(self.dataset_names)
 
-        # present-in ≥ N datasets 필터 (FE 가 non-NaN인 dataset 수 기준)
         min_ds = self.min_datasets_spin.value()
         if min_ds > 1:
             fe_count = long_df.groupby('term_id')['fe'].apply(
@@ -275,7 +223,6 @@ class GOComparisonDotPlotDialog(QDialog):
         if long_df.empty:
             return long_df
 
-        # Top N 선택 기준 계산
         sort_by = self.sort_combo.currentText()
         if sort_by == "Average FE (desc)":
             rank = (
@@ -283,7 +230,7 @@ class GOComparisonDotPlotDialog(QDialog):
                 .mean()
                 .sort_values(ascending=False)
             )
-        else:  # Average FDR (asc)
+        else:
             rank = (
                 long_df.groupby('term_id')['fdr']
                 .mean()
@@ -294,7 +241,6 @@ class GOComparisonDotPlotDialog(QDialog):
         top_terms = rank.head(top_n).index
         long_df = long_df[long_df['term_id'].isin(top_terms)]
 
-        # Y축 순서: 정렬 기준 반대 (위 → 높은 FE / 낮은 FDR)
         term_order = list(rank[rank.index.isin(top_terms)].index)
         long_df['_y_rank'] = long_df['term_id'].map(
             {t: i for i, t in enumerate(reversed(term_order))}
@@ -302,39 +248,9 @@ class GOComparisonDotPlotDialog(QDialog):
 
         return long_df
 
-    def _on_transpose_changed(self, checked: bool):
-        """Transpose 토글 시 X/Y label 자동 교환"""
-        self.xlabel_edit.blockSignals(True)
-        self.ylabel_edit.blockSignals(True)
-        if checked:
-            self.xlabel_edit.setText("GO/KEGG Terms")
-            self.ylabel_edit.setText("Dataset")
-        else:
-            self.xlabel_edit.setText("Dataset")
-            self.ylabel_edit.setText("GO/KEGG Terms")
-        self.xlabel_edit.blockSignals(False)
-        self.ylabel_edit.blockSignals(False)
-        self._update_plot()
+    # ── Plot ──────────────────────────────────────────────────────────────
 
-    def _auto_color_range(self):
-        long_df = self._build_long_df()
-        fdr_vals = long_df['fdr'].dropna()
-        fdr_vals = fdr_vals[fdr_vals > 0]
-        if len(fdr_vals) > 0:
-            log_vals = -np.log10(fdr_vals)
-            self.color_min_spin.setValue(float(log_vals.min()))
-            self.color_max_spin.setValue(float(log_vals.max()))
-            self._update_plot()
-
-    def _on_figure_size_changed(self):
-        self.figure.set_size_inches(self.width_spin.value(), self.height_spin.value())
-        self.canvas.draw()
-
-    # ──────────────────────────────────────────────────────────────────────────
-    #  Plot
-    # ──────────────────────────────────────────────────────────────────────────
-
-    def _update_plot(self):
+    def _do_plot(self):
         self.figure.clear()
 
         long_df = self._get_plot_data()
@@ -348,23 +264,19 @@ class GOComparisonDotPlotDialog(QDialog):
 
         ax = self.figure.add_subplot(111)
 
-        # ── 축 매핑 ────────────────────────────────────────────────────────
         transpose = self.transpose_check.isChecked()
 
-        # dataset display name 순서
-        ds_order      = self.dataset_names
-        disp_order    = self.display_names   # 표시용 이름 (suffix 제거)
-        ds_idx        = {ds: i for i, ds in enumerate(ds_order)}
-        long_df       = long_df.copy()
+        ds_order   = self.dataset_names
+        disp_order = self.display_names
+        ds_idx     = {ds: i for i, ds in enumerate(ds_order)}
+        long_df    = long_df.copy()
         long_df['_ds_idx'] = long_df['dataset'].map(ds_idx)
 
-        # description label 얻기 (term_id → description)
         desc_map = (
             self.df.set_index('term_id')['description']
             .to_dict() if 'description' in self.df.columns else {}
         )
 
-        # term rank → label
         y_ranks = sorted(long_df['_y_rank'].dropna().unique())
         term_by_rank = {}
         for _, row in long_df.drop_duplicates('_y_rank').iterrows():
@@ -379,9 +291,7 @@ class GOComparisonDotPlotDialog(QDialog):
                 label = label[:52] + '...'
             term_labels.append(label)
 
-        # transpose 에 따른 실제 x/y 좌표 결정
         if transpose:
-            # X = term rank,  Y = dataset index
             long_df['_x'] = long_df['_y_rank']
             long_df['_y'] = long_df['_ds_idx']
             x_ticks  = y_ranks
@@ -392,7 +302,6 @@ class GOComparisonDotPlotDialog(QDialog):
             x_ha     = 'right'
             y_fs     = 10
         else:
-            # X = dataset index,  Y = term rank
             long_df['_x'] = long_df['_ds_idx']
             long_df['_y'] = long_df['_y_rank']
             x_ticks  = list(range(len(disp_order)))
@@ -404,7 +313,6 @@ class GOComparisonDotPlotDialog(QDialog):
             x_rot    = 35
             x_ha     = 'right'
 
-        # ── 색 / 크기 계산 ─────────────────────────────────────────────────
         size_mode = self.size_combo.currentText()
         cmap      = self.palette_combo.currentText()
         vmin      = self.color_min_spin.value()
@@ -412,12 +320,10 @@ class GOComparisonDotPlotDialog(QDialog):
         if vmin >= vmax:
             vmax = vmin + 1.0
 
-        # −log10(FDR)
-        fdr_col  = long_df['fdr'].copy()
-        fdr_col  = fdr_col.clip(lower=1e-300)
+        fdr_col = long_df['fdr'].copy()
+        fdr_col = fdr_col.clip(lower=1e-300)
         neg_log_fdr = -np.log10(fdr_col)
 
-        # Dot size (고정 생물학적 기준 범위로 정규화)
         _CMP_SIZE_NORM = {
             "Fold Enrichment": (20.0,  [(2.0, "2×"),       (5.0,  "5×"),       (15.0, "≥15×")]),
             "Gene Count":      (100.0, [(10,  "10 genes"),  (30,   "30 genes"),  (80,   "≥80 genes")]),
@@ -429,7 +335,6 @@ class GOComparisonDotPlotDialog(QDialog):
         else:
             raw_size = pd.to_numeric(long_df['gene_count'], errors='coerce').fillna(0)
 
-        s_min, s_max = float(raw_size.min()), float(raw_size.max())
         if size_mode in _CMP_SIZE_NORM:
             _cmp_norm_max, _cmp_size_rep = _CMP_SIZE_NORM[size_mode]
             sizes = _S_MIN + np.clip(raw_size / _cmp_norm_max, 0, 1) * (_S_MAX - _S_MIN)
@@ -437,11 +342,9 @@ class GOComparisonDotPlotDialog(QDialog):
             _cmp_norm_max, _cmp_size_rep = None, None
             sizes = pd.Series(150.0, index=raw_size.index)
 
-        # ── Scatter: non-NaN FE (실제 값 있는 점) ─────────────────────────
-        has_fe   = long_df['fe'].notna()
-        has_fdr  = long_df['fdr'].notna()
+        has_fe  = long_df['fe'].notna()
+        has_fdr = long_df['fdr'].notna()
 
-        # 실제 데이터 점 (FE + FDR 모두 있음)
         mask_full = has_fe & has_fdr
         if mask_full.any():
             sc = ax.scatter(
@@ -453,10 +356,8 @@ class GOComparisonDotPlotDialog(QDialog):
                 alpha=0.85, edgecolors='black', linewidth=0.4, zorder=3
             )
         else:
-            # colorbar 참조용 dummy scatter
             sc = ax.scatter([], [], c=[], cmap=cmap, vmin=vmin, vmax=vmax)
 
-        # FE 있는데 FDR 없는 경우 (회색 점)
         mask_no_fdr = has_fe & ~has_fdr
         if mask_no_fdr.any():
             ax.scatter(
@@ -467,7 +368,6 @@ class GOComparisonDotPlotDialog(QDialog):
                 alpha=0.6, zorder=2
             )
 
-        # FE 없는 (dataset에 해당 term 없음) → 빈 테두리 원
         mask_absent = ~has_fe
         if mask_absent.any():
             ax.scatter(
@@ -478,17 +378,15 @@ class GOComparisonDotPlotDialog(QDialog):
                 alpha=0.5, zorder=1
             )
 
-        # ── Axes ───────────────────────────────────────────────────────────
         ax.set_xticks(x_ticks)
         ax.set_xticklabels(x_labels, rotation=x_rot, ha=x_ha, fontsize=9)
         ax.set_yticks(y_ticks)
         ax.set_yticklabels(y_labels, fontsize=y_fs)
-        ax.set_xlabel(self.xlabel_edit.text(), fontsize=11, fontweight='bold')
-        ax.set_ylabel(self.ylabel_edit.text(), fontsize=11, fontweight='bold')
-        ax.set_title(self.title_edit.text(), fontsize=13, fontweight='bold')
+        ax.set_xlabel(self._xlabel_text, fontsize=11, fontweight='bold')
+        ax.set_ylabel(self._ylabel_text, fontsize=11, fontweight='bold')
+        ax.set_title("GO/KEGG Term Comparison", fontsize=13, fontweight='bold')
         ax.grid(axis='both', alpha=0.2, linestyle='--')
 
-        # 축 범위 여유
         if transpose:
             ax.set_xlim(min(y_ranks) - 0.6, max(y_ranks) + 0.6)
             ax.set_ylim(-0.6, len(disp_order) - 0.4)
@@ -497,22 +395,19 @@ class GOComparisonDotPlotDialog(QDialog):
             if y_ranks:
                 ax.set_ylim(min(y_ranks) - 0.6, max(y_ranks) + 0.6)
 
-        # ── Colorbar ───────────────────────────────────────────────────────
         try:
             cbar = self.figure.colorbar(sc, ax=ax, shrink=0.5, pad=0.02, anchor=(0, 1.0))
             cbar.set_label('-log10(FDR)', fontsize=10)
         except Exception:
-            pass  # empty scatter 등에서 colorbar 생성 실패 시 무시
+            pass
 
-        # ── Size legend (고정 3단계) ────────────────────────────────────
         if _cmp_size_rep is not None and _cmp_norm_max is not None:
             _leg_fontsize = 8
 
             def _ms(v):
                 s = _S_MIN + np.clip(v / _cmp_norm_max, 0, 1) * (_S_MAX - _S_MIN)
-                return 2.0 * np.sqrt(s / np.pi)  # scatter s(면적 pt²) → Line2D markersize(지름 pt)
+                return 2.0 * np.sqrt(s / np.pi)
 
-            # 최대 원 지름 기준으로 labelspacing 동적 계산 (겁침 방지)
             _max_diam = max(_ms(v) for v, _ in _cmp_size_rep)
             _labelspacing = _max_diam / _leg_fontsize + 0.5
 
@@ -531,12 +426,9 @@ class GOComparisonDotPlotDialog(QDialog):
                             edgecolor='#bbbbbb', fancybox=False,
                             bbox_to_anchor=(1.02, 0.30))
             leg.get_title().set_fontweight('bold')
-        # ── Layout ─────────────────────────────────────────────────────────
+
         try:
-            if transpose:
-                self.figure.tight_layout(rect=(0, 0, 0.82, 1))
-            else:
-                self.figure.tight_layout(rect=(0, 0, 0.82, 1))
+            self.figure.tight_layout(rect=(0, 0, 0.82, 1))
         except Exception:
             if transpose:
                 self.figure.subplots_adjust(left=0.12, right=0.82, bottom=0.30)
@@ -545,43 +437,7 @@ class GOComparisonDotPlotDialog(QDialog):
 
         self.canvas.draw()
 
-    # ──────────────────────────────────────────────────────────────────────────
-    #  Export
-    # ──────────────────────────────────────────────────────────────────────────
-
-    def _save_figure(self):
-        from PyQt6.QtWidgets import QFileDialog
-        import matplotlib
-
-        default_name = f"go_comparison_dot_plot.png"
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, "Save Figure", default_name,
-            "PNG Files (*.png);;PDF Files (*.pdf);;SVG Files (*.svg);;TIFF Files (*.tiff);;All Files (*)"
-        )
-        if not file_path:
-            return
-
-        if '.' not in file_path.split('/')[-1].split('\\')[-1]:
-            file_path += '.png'
-
-        fmt = file_path.rsplit('.', 1)[-1].lower()
-        supported = self.figure.canvas.get_supported_filetypes()
-        if fmt not in supported:
-            QMessageBox.warning(
-                self, "Unsupported Format",
-                f"The format '.{fmt}' is not supported.\n"
-                f"Supported: {', '.join(sorted(supported.keys()))}"
-            )
-            return
-
-        try:
-            if fmt in ('png', 'tiff', 'tif', 'jpg', 'jpeg'):
-                self.figure.savefig(file_path, dpi=300, bbox_inches='tight')
-            else:
-                self.figure.savefig(file_path, bbox_inches='tight')
-            QMessageBox.information(self, "Saved", f"Figure saved:\n{file_path}")
-        except Exception as e:
-            QMessageBox.critical(self, "Save Error", f"Failed to save figure:\n{str(e)}")
+    # ── Export ────────────────────────────────────────────────────────────
 
     def _export_data(self):
         from PyQt6.QtWidgets import QFileDialog
