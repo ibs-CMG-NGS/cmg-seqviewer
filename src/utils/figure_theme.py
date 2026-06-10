@@ -36,7 +36,7 @@ _BASE = {
 THEMES = {
     'Journal (sans)': {
         **_BASE,
-        'font.family': ['Arial', 'Helvetica', 'DejaVu Sans'],
+        'font.family': ['Arial', 'DejaVu Sans'],
     },
     'Journal (serif)': {
         **_BASE,
@@ -51,7 +51,7 @@ THEMES = {
         'ytick.labelsize': 11,
         'legend.fontsize': 11,
         'axes.linewidth': 1.2,
-        'font.family': ['Arial', 'Helvetica', 'DejaVu Sans'],
+        'font.family': ['Arial', 'DejaVu Sans'],
     },
 }
 DEFAULT_THEME = 'Journal (sans)'
@@ -72,7 +72,7 @@ CUSTOM_DEFAULTS = {
     'spine_top':    False,   # False = top spine 숨김
     'spine_right':  False,   # False = right spine 숨김
     'grid':         False,
-    'font_family':  'Arial, Helvetica, DejaVu Sans',
+    'font_family':  'Arial, DejaVu Sans',
 }
 
 

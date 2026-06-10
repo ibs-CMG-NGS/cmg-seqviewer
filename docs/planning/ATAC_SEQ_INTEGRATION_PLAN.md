@@ -5,8 +5,12 @@
 | Phase | 내용 | 상태 | 버전 |
 |-------|------|------|------|
 | **Phase 1** | ATAC-seq Standalone Analysis | ✅ **완료** | v1.2.0 (2026-04-30) |
-| **Phase 2** | Multi-Omics Integration (RNA + ATAC) | ⏳ **미구현** | — |
-| **Phase 3+** | 고급 기능 (Motif, ChIP-seq, ML) | 🔮 **장기 계획** | — |
+| **Phase 2** | Multi-Omics Integration (RNA + ATAC) | ✅ **완료** | v1.2.1 (2026-05-31) |
+| **Phase 3A** | TF Motif Enrichment Import & 시각화 | ✅ **완료** | v1.2.2 (2026-06-08) |
+| **Phase 3B** | TF Footprinting (TOBIAS BINDetect) | ✅ **완료** | v1.2.2 (2026-06-08) |
+| **Phase 3C** | chromVAR Differential TF Activity | ✅ **완료** | v1.2.2 (2026-06-09) |
+| **Phase 3D** | Peak-Gene 발현 상관관계 (샘플별) | 🔮 **장기 계획** | — |
+| **Phase 4** | Chromatin State / ChIP-seq / Hi-C | 🔮 **장기 계획** | — |
 
 ---
 
@@ -222,11 +226,10 @@ ATAC-seq import 분기:
 
 ---
 
-# ⏳ Phase 2: Multi-Omics Integration — 미구현
+# ✅ Phase 2: Multi-Omics Integration — 완료 (v1.2.1)
 
+**완료일:** 2026-05-31  
 **목표:** RNA-seq와 ATAC-seq 데이터를 유전자 수준에서 통합하여 concordance/discordance 분석
-
-**예상 규모:** 5–7일
 
 ---
 
@@ -436,70 +439,562 @@ Visualization Menu (multi-omics 탭 활성 시):
 
 ---
 
-# 🔮 Phase 3+: 장기 계획
+# ✅ Phase 3A: TF Motif Enrichment Import & 시각화 — 완료 (v1.2.2)
 
-## Phase 3: 고급 ATAC-seq 기능
+**완료일:** 2026-06-08
 
-- **Motif Enrichment 통합**: HOMER/MEME 결과 import, TF binding site 시각화
-- **TF Footprinting**: Aggregate footprint 시각화
-- **Chromatin State Annotation**: ChromHMM / Roadmap Epigenomics 연동
+## 배경 및 목적
 
-## Phase 4: 추가 Omics 타입
+Phase 2까지의 gene-level concordance는 "chromatin이 열렸다"는 것을 확인하는 데 그치고,
+**왜 열렸는가 (어떤 TF가 작동했는가)** 를 설명하지 못한다.
+고영향 저널 리뷰에서 TF motif 분석은 거의 필수적으로 요구된다.
 
-- **ChIP-seq**: H3K27ac, H3K4me3, H3K27me3 통합
-- **CUT&RUN / CUT&Tag**: TF binding sites
-- **Hi-C**: Enhancer-gene linking 검증
-
-## Phase 5: Machine Learning
-
-- RNA 발현을 ATAC 접근성으로 예측
-- Multi-omics clustering
-- 조절 모듈 발견
+외부 분석 툴(HOMER, MEME-Suite)의 결과 파일을 import·시각화하는 방식으로 이 격차를 좁힌다.
+분석 자체는 외부 툴에 위임하고, CMG-SeqViewer는 결과 통합 시각화에 집중한다.
 
 ---
 
+## 3A.1 필요 입력 파일 및 준비 방법
+
+### [현재 지원 중] DA Peak 파일
+
+DESeq2 기반 ATAC-seq DA 분석 결과 (이미 지원).
+
+```r
+# R에서 생성
+library(DESeq2)
+results_df <- as.data.frame(results(dds))
+results_df$annotation      <- peak_anno@anno$annotation
+results_df$distance_to_tss <- peak_anno@anno$distanceToTSS
+results_df$nearest_gene    <- peak_anno@anno$SYMBOL
+write.xlsx(results_df, "final_da_result.xlsx", sheetName="DA_Results")
+```
+
+**필수 컬럼:** `chr`, `start`, `end`, `nearest_gene`, `annotation`, `distanceTSS`, `log2FoldChange`, `padj`, `baseMean`
+
 ---
 
-## Technical Architecture: 현재 상태 (v1.2.1)
+### [Phase 3A 신규] HOMER knownResults.txt
+
+**생성 파이프라인:**
+```bash
+# 1. DA peak 결과에서 UP/DOWN 분리 → BED 파일 생성
+awk 'NR>1 && $13=="UP"   {print $3"\t"$4"\t"$5"\t"$1"\t.\t."}' da_result.txt > up_peaks.bed
+awk 'NR>1 && $13=="DOWN" {print $3"\t"$4"\t"$5"\t"$1"\t.\t."}' da_result.txt > down_peaks.bed
+awk 'NR>1               {print $3"\t"$4"\t"$5"\t"$1"\t.\t."}' da_result.txt > all_peaks.bed
+
+# 2. HOMER motif 분석 실행
+#   -size given : BED 파일 크기 그대로 사용
+#   -mask       : repeat mask 적용
+#   -bg         : background peaks 지정 (없으면 HOMER 자동 생성)
+findMotifsGenome.pl up_peaks.bed   hg38 homer_up_results/   -size given -mask -bg all_peaks.bed
+findMotifsGenome.pl down_peaks.bed hg38 homer_down_results/ -size given -mask -bg all_peaks.bed
+```
+
+**CMG-SeqViewer에 제공할 파일:** `homer_up_results/knownResults.txt`
+
+**파일 형식 (탭 구분):**
+```
+Motif Name	Consensus	P-value	Log P-value	q-value(Benjamini)	# of Target Sequences with Motif(of 1523 Total)	% of Targets Sequences with Motif	# of Background Sequences with Motif(of 10000 Total)	% of Background Sequences with Motif
+IRF1(IRF)/HepG2-IRF1-ChIP-Seq(GSE51800)/Homer	AAASYGAAASY	1e-91	-2.099e+02	1e-87	771(of 1523)	50.62%	501(of 10000)	5.01%
+```
+
+**컬럼 매핑:**
+
+| 원본 컬럼 | 표준 내부명 | 설명 |
+|---|---|---|
+| `Motif Name` | `motif_name` | TF 이름 + 데이터베이스 정보 |
+| `Consensus` | `consensus` | 컨센서스 서열 |
+| `P-value` | `motif_pvalue` | enrichment p-value |
+| `q-value(Benjamini)` | `motif_qvalue` | FDR-adjusted p-value |
+| `% of Targets Sequences with Motif` | `target_pct` | foreground 발견 비율 (%) |
+| `% of Background Sequences with Motif` | `bg_pct` | background 발견 비율 (%) |
+
+**파싱 특이사항:**
+- `"771(of 1523)"` 형식 → 정수 추출
+- `"50.62%"` 형식 → float 변환
+- `Motif Name`에서 TF 이름 추출: 첫 번째 `(` 앞 문자열
+
+---
+
+### [Phase 3A 신규] MEME-Suite AME ame.tsv (HOMER 대안)
+
+**생성 파이프라인:**
+```bash
+# 1. BED → FASTA 변환
+bedtools getfasta -fi genome.fa -bed up_peaks.bed -fo up_peaks.fa
+
+# 2. AME 실행
+ame --control all_peaks.fa --oc ame_up_results/ up_peaks.fa JASPAR2020_CORE_vertebrates.meme
+```
+
+**CMG-SeqViewer에 제공할 파일:** `ame_up_results/ame.tsv`
+
+**파일 형식 (탭 구분, `#` 시작 행은 주석):**
+```
+# AME (Analysis of Motif Enrichment)
+rank	motif_db	motif_id	motif_alt_id	consensus	p-value	adj_p-value	...
+1	JASPAR2020_CORE.meme	MA0002.1	RUNX1	TGYGGT	1.12e-157	2.79e-153	...
+```
+
+**컬럼 매핑:**
+
+| 원본 컬럼 | 표준 내부명 |
+|---|---|
+| `motif_alt_id` | `motif_name` |
+| `motif_id` | `motif_id` |
+| `consensus` | `consensus` |
+| `p-value` | `motif_pvalue` |
+| `adj_p-value` | `motif_qvalue` |
+
+---
+
+### 필요 데이터 요약
+
+| Phase | 파일 | 생성 방법 | 준비 난이도 |
+|-------|------|-----------|-------------|
+| 현재 | `final_da_result.xlsx` | DESeq2 + ChIPseeker (R) | 이미 보유 |
+| 3A | `homer_up_results/knownResults.txt` | HOMER CLI | ★★☆ |
+| 3A | `homer_down_results/knownResults.txt` | HOMER CLI | ★★☆ |
+| 3A (대안) | `ame_up_results/ame.tsv` | MEME-Suite CLI | ★★☆ |
+| 3B (예정) | `BINDetect_results/bindetect_results.txt` | TOBIAS pipeline | ★★★ |
+| 3C (장기) | `peak_counts_matrix.txt` | featureCounts | ★★☆ |
+
+---
+
+## 3A.2 구현된 내용
+
+### 새로 추가된 파일
+
+**`src/utils/motif_loader.py`**
+- `MotifLoader.load(path, name)` — HOMER / AME 자동 감지 + 파싱
+- `is_motif_file(path)` — 파일명/내용 헤더로 motif 파일 판별
+- `_parse_homer()` — `knownResults.txt` 파싱, `%`·`(of N)` 형식 변환
+- `_parse_ame()` — `#` 주석 제거, 동적 헤더 파싱
+- `_extract_tf_name()` — `"IRF1(IRF)/HepG2.../Homer"` → `"IRF1"`
+- `-log10(p)` 자동 계산 (HOMER `Log P-value` 절댓값 또는 p-value로 계산)
+
+**`src/gui/motif_enrichment_dialog.py`**
+- `MotifEnrichmentDialog(dataset, dataset_down=None)`
+- 단일 모드: 가로 막대 그래프, -log10(p) 기준 상위 N개 TF
+- 비교 모드: UP / DOWN 두 결과 나란히 서브플롯
+- 컨트롤: Top N (5–100), Q-value cutoff, % 오버레이 옵션
+- Export Data 버튼 → Excel (시트별) 또는 CSV
+- `BasePlotDialog` 상속 → 기존 테마/export 인프라 재사용
+
+### 수정된 파일
+
+**`src/models/standard_columns.py`** — `MotifColumns` 추가:
+```python
+MOTIF_NAME     = 'motif_name'
+MOTIF_ID       = 'motif_id'
+CONSENSUS      = 'consensus'
+MOTIF_PVALUE   = 'motif_pvalue'
+MOTIF_QVALUE   = 'motif_qvalue'
+MOTIF_LOG_PVALUE = 'log_pvalue'
+TARGET_PCT     = 'target_pct'
+BG_PCT         = 'bg_pct'
+TARGET_COUNT   = 'target_count'
+BG_COUNT       = 'bg_count'
+
+get_motif_required() → [motif_name, motif_pvalue]
+get_motif_all()      → 전체 10개 컬럼
+```
+
+**`src/models/data_models.py`** — `DatasetType.MOTIF_ENRICHMENT = "motif_enrichment"` 추가
+
+**`src/presenters/main_presenter.py`** — `.txt`/`.tsv` 확장자를 `MotifLoader.is_motif_file()`으로 먼저 감지
+
+**`src/utils/data_loader.py`** — `MOTIF_ENRICHMENT` 타입은 `MotifLoader`로 위임
+
+**`src/gui/main_window.py`**:
+- File 메뉴: `Open TF Motif Results...` (.txt / .tsv)
+- Visualization 메뉴: `TF Motif Enrichment Plot` (MOTIF_ENRICHMENT 탭 활성 시 enable)
+- `_on_open_motif_results()` — 파일 열기 핸들러
+- `_on_motif_enrichment_requested()` — 두 번째 motif 데이터셋 선택 후 비교 모드 지원
+- `_update_atac_ui()` — `is_motif` 조건 추가
+
+---
+
+## 3A.3 사용 흐름
 
 ```
-CMG-SeqViewer (v1.2.1)
+1. HOMER 또는 AME 실행 (외부 파이프라인)
+   ↓
+2. File → Open TF Motif Results...
+   → knownResults.txt 또는 ame.tsv 선택
+   ↓
+3. Dataset Tree에 MOTIF_ENRICHMENT 타입으로 추가
+   ↓
+4. 해당 탭 선택 → Visualization → TF Motif Enrichment Plot
+   ↓
+5. [선택] 두 번째 motif 데이터셋(예: DOWN peaks)이 있으면 비교 모드 제안
+   ↓
+6. 막대 그래프: 상위 N TF, -log10(p-value) 기준 정렬
+   UP (Red) / DOWN (Blue) 나란히 비교 가능
+```
+
+---
+
+## Phase 3A 체크리스트
+
+- [x] `DatasetType.MOTIF_ENRICHMENT` 추가
+- [x] `MotifColumns` (standard_columns.py)
+- [x] `MotifLoader` — HOMER / AME 자동 파싱
+- [x] `MotifEnrichmentDialog` — 단일/비교 막대 그래프
+- [x] `BasePlotDialog` 상속 (테마·export 재사용)
+- [x] File 메뉴 `Open TF Motif Results...`
+- [x] Visualization 메뉴 `TF Motif Enrichment Plot`
+- [x] `.txt`/`.tsv` 파일 라우팅 (presenter)
+- [ ] Project save/load에서 MOTIF_ENRICHMENT 타입 복원 검증
+- [ ] Unit tests for MotifLoader
+
+---
+
+---
+
+# ✅ Phase 3B: TF Footprinting (TOBIAS BINDetect) — 완료 (v1.2.2)
+
+**완료일:** 2026-06-08
+
+**목적:** TOBIAS BINDetect 결과로 조건 간 TF 결합 활성 변화를 시각화.
+Phase 3A가 "어떤 모티프가 enriched되어 있는가"를 보여준다면,
+Phase 3B는 "그 모티프에 실제로 TF가 결합하고 있는가"를 footprint score로 보여준다.
+
+---
+
+## 3B.1 필요 입력 파일 및 준비 방법
+
+**생성 파이프라인 (BAM 파일 필요):**
+```bash
+# 조건 예시: Acute_1D vs Control
+
+# Step 1: ATACorrect — Tn5 insertion bias 보정
+TOBIAS ATACorrect --bam Acute_1D.bam --genome hg38.fa \
+    --peaks all_peaks.bed --outdir ATACorrect_Acute_1D/
+TOBIAS ATACorrect --bam Control.bam --genome hg38.fa \
+    --peaks all_peaks.bed --outdir ATACorrect_Control/
+
+# Step 2: ScoreBigwig — footprint score 계산
+TOBIAS ScoreBigwig \
+    --signal ATACorrect_Acute_1D/Acute_1D_corrected.bw \
+    --regions all_peaks.bed --output Acute_1D_footprints.bw
+TOBIAS ScoreBigwig \
+    --signal ATACorrect_Control/Control_corrected.bw \
+    --regions all_peaks.bed --output Control_footprints.bw
+
+# Step 3: BINDetect — 조건 간 TF 결합 변화
+#   --cond-names 에 지정한 이름이 결과 컬럼명에 반영됨
+TOBIAS BINDetect \
+    --motifs JASPAR2020_CORE_vertebrates.jaspar \
+    --signals Acute_1D_footprints.bw Control_footprints.bw \
+    --genome hg38.fa --peaks all_peaks.bed \
+    --outdir BINDetect_results/ \
+    --cond-names Acute_1D Control
+```
+
+**CMG-SeqViewer에 제공할 파일:** `BINDetect_results/bindetect_results.txt`
+
+**파일 형식 — 조건명이 컬럼명에 포함됨 (동적):**
+```
+output_prefix	name	motif_file	Acute_1D_mean_score	Acute_1D_bound	Control_mean_score	Control_bound	Acute_1D_Control_change	Acute_1D_Control_pvalue
+MA0002.1_RUNX1	RUNX1	JASPAR/MA0002.1.jaspar	0.3241	1823	0.1893	1102	0.1348	2.3e-12
+```
+
+**⚠️ 파싱 주의:** `{cond1}_mean_score` 등 컬럼명이 조건명에 따라 달라짐.
+로더에서 헤더를 읽어 `_mean_score`, `_bound`, `_change`, `_pvalue` 접미사로 조건명 동적 감지 필요.
+
+**컬럼 매핑 (동적):**
+
+| 원본 패턴 | 표준 내부명 | 의미 |
+|---|---|---|
+| `name` | `motif_name` | TF 이름 |
+| `{cond1}_mean_score` | `cond1_score` | cond1 footprint 점수 |
+| `{cond2}_mean_score` | `cond2_score` | cond2 footprint 점수 |
+| `{cond1}_{cond2}_change` | `footprint_change` | 결합 변화량 (양수=cond1 증가) |
+| `{cond1}_{cond2}_pvalue` | `footprint_pvalue` | 유의성 |
+| `{cond1}_bound` | `cond1_bound` | cond1 결합 site 수 |
+| `{cond2}_bound` | `cond2_bound` | cond2 결합 site 수 |
+
+---
+
+## 3B.2 구현된 내용
+
+**새로 추가된 파일:**
+
+**`src/utils/footprint_loader.py`**
+- `FootprintLoader.load(path, name)` — bindetect_results.txt 파싱
+- `is_footprint_file(path)` — 파일명(`bindetect_results`) 또는 헤더(`_mean_score` + `_change`) 패턴으로 감지
+- `_detect_conditions(columns)` — `{cond}_mean_score` 컬럼에서 조건명 2개 자동 추출
+  - `_mean_score` 접미사 컬럼 목록으로 감지 후 `_change` 컬럼으로 순서 검증
+- 표준 컬럼명 매핑 (`cond1_score`, `cond2_score`, `footprint_change`, `footprint_pvalue` 등)
+- `dataset.metadata['cond1_name']`, `['cond2_name']`에 조건명 저장
+
+**`src/gui/tf_footprint_dialog.py`**
+- `TFFootprintDialog(dataset)` — TF Activity Scatter Plot
+- X축 = cond1 mean score, Y축 = cond2 mean score
+- 점 분류: `gain` (cond1 활성화, Red), `loss` (cond2 활성화, Blue), `ns` (Gray)
+- 분류 기준: p-value cutoff + |change| 최솟값 (모두 UI에서 조절)
+- 유의미 TF 상위 N개 라벨 자동 표시 (|change| 기준)
+- 대각선 y=x 표시 옵션
+- Export: 조건명을 원래 컬럼명으로 복원하여 내보내기
+- `BasePlotDialog` 상속
+
+**수정된 파일:**
+- `src/models/data_models.py` — `DatasetType.TF_FOOTPRINT = "tf_footprint"` 추가
+- `src/models/standard_columns.py` — `FootprintColumns` 추가 (11개 상수)
+- `src/presenters/main_presenter.py` — `.txt` 파일에서 footprint 감지를 motif 감지보다 먼저 시도
+- `src/gui/main_window.py`:
+  - File 메뉴: `Open TF Footprint Results...`
+  - Visualization 메뉴: `TF Activity Plot (Footprint)` (TF_FOOTPRINT 탭 활성 시 enable)
+  - `_on_open_footprint_results()` — 파일 열기 핸들러
+  - `_on_tf_footprint_requested()` — 시각화 핸들러
+  - `_update_atac_ui()` — `is_footprint` 조건 추가
+
+---
+
+## 3B.3 사용 흐름
+
+```
+1. TOBIAS 3단계 파이프라인 실행 (외부)
+   ATACorrect → ScoreBigwig → BINDetect
+   ↓
+2. File → Open TF Footprint Results...
+   → bindetect_results.txt 선택
+   ↓
+3. Dataset Tree에 TF_FOOTPRINT 탭 추가
+   (조건명 자동 감지: Acute_1D vs Control 등)
+   ↓
+4. Visualization → TF Activity Plot (Footprint)
+   ↓
+5. Scatter Plot:
+   - X축 = cond1 mean score
+   - Y축 = cond2 mean score
+   - Red = cond1에서 더 활성화된 TF
+   - Blue = cond2에서 더 활성화된 TF
+   ↓
+6. Export Data → 원래 조건명 컬럼으로 복원하여 Excel 저장
+```
+
+---
+
+## Phase 3B 체크리스트
+
+- [x] `DatasetType.TF_FOOTPRINT` 추가
+- [x] `FootprintColumns` (standard_columns.py)
+- [x] `FootprintLoader` — TOBIAS BINDetect 동적 컬럼 파싱
+- [x] `TFFootprintDialog` — TF Activity Scatter Plot
+- [x] File 메뉴 `Open TF Footprint Results...`
+- [x] Visualization 메뉴 `TF Activity Plot (Footprint)`
+- [x] `.txt` 파일에서 footprint 파일 감지 (motif보다 우선)
+- [ ] Unit tests for FootprintLoader (조건명 동적 감지 케이스)
+
+---
+
+---
+
+# ✅ Phase 3C: chromVAR Differential TF Activity — 완료 (v1.2.2)
+
+**완료일:** 2026-06-09
+
+## 배경
+
+HOMER/TOBIAS 결과가 없고, 실제 파이프라인에서 chromVAR를 사용하는 경우를 위한 지원.
+chromVAR는 전체 peak matrix에서 TF motif-weighted accessibility z-score를 계산하므로
+DA peak 수가 적어도 안정적인 결과를 제공한다는 장점이 있다.
+
+**실제 사용 데이터:**
+- `chromvar/differential_tf/*_diff_tf.csv` — 비교군별 TF activity
+- `seqviewer/datasets/*_chromVAR_DiffTF.parquet` — seqviewer용 변환 파일
+- `chromvar/tf_variability.csv` — TF 이름 조회 참조 테이블
+
+---
+
+## 3C.1 입력 파일 형식
+
+### diff_tf CSV (chromVAR R 패키지 출력)
+```
+motif,       mean_compare, mean_base, delta,   p_value, padj
+MA0006.1,    -0.745,       0.188,     -0.933,  0.081,   0.255
+```
+
+### seqviewer parquet (파이프라인 사전 변환)
+```
+tf_name,   mean_zscore_compare, mean_zscore_base, delta_zscore, p_value, padj
+MA0006.1,  -0.745,              0.188,            -0.933,       0.081,   0.255
+```
+
+**⚠️ 주의:** `tf_name`/`motif` 컬럼은 실제로 JASPAR ID (MA0006.1)이며, 
+TF 이름(Ahr::Arnt 등)은 `tf_variability.csv`의 `name` 컬럼에서 조인한다.
+
+### tf_variability.csv (TF 이름 참조)
+```
+motif,    name,    variability, p_value, p_value_adj
+MA0470.2, E2F4,    1.86,        0.000011, 0.00817
+```
+
+---
+
+## 3C.2 구현된 내용
+
+**`src/utils/chromvar_loader.py`**
+- CSV (diff_tf) 및 Parquet (chromVAR_DiffTF) 자동 감지·파싱
+- `is_chromvar_file()` — 파일명(`diff_tf`, `chromvar`) 또는 헤더(`motif`+`delta`+`padj`) 패턴으로 감지
+- `_find_variability_file()` — 동일 디렉토리 또는 최대 3단계 상위에서 `tf_variability.csv` 자동 탐색
+- `_join_tf_names()` — JASPAR ID → TF 이름 조인 (미발견 시 ID 그대로 사용)
+- `-log10(padj)` 자동 계산 컬럼 추가
+
+**`src/gui/chromvar_dialog.py`**
+- `ChromVARDialog(dataset, extra_datasets=None)` — 세 가지 시각화 모드:
+  - **Volcano**: X=delta z-score, Y=-log10(padj), 임계선 표시, 상위 N TF 라벨
+  - **Scatter**: X=base z-score, Y=compare z-score, 대각선(y=x) 기준 위/아래로 분류
+  - **Multi-condition Heatmap**: 여러 CHROMVAR_DIFF_TF 데이터셋 동시 로드 시 TF × condition delta matrix
+- padj / |delta| / top N label 컨트롤
+- Export: 조건별 Excel 시트
+
+**컬럼 표준화:**
+```python
+CHROMVAR_MOTIF_ID    = 'chromvar_motif_id'
+CHROMVAR_TF_NAME     = 'chromvar_tf_name'
+CHROMVAR_MEAN_COMPARE = 'chromvar_mean_compare'
+CHROMVAR_MEAN_BASE   = 'chromvar_mean_base'
+CHROMVAR_DELTA       = 'chromvar_delta'
+CHROMVAR_PVALUE      = 'chromvar_pvalue'
+CHROMVAR_PADJ        = 'chromvar_padj'
+```
+
+**수정된 파일:**
+- `src/models/data_models.py` — `DatasetType.CHROMVAR_DIFF_TF` 추가
+- `src/models/standard_columns.py` — `ChromVARColumns` 추가
+- `src/presenters/main_presenter.py` — CSV/Parquet 에서 chromVAR 감지 (ATAC-seq 감지보다 먼저)
+- `src/gui/main_window.py` — File 메뉴 `Open chromVAR Results...`, Visualization 메뉴 `chromVAR TF Activity Plot`
+
+---
+
+## 3C.3 사용 흐름
+
+```
+File → Open chromVAR Results...
+  → *_diff_tf.csv 또는 *_chromVAR_DiffTF.parquet 선택
+  ↓
+같은 디렉토리에서 tf_variability.csv 자동 탐색 → TF 이름 조인
+  ↓
+Dataset Tree에 CHROMVAR_DIFF_TF 탭 추가
+  ↓
+여러 비교군(Acute_1D, Acute_3D, Chronic_100uM, Chronic_200uM) 모두 로드
+  ↓
+Visualization → chromVAR TF Activity Plot
+  → View: Multi-condition Heatmap 선택
+  → 4개 조건의 TF activity 변화를 한 화면에서 확인
+```
+
+---
+
+## Phase 3C 체크리스트
+
+- [x] `DatasetType.CHROMVAR_DIFF_TF` 추가
+- [x] `ChromVARColumns` (standard_columns.py)
+- [x] `ChromVARLoader` — CSV/parquet + TF 이름 자동 조인
+- [x] `ChromVARDialog` — Volcano / Scatter / Multi-condition Heatmap
+- [x] File 메뉴 `Open chromVAR Results...`
+- [x] Visualization 메뉴 `chromVAR TF Activity Plot`
+- [x] CSV/Parquet 라우팅 (presenter)
+- [x] 실제 데이터(4개 비교군) 로딩 검증
+
+---
+
+---
+
+# 🔮 Phase 3D: Peak-Gene 발현 상관관계 (장기 계획)
+
+**전제조건:** ≥3 샘플 쌍(RNA + ATAC)이 있어야 통계적 의미가 있음.
+샘플 수가 충분하지 않으면 통계적으로 의미 없음 → 현재 구현 우선순위 낮음.
+
+**필요 추가 입력:**
+- 샘플별 peak accessibility count matrix (행=peak, 열=sample)
+- 샘플별 gene expression count matrix (행=gene, 열=sample)
+
+```bash
+# featureCounts로 샘플별 peak count matrix 생성
+awk 'BEGIN{print "GeneID\tChr\tStart\tEnd\tStrand"}
+     NR>1{print $1"\t"$2"\t"$3"\t"$4"\t."}' all_peaks.bed > peaks.saf
+featureCounts -F SAF -a peaks.saf -o peak_counts.txt sample1.bam sample2.bam ...
+```
+
+**분석 로직:**
+1. Peak ↔ gene 후보 쌍 생성 (gene ± 200kb 이내 peak)
+2. 샘플 간 Pearson/Spearman 상관계수 계산
+3. 유의미한 상관 쌍만 "linked" 표시
+
+**→ v2.0 이후 검토**
+
+---
+
+---
+
+# 🔮 Phase 4: 추가 Omics 타입
+
+- **ChromHMM**: DA peak에 chromatin state 어노테이션 오버레이
+  - 공개 ENCODE/Roadmap BED 파일 import
+  - 현재 `annotation` 컬럼 보완 (Enhancer/Bivalent/Polycomb 분류)
+  - 예상 공수: 1–2일
+- **ChIP-seq**: H3K27ac, H3K4me3, H3K27me3 통합
+- **CUT&RUN / CUT&Tag**: TF binding sites
+- **Hi-C**: Enhancer-gene linking 검증 (ABC model 연동)
+
+---
+
+---
+
+## Technical Architecture: 현재 상태 (v1.2.2)
+
+```
+CMG-SeqViewer (v1.2.2)
 ├── DatasetType
 │   ├── DIFFERENTIAL_EXPRESSION    ✅
 │   ├── GO_ANALYSIS                ✅
 │   ├── MULTI_GROUP                ✅
-│   ├── ATAC_SEQ                   ✅ (Phase 1 완료)
-│   └── MULTI_OMICS                ✅ (Phase 2 완료, 2026-05-31)
+│   ├── ATAC_SEQ                   ✅ (Phase 1, v1.2.0)
+│   ├── MULTI_OMICS                ✅ (Phase 2, v1.2.1)
+│   ├── MOTIF_ENRICHMENT           ✅ (Phase 3A, v1.2.2)
+│   ├── TF_FOOTPRINT               ✅ (Phase 3B, v1.2.2)
+│   └── CHROMVAR_DIFF_TF           ✅ (Phase 3C, v1.2.2)
 ├── DataLoader
-│   ├── RNA-seq (Excel, CSV, Parquet)  ✅
-│   ├── GO/KEGG                        ✅
-│   ├── Multi-Group                    ✅
-│   └── ATAC-seq (Excel, Parquet)      ✅
+│   ├── RNA-seq (Excel, CSV, Parquet)   ✅
+│   ├── GO/KEGG                         ✅
+│   ├── Multi-Group                     ✅
+│   ├── ATAC-seq (Excel, Parquet)       ✅
+│   ├── Motif Enrichment (.txt, .tsv)   ✅ (HOMER / AME 자동 감지)
+│   ├── TF Footprint (.txt)             ✅ (TOBIAS BINDetect 동적 컬럼)
+│   └── chromVAR DiffTF (.csv, .parquet) ✅ (TF name 자동 조인)
 ├── FilterPanel
-│   ├── DE filters (log2FC, padj)      ✅
-│   ├── GO filters (FDR, FE, ontology) ✅
-│   └── ATAC filters (annotation, TSS, width)  ✅
+│   ├── DE filters (log2FC, padj)               ✅
+│   ├── GO filters (FDR, FE, ontology)          ✅
+│   └── ATAC filters (annotation, TSS, width)   ✅
 ├── Visualization
-│   ├── Volcano Plot (RNA + ATAC)      ✅
-│   ├── MA Plot (ATAC)                 ✅
-│   ├── Heatmap                        ✅
-│   ├── GO Dot Plot / Network          ✅
-│   ├── Venn Diagram                   ✅
-│   ├── Genomic Distribution           ✅
-│   └── TSS Distance Plot              ✅
-├── MultiOmicsPanel                    ✅ Phase 2 완료
-│   ├── Dataset pairing (RNA + ATAC)   ✅
-│   ├── Integration method             ✅ (nearest_gene / promoter_only)
-│   ├── Concordance analysis           ✅ (7-category)
-│   ├── Quadrant Plot                  ✅
-│   ├── Concordance Heatmap            ✅
-│   ├── Concordance Summary            ✅
-│   ├── Integrated Volcano             ✅
-│   └── Multi-sheet Excel export       ✅
+│   ├── Volcano Plot (RNA + ATAC)       ✅
+│   ├── MA Plot (ATAC)                  ✅
+│   ├── Heatmap                         ✅
+│   ├── GO Dot Plot / Network           ✅
+│   ├── Venn Diagram                    ✅
+│   ├── Genomic Distribution            ✅
+│   ├── TSS Distance Plot               ✅
+│   ├── TF Motif Enrichment Plot        ✅ (Phase 3A — HOMER / AME)
+│   ├── TF Activity Plot (Footprint)    ✅ (Phase 3B — TOBIAS BINDetect)
+│   └── chromVAR TF Activity Plot       ✅ (Phase 3C — Volcano/Scatter/Heatmap)
+├── MultiOmicsPanel                     ✅ Phase 2 완료
+│   ├── Dataset pairing (RNA + ATAC)    ✅
+│   ├── Integration method              ✅ (nearest_gene / promoter_only)
+│   ├── Concordance analysis            ✅ (7-category)
+│   ├── Quadrant Plot                   ✅
+│   ├── Concordance Heatmap             ✅
+│   ├── Concordance Summary             ✅
+│   ├── Integrated Volcano              ✅
+│   └── Multi-sheet Excel export        ✅
 └── DatabaseManager
-    ├── RNA-seq datasets               ✅
-    ├── ATAC-seq datasets              ✅
-    └── Multi-omics pairs              ⏳ Phase 2 잔여
+    ├── RNA-seq datasets                ✅
+    ├── ATAC-seq datasets               ✅
+    └── Multi-omics pairs               ⏳ Phase 2 잔여
 ```
 
 ---
@@ -528,9 +1023,27 @@ CMG-SeqViewer (v1.2.1)
 
 ---
 
+## Use Case Scenarios (업데이트)
+
+### Scenario 3: TF Motif Enrichment 분석 ✅ 현재 가능
+
+1. 외부에서 HOMER / AME 실행 → `knownResults.txt` 또는 `ame.tsv` 생성
+2. `File → Open TF Motif Results...` → 파일 선택
+3. Dataset Tree에 MOTIF_ENRICHMENT 탭 추가
+4. `Visualization → TF Motif Enrichment Plot`
+5. 두 번째 motif 파일(예: DOWN peaks)이 있으면 비교 모드 선택
+6. TOP N TF를 -log10(p-value) 기준 가로 막대 그래프로 확인
+7. `Export Data` → Excel로 결과 내보내기
+
+---
+
 ## Document History
 
 | Version | Date | 변경 사항 |
 |---------|------|----------|
 | 1.0 | 2026-02-28 | 초기 계획 작성 |
 | 2.0 | 2026-04-30 | Phase 1 완료 반영; 계획과 구현 차이 명시; Phase 2 상세화 |
+| 3.0 | 2026-05-31 | Phase 2 완료 반영 |
+| 4.0 | 2026-06-08 | Phase 3A 완료 반영; Phase 3B·3C·4 상세화; 파이프라인 데이터 형식 문서화 |
+| 5.0 | 2026-06-08 | Phase 3B 완료 반영 (TOBIAS BINDetect 로더 + TF Activity Scatter Plot) |
+| 6.0 | 2026-06-09 | Phase 3C 완료 반영 (chromVAR 로더 + Volcano/Scatter/Heatmap); Phase 3C→3D 재번호 |

@@ -18,6 +18,9 @@ class DatasetType(Enum):
     MULTI_GROUP = "multi_group"
     ATAC_SEQ = "atac_seq"
     MULTI_OMICS = "multi_omics"
+    MOTIF_ENRICHMENT = "motif_enrichment"
+    TF_FOOTPRINT = "tf_footprint"
+    CHROMVAR_DIFF_TF = "chromvar_diff_tf"
     UNKNOWN = "unknown"
 
 

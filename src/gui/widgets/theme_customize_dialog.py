@@ -63,7 +63,7 @@ class ThemeCustomizeDialog(QDialog):
         font_fam_layout = QVBoxLayout(font_fam_group)
         self.font_family = QLineEdit(params['font_family'])
         font_fam_layout.addWidget(self.font_family)
-        font_fam_layout.addWidget(QLabel("e.g.  Arial, Helvetica, DejaVu Sans"))
+        font_fam_layout.addWidget(QLabel("e.g.  Arial, DejaVu Sans"))
         layout.addWidget(font_fam_group)
 
         # ── Buttons ──────────────────────────────────────────

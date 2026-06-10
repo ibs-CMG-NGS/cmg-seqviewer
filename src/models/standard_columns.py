@@ -168,6 +168,80 @@ class StandardColumns:
         """ATAC full 표시 수준: stat + 어노테이션 컬럼"""
         return cls.get_atac_stat() + [cls.LFCSE, cls.ANNOTATION, cls.DISTANCE_TO_TSS, cls.GENE_ID, cls.PEAK_WIDTH]
 
+    # === chromVAR Differential TF Activity 컬럼 ===
+
+    CHROMVAR_MOTIF_ID    = 'chromvar_motif_id'    # JASPAR ID (예: MA0006.1)
+    CHROMVAR_TF_NAME     = 'chromvar_tf_name'     # TF 이름 (예: Ahr::Arnt)
+    CHROMVAR_MEAN_COMPARE = 'chromvar_mean_compare'  # compare 조건 평균 z-score
+    CHROMVAR_MEAN_BASE   = 'chromvar_mean_base'   # base(Control) 평균 z-score
+    CHROMVAR_DELTA       = 'chromvar_delta'       # z-score 차이 (compare - base)
+    CHROMVAR_PVALUE      = 'chromvar_pvalue'      # raw p-value
+    CHROMVAR_PADJ        = 'chromvar_padj'        # adjusted p-value
+
+    @classmethod
+    def get_chromvar_required(cls) -> list[str]:
+        return [cls.CHROMVAR_MOTIF_ID, cls.CHROMVAR_DELTA, cls.CHROMVAR_PADJ]
+
+    @classmethod
+    def get_chromvar_all(cls) -> list[str]:
+        return [
+            cls.CHROMVAR_MOTIF_ID, cls.CHROMVAR_TF_NAME,
+            cls.CHROMVAR_MEAN_COMPARE, cls.CHROMVAR_MEAN_BASE,
+            cls.CHROMVAR_DELTA, cls.CHROMVAR_PVALUE, cls.CHROMVAR_PADJ,
+        ]
+
+    # === TF Footprinting 컬럼 (TOBIAS BINDetect) ===
+
+    FOOTPRINT_MOTIF_NAME = 'fp_motif_name'   # TF 이름
+    FOOTPRINT_MOTIF_ID   = 'fp_motif_id'     # Motif ID (예: MA0002.1_RUNX1)
+    COND1_SCORE          = 'cond1_score'     # cond1 mean footprint score
+    COND2_SCORE          = 'cond2_score'     # cond2 mean footprint score
+    COND1_BOUND          = 'cond1_bound'     # cond1 bound site 수
+    COND2_BOUND          = 'cond2_bound'     # cond2 bound site 수
+    FOOTPRINT_CHANGE     = 'footprint_change'   # cond1 - cond2 change score
+    FOOTPRINT_PVALUE     = 'footprint_pvalue'   # 유의성 p-value
+    COND1_NAME           = 'cond1_name'     # 메타데이터: cond1 이름
+    COND2_NAME           = 'cond2_name'     # 메타데이터: cond2 이름
+
+    @classmethod
+    def get_footprint_required(cls) -> list[str]:
+        return [cls.FOOTPRINT_MOTIF_NAME, cls.COND1_SCORE, cls.COND2_SCORE]
+
+    @classmethod
+    def get_footprint_all(cls) -> list[str]:
+        return [
+            cls.FOOTPRINT_MOTIF_NAME, cls.FOOTPRINT_MOTIF_ID,
+            cls.COND1_SCORE, cls.COND2_SCORE,
+            cls.COND1_BOUND, cls.COND2_BOUND,
+            cls.FOOTPRINT_CHANGE, cls.FOOTPRINT_PVALUE,
+        ]
+
+    # === TF Motif Enrichment 컬럼 (HOMER / MEME-Suite AME) ===
+
+    MOTIF_NAME = 'motif_name'           # TF 이름 (예: IRF1, RUNX1)
+    MOTIF_ID = 'motif_id'               # 데이터베이스 ID (예: MA0002.1)
+    CONSENSUS = 'consensus'             # 컨센서스 서열 (예: TGYGGT)
+    MOTIF_PVALUE = 'motif_pvalue'       # enrichment p-value
+    MOTIF_QVALUE = 'motif_qvalue'       # FDR-adjusted p-value
+    MOTIF_LOG_PVALUE = 'log_pvalue'     # log10(p-value) — HOMER 제공
+    TARGET_PCT = 'target_pct'           # foreground 내 발견 비율 (%)
+    BG_PCT = 'bg_pct'                   # background 내 발견 비율 (%)
+    TARGET_COUNT = 'target_count'       # foreground에서 발견된 peak 수
+    BG_COUNT = 'bg_count'               # background에서 발견된 peak 수
+
+    @classmethod
+    def get_motif_required(cls) -> list[str]:
+        """Motif enrichment 분석에 필수 컬럼"""
+        return [cls.MOTIF_NAME, cls.MOTIF_PVALUE]
+
+    @classmethod
+    def get_motif_all(cls) -> list[str]:
+        return [
+            cls.MOTIF_NAME, cls.MOTIF_ID, cls.CONSENSUS,
+            cls.MOTIF_PVALUE, cls.MOTIF_QVALUE, cls.MOTIF_LOG_PVALUE,
+            cls.TARGET_PCT, cls.BG_PCT, cls.TARGET_COUNT, cls.BG_COUNT,
+        ]
+
     @classmethod
     def is_statistics_column(cls, column_name: str) -> bool:
         """
@@ -221,5 +295,13 @@ class StandardColumns:
             cls.ANNOTATION: 'Annotation',
             cls.DISTANCE_TO_TSS: 'Distance to TSS',
             cls.PEAK_WIDTH: 'Peak Width (bp)',
+            # Motif enrichment
+            cls.MOTIF_NAME: 'TF Name',
+            cls.MOTIF_ID: 'Motif ID',
+            cls.CONSENSUS: 'Consensus',
+            cls.MOTIF_PVALUE: 'P-value',
+            cls.MOTIF_QVALUE: 'Q-value',
+            cls.TARGET_PCT: 'Target %',
+            cls.BG_PCT: 'Background %',
         }
         return display_names.get(column_name, column_name)

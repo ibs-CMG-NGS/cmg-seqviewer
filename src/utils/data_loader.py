@@ -143,6 +143,11 @@ class DataLoader:
                 from utils.atac_seq_loader import ATACSeqLoader
                 return ATACSeqLoader().load(file_path, dataset_name)
 
+            # Motif enrichment 타입은 전용 로더로 위임
+            if dataset_type == DatasetType.MOTIF_ENRICHMENT:
+                from utils.motif_loader import MotifLoader
+                return MotifLoader().load(file_path, dataset_name)
+
             # 컬럼 매핑 (자동 + 사용자 정의)
             auto_mapping = self._map_columns(df, dataset_type)
             self.logger.debug(f"Auto-detected column mapping: {auto_mapping}")  # debug로 변경

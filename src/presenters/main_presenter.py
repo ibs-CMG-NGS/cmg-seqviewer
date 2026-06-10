@@ -127,6 +127,27 @@ class MainPresenter(QObject):
             file_path = Path(file_path)
             suffix = file_path.suffix.lower()
 
+            # ── CSV / Parquet: chromVAR diff TF 감지 ─────────────────────────
+            if suffix in ('.csv', '.parquet'):
+                from utils.chromvar_loader import ChromVARLoader
+                if ChromVARLoader.is_chromvar_file(file_path):
+                    dataset = ChromVARLoader().load(file_path, final_name or file_path.stem)
+                    self._store_and_signal_dataset(dataset, start_time)
+                    return
+
+            # ── TXT / TSV: Motif enrichment 또는 TF Footprint 파일 감지 ────────
+            if suffix in ('.txt', '.tsv'):
+                from utils.footprint_loader import FootprintLoader
+                if FootprintLoader.is_footprint_file(file_path):
+                    dataset = FootprintLoader().load(file_path, final_name or file_path.stem)
+                    self._store_and_signal_dataset(dataset, start_time)
+                    return
+                from utils.motif_loader import MotifLoader
+                if MotifLoader.is_motif_file(file_path):
+                    dataset = MotifLoader().load(file_path, final_name or file_path.stem)
+                    self._store_and_signal_dataset(dataset, start_time)
+                    return
+
             # ── CSV / Parquet: ATAC / MultiGroup 빠른 감지 ───────────────────
             if suffix in ('.csv', '.parquet'):
                 try:

@@ -346,6 +346,18 @@ class MainWindow(QMainWindow):
         self.open_atac_action.triggered.connect(self._on_open_atac_dataset)
         file_menu.addAction(self.open_atac_action)
 
+        self.open_motif_action = QAction("Open TF Motif Results...", self)
+        self.open_motif_action.triggered.connect(self._on_open_motif_results)
+        file_menu.addAction(self.open_motif_action)
+
+        self.open_footprint_action = QAction("Open TF Footprint Results...", self)
+        self.open_footprint_action.triggered.connect(self._on_open_footprint_results)
+        file_menu.addAction(self.open_footprint_action)
+
+        self.open_chromvar_action = QAction("Open chromVAR Results...", self)
+        self.open_chromvar_action.triggered.connect(self._on_open_chromvar_results)
+        file_menu.addAction(self.open_chromvar_action)
+
         file_menu.addSeparator()
         
         # Database 서브메뉴
@@ -608,6 +620,21 @@ class MainWindow(QMainWindow):
         self.ma_plot_action.triggered.connect(lambda: self._on_atac_visualization("ma_plot"))
         self.ma_plot_action.setEnabled(False)
         viz_menu.addAction(self.ma_plot_action)
+
+        self.motif_enrichment_action = QAction("🔡 TF Motif Enrichment Plot", self)
+        self.motif_enrichment_action.triggered.connect(self._on_motif_enrichment_requested)
+        self.motif_enrichment_action.setEnabled(False)
+        viz_menu.addAction(self.motif_enrichment_action)
+
+        self.tf_footprint_action = QAction("👣 TF Activity Plot (Footprint)", self)
+        self.tf_footprint_action.triggered.connect(self._on_tf_footprint_requested)
+        self.tf_footprint_action.setEnabled(False)
+        viz_menu.addAction(self.tf_footprint_action)
+
+        self.chromvar_action = QAction("🧬 chromVAR TF Activity Plot", self)
+        self.chromvar_action.triggered.connect(self._on_chromvar_requested)
+        self.chromvar_action.setEnabled(False)
+        viz_menu.addAction(self.chromvar_action)
 
         viz_menu.addSeparator()
 
@@ -1108,6 +1135,48 @@ class MainWindow(QMainWindow):
         default_name = Path(file_path).stem
         dataset_name, ok = QInputDialog.getText(
             self, "Dataset Name", "Enter a name for this ATAC-seq dataset:",
+            QLineEdit.EchoMode.Normal, default_name
+        )
+        if not ok:
+            return
+
+        name = dataset_name.strip() or default_name
+        self._add_recent_file(file_path)
+        self.presenter.load_dataset(Path(file_path), custom_name=name)
+
+    def _on_open_motif_results(self):
+        """HOMER knownResults.txt 또는 MEME AME ame.tsv 열기."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open TF Motif Results", "",
+            "Motif Files (*.txt *.tsv);;HOMER knownResults (knownResults.txt);;AME results (ame.tsv);;All Files (*)"
+        )
+        if not file_path:
+            return
+
+        default_name = Path(file_path).stem
+        dataset_name, ok = QInputDialog.getText(
+            self, "Dataset Name", "Enter a name for this motif dataset:",
+            QLineEdit.EchoMode.Normal, default_name
+        )
+        if not ok:
+            return
+
+        name = dataset_name.strip() or default_name
+        self._add_recent_file(file_path)
+        self.presenter.load_dataset(Path(file_path), custom_name=name)
+
+    def _on_open_footprint_results(self):
+        """TOBIAS bindetect_results.txt 열기."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open TF Footprint Results", "",
+            "BINDetect Results (bindetect_results.txt *.txt);;All Files (*)"
+        )
+        if not file_path:
+            return
+
+        default_name = Path(file_path).stem
+        dataset_name, ok = QInputDialog.getText(
+            self, "Dataset Name", "Enter a name for this footprint dataset:",
             QLineEdit.EchoMode.Normal, default_name
         )
         if not ok:
@@ -2582,6 +2651,12 @@ class MainWindow(QMainWindow):
                    dataset.dataset_type == DatasetType.ATAC_SEQ)
         is_multi_omics = (dataset is not None and
                           dataset.dataset_type == DatasetType.MULTI_OMICS)
+        is_motif = (dataset is not None and
+                    dataset.dataset_type == DatasetType.MOTIF_ENRICHMENT)
+        is_footprint = (dataset is not None and
+                        dataset.dataset_type == DatasetType.TF_FOOTPRINT)
+        is_chromvar = (dataset is not None and
+                       dataset.dataset_type == DatasetType.CHROMVAR_DIFF_TF)
 
         # FilterPanel 갱신
         if hasattr(self.filter_panel, 'update_for_dataset'):
@@ -2594,6 +2669,12 @@ class MainWindow(QMainWindow):
             self.tss_distance_action.setEnabled(is_atac)
         if hasattr(self, 'ma_plot_action'):
             self.ma_plot_action.setEnabled(is_atac)
+        if hasattr(self, 'motif_enrichment_action'):
+            self.motif_enrichment_action.setEnabled(is_motif)
+        if hasattr(self, 'tf_footprint_action'):
+            self.tf_footprint_action.setEnabled(is_footprint)
+        if hasattr(self, 'chromvar_action'):
+            self.chromvar_action.setEnabled(is_chromvar)
 
         # Multi-Omics 전용 Visualization 메뉴 활성화
         for action_name in ('quadrant_plot_action', 'concordance_heatmap_action',
@@ -3595,6 +3676,14 @@ class MainWindow(QMainWindow):
                         if target_ds is None:
                             raise ValueError(f"Dataset '{loaded_ds_name}' not found")
                         df = target_ds.dataframe
+                        # Rename standardized columns to visualization names
+                        from models.standard_columns import StandardColumns
+                        _rename_map = {
+                            StandardColumns.LOG2FC: 'log2FC',
+                            StandardColumns.ADJ_PVALUE: 'padj',
+                            StandardColumns.PVALUE: 'pvalue',
+                        }
+                        df = df.rename(columns=_rename_map)
                         if plot_type == "volcano":
                             widget = VolcanoPlotWidget(
                                 df, plot_params=plot_params,
@@ -4108,6 +4197,98 @@ class MainWindow(QMainWindow):
             from gui.ma_plot_dialog import MAPlotDialog
             dialog = MAPlotDialog(filtered_dataset, self)
             dialog.exec()
+
+    def _on_motif_enrichment_requested(self):
+        """TF Motif Enrichment Plot 요청 처리."""
+        from models.data_models import DatasetType
+        from gui.motif_enrichment_dialog import MotifEnrichmentDialog
+
+        current_index = self.data_tabs.currentIndex()
+        if current_index < 0 or current_index not in self.tab_data:
+            return
+
+        dataset = self.tab_data[current_index]['dataset']
+        if dataset is None or dataset.dataset_type != DatasetType.MOTIF_ENRICHMENT:
+            return
+
+        # 같은 프로젝트 내에 두 번째 MOTIF_ENRICHMENT 데이터셋이 있으면 DOWN 후보로 제안
+        motif_datasets = [
+            ds for ds in self.presenter.datasets.values()
+            if ds.dataset_type == DatasetType.MOTIF_ENRICHMENT and ds is not dataset
+        ]
+        dataset_down = None
+        if motif_datasets:
+            from PyQt6.QtWidgets import QInputDialog
+            names = [ds.name for ds in motif_datasets]
+            choice, ok = QInputDialog.getItem(
+                self,
+                "Compare with another dataset?",
+                "Select a second motif dataset to compare (or Cancel for single view):",
+                names, 0, False
+            )
+            if ok:
+                dataset_down = next(ds for ds in motif_datasets if ds.name == choice)
+
+        dialog = MotifEnrichmentDialog(dataset, dataset_down=dataset_down, parent=self)
+        dialog.resize(1000, 650)
+        dialog.exec()
+
+    def _on_open_chromvar_results(self):
+        """chromVAR diff_tf CSV 또는 parquet 열기."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open chromVAR Results", "",
+            "chromVAR Files (*diff_tf*.csv *chromVAR*.parquet *.csv *.parquet);;All Files (*)"
+        )
+        if not file_path:
+            return
+        default_name = Path(file_path).stem
+        dataset_name, ok = QInputDialog.getText(
+            self, "Dataset Name", "Enter a name for this chromVAR dataset:",
+            QLineEdit.EchoMode.Normal, default_name
+        )
+        if not ok:
+            return
+        name = dataset_name.strip() or default_name
+        self._add_recent_file(file_path)
+        self.presenter.load_dataset(Path(file_path), custom_name=name)
+
+    def _on_chromvar_requested(self):
+        """chromVAR TF Activity Plot 요청 처리."""
+        from models.data_models import DatasetType
+        from gui.chromvar_dialog import ChromVARDialog
+
+        current_index = self.data_tabs.currentIndex()
+        if current_index < 0 or current_index not in self.tab_data:
+            return
+        dataset = self.tab_data[current_index]['dataset']
+        if dataset is None or dataset.dataset_type != DatasetType.CHROMVAR_DIFF_TF:
+            return
+
+        # 같은 프로젝트 내 다른 CHROMVAR_DIFF_TF 데이터셋을 extra로 제공
+        extra = [
+            ds for ds in self.presenter.datasets.values()
+            if ds.dataset_type == DatasetType.CHROMVAR_DIFF_TF and ds is not dataset
+        ]
+        dialog = ChromVARDialog(dataset, extra_datasets=extra if extra else None, parent=self)
+        dialog.resize(950, 720)
+        dialog.exec()
+
+    def _on_tf_footprint_requested(self):
+        """TF Activity Plot (Footprint) 요청 처리."""
+        from models.data_models import DatasetType
+        from gui.tf_footprint_dialog import TFFootprintDialog
+
+        current_index = self.data_tabs.currentIndex()
+        if current_index < 0 or current_index not in self.tab_data:
+            return
+
+        dataset = self.tab_data[current_index]['dataset']
+        if dataset is None or dataset.dataset_type != DatasetType.TF_FOOTPRINT:
+            return
+
+        dialog = TFFootprintDialog(dataset, parent=self)
+        dialog.resize(900, 700)
+        dialog.exec()
 
     # ------------------------------------------------------------------ #
     #  Multi-Omics handlers
