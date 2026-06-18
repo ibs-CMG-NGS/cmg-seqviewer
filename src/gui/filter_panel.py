@@ -148,8 +148,8 @@ class FilterPanel(QWidget):
         stats_layout.setContentsMargins(10, 10, 10, 10)
         
         # === DE Analysis Filtering Section ===
-        de_label = QLabel("<b>DE Analysis Filtering:</b>")
-        stats_layout.addWidget(de_label)
+        self.de_label = QLabel("<b>DE Analysis Filtering:</b>")
+        stats_layout.addWidget(self.de_label)
         
         # Adj p-value와 log2FC를 한 줄로 배열
         de_thresholds_layout = QHBoxLayout()
@@ -656,6 +656,9 @@ class FilterPanel(QWidget):
         is_atac = (dataset is not None and
                    dataset.dataset_type == DatasetType.ATAC_SEQ)
         self.atac_filter_widget.setVisible(is_atac)
+        self.de_label.setText(
+            "<b>DA Analysis Filtering:</b>" if is_atac else "<b>DE Analysis Filtering:</b>"
+        )
 
         if not is_atac:
             return

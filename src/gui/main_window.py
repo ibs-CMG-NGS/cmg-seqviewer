@@ -27,6 +27,7 @@ from gui.visualization_dialog import VolcanoPlotWidget, VolcanoPlotDialog, Heatm
 from gui.pca_dialog import PCADialog
 from gui.venn_dialog import VennDiagramDialog
 from gui.venn_dialog_comparison import VennDiagramFromComparisonDialog
+from gui.upset_plot_dialog import UpsetPlotDialog
 from gui.help_dialog import HelpDialog
 from gui.multi_omics_panel import MultiOmicsPanel
 from models.data_models import FilterMode, DatasetType
@@ -635,6 +636,11 @@ class MainWindow(QMainWindow):
         self.chromvar_action.triggered.connect(self._on_chromvar_requested)
         self.chromvar_action.setEnabled(False)
         viz_menu.addAction(self.chromvar_action)
+
+        self.da_peak_overlap_action = QAction("🔗 DA Peak Overlap (ATAC-seq)...", self)
+        self.da_peak_overlap_action.triggered.connect(self._on_da_peak_overlap)
+        # 항상 활성화 — 로드된 ATAC_SEQ 데이터셋 개수는 핸들러 내부에서 확인
+        viz_menu.addAction(self.da_peak_overlap_action)
 
         viz_menu.addSeparator()
 
@@ -3144,9 +3150,75 @@ class MainWindow(QMainWindow):
             dialog.exec()
         except Exception as e:
             self.logger.error(f"Failed to create Venn diagram: {e}")
-            QMessageBox.critical(self, "Venn Diagram Error", 
+            QMessageBox.critical(self, "Venn Diagram Error",
                                f"Failed to create Venn diagram:\n{str(e)}")
-    
+
+    def _on_da_peak_overlap(self):
+        """ATAC-seq DA 데이터셋 간 peak_id(좌표) 기반 overlap 분석.
+
+        2-3개 → Venn Diagram(peak_id 키), 4개 이상 → UpSet Plot.
+        전제: 비교 대상 데이터셋들이 같은 consensus peak set에서 나와야 유효함.
+        """
+        atac_datasets = [
+            ds for ds in self.presenter.datasets.values()
+            if ds.dataset_type == DatasetType.ATAC_SEQ
+        ]
+
+        if len(atac_datasets) < 2:
+            QMessageBox.warning(
+                self, "Insufficient Datasets",
+                "DA Peak Overlap 분석에는 ATAC-seq 데이터셋이 2개 이상 필요합니다.\n"
+                "(현재 로드된 ATAC-seq 데이터셋: "
+                f"{len(atac_datasets)}개)"
+            )
+            return
+
+        from PyQt6.QtWidgets import QDialog, QListWidget, QDialogButtonBox
+
+        select_dialog = QDialog(self)
+        select_dialog.setWindowTitle("Select ATAC-seq Datasets for Peak Overlap")
+        select_dialog.setMinimumWidth(420)
+
+        layout = QVBoxLayout(select_dialog)
+        layout.addWidget(QLabel(
+            "비교할 ATAC-seq 데이터셋을 2개 이상 선택하세요.\n"
+            "(같은 peak set/consensus peak에서 나온 결과여야 비교가 유효합니다)"
+        ))
+
+        list_widget = QListWidget()
+        list_widget.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        for ds in atac_datasets:
+            list_widget.addItem(ds.name)
+        for i in range(list_widget.count()):
+            list_widget.item(i).setSelected(True)
+        layout.addWidget(list_widget)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(select_dialog.accept)
+        buttons.rejected.connect(select_dialog.reject)
+        layout.addWidget(buttons)
+
+        if select_dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        selected_indices = [list_widget.row(item) for item in list_widget.selectedItems()]
+        if len(selected_indices) < 2:
+            QMessageBox.warning(self, "Invalid Selection", "2개 이상의 데이터셋을 선택하세요.")
+            return
+
+        selected_datasets = [atac_datasets[i] for i in selected_indices]
+
+        try:
+            if len(selected_datasets) <= 3:
+                dialog = VennDiagramDialog(selected_datasets, self)
+            else:
+                dialog = UpsetPlotDialog(selected_datasets, self)
+            dialog.exec()
+        except Exception as e:
+            self.logger.error(f"Failed to create DA peak overlap plot: {e}")
+            QMessageBox.critical(self, "DA Peak Overlap Error",
+                               f"Failed to create overlap plot:\n{str(e)}")
+
     def _create_venn_from_comparison_sheet(self):
         """Comparison sheet에서 Venn diagram 생성"""
         try:

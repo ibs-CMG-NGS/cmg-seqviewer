@@ -9,7 +9,8 @@
 | **Phase 3A** | TF Motif Enrichment Import & 시각화 | ✅ **완료** | v1.2.2 (2026-06-08) |
 | **Phase 3B** | TF Footprinting (TOBIAS BINDetect) | ✅ **완료** | v1.2.2 (2026-06-08) |
 | **Phase 3C** | chromVAR Differential TF Activity | ✅ **완료** | v1.2.2 (2026-06-09) |
-| **Phase 3D** | Peak-Gene 발현 상관관계 (샘플별) | 🔮 **장기 계획** | — |
+| **Phase 3D** | Multi-Condition DA Peak Overlap (peak 좌표 기반) | ✅ **완료** | v1.2.3 (2026-06-18) |
+| **Phase 3E** | Peak-Gene 발현 상관관계 (샘플별) | 🔮 **장기 계획** | — |
 | **Phase 4** | Chromatin State / ChIP-seq / Hi-C | 🔮 **장기 계획** | — |
 
 ---
@@ -905,7 +906,142 @@ Visualization → chromVAR TF Activity Plot
 
 ---
 
-# 🔮 Phase 3D: Peak-Gene 발현 상관관계 (장기 계획)
+# ✅ Phase 3D: Multi-Condition DA Peak Overlap Analysis (peak 좌표 기반) — 완료 (v1.2.3)
+
+**완료일:** 2026-06-18
+
+## 배경
+
+Phase 2(RNA+ATAC)와 Phase 3A-C(TF 분석)는 모두 ATAC DA 결과를 *다른 종류의 데이터*와 비교하는
+기능이다. 그러나 **ATAC DA 결과끼리(조건 간) 직접 비교**하는 기능은 아직 없다.
+
+현재 유일한 다중 데이터셋 비교 도구인 Venn Diagram(`venn_dialog.py`)은 gene symbol/gene_id만
+키로 사용한다. 이 키는 ATAC 데이터셋의 `nearest_gene` 컬럼을 인식하지 못해 실질적으로 빈 set이
+되며, 설령 인식하더라도 gene 단위 비교는 peak의 다대일 집계로 방향성이 상쇄되고
+"nearest gene ≠ 실제 타겟 유전자"라는 근본적 한계를 가진다.
+
+ATAC DA 결과의 1차 측정 단위는 **peak(genomic interval)**이므로, 조건 간 비교도 gene이 아닌
+**peak 좌표 / peak_id** 기준으로 해야 RNA-seq의 gene-level 비교(DE-DE)와 동등한 엄밀성을 가진다.
+
+## 전제 조건 (중요)
+
+이 분석이 유효하려면 비교 대상 DA 데이터셋들이 **같은 peak set(consensus/union peak)**에서
+나와야 한다.
+
+- 모든 조건의 BAM을 합쳐 peak을 한 번만 호출(call)한 경우 → `peak_id`가 조건마다 동일 →
+  직접 비교 가능
+- 조건별로 peak을 독립적으로 호출한 경우 → 좌표가 다르므로 `bedtools intersect`/`merge`로
+  좌표를 reconcile하는 외부 전처리가 먼저 필요 (이 도구의 책임 범위 밖)
+
+→ UI에서 이 전제를 안내 문구로 명시하고, peak_id 포맷이 데이터셋 간에 다르면 경고를 표시한다.
+
+## 입력 데이터
+
+추가 파일 불필요 — 이미 로드된 `DatasetType.ATAC_SEQ` 데이터셋 2개 이상을 그대로 사용한다.
+
+## 구현된 내용
+
+### A. peak_id 정규화 유틸리티
+
+**`src/utils/peak_overlap.py`** (신규)
+- `get_peak_set(dataset, padj_threshold=None, log2fc_threshold=None) -> set` —
+  ATAC_SEQ Dataset에서 peak_id set 추출. `peak_id` 컬럼이 없으면
+  `chr:start-end`로 합성. threshold가 주어지면 유의미한 peak만 포함
+- `check_consensus(datasets) -> Optional[str]` — 데이터셋 쌍별 peak_id 교집합
+  비율을 계산해, 모든 쌍의 최대 교집합 비율이 5% 미만이면 경고 메시지 반환
+
+> **계획과의 차이:** `compute_overlap_matrix()`는 별도 구현하지 않음 —
+> `upsetplot.from_contents()`가 동일 기능을 제공하므로 `upset_plot_dialog.py`에서
+> 직접 사용.
+
+### B. 2~3개 데이터셋: 기존 Venn Diagram 확장
+
+**`src/gui/venn_dialog.py`** (수정)
+- `_get_gene_sets()`가 `dataset.dataset_type == DatasetType.ATAC_SEQ`이면
+  `peak_overlap.get_peak_set()`으로 peak_id 기준 set을 구성 (RNA-seq 등은 기존
+  symbol/gene_id 로직 유지)
+- Plot 제목을 ATAC 전용 선택일 때 "Gene Overlap" → "Peak Overlap"으로 자동 전환
+- 기존 필터 옵션(All / DEG only / Highly significant) 재사용 — padj/log2FC
+  threshold를 peak 필터링에 그대로 적용
+
+> **계획과의 차이:** `matplotlib_venn`은 venn2/venn3만 제공하므로(venn4 없음),
+> 범위는 계획의 "2~4개"가 아니라 **2~3개**로 확정. 4개 이상은 모두 UpSet으로 분기.
+
+### C. 4개 이상 데이터셋: 신규 UpSet Plot
+
+**`src/gui/upset_plot_dialog.py`** (신규)
+- `UpsetPlotDialog(datasets)` — `upsetplot.UpSet` + `from_contents()` 사용
+- 컨트롤: Significant peaks only 체크박스, Adj. p-value / |log2FC| threshold,
+  Max intersections shown (Top N)
+- `_apply_labels()` 오버라이드 — UpSet은 다중 axes 구조라 `BasePlotDialog`의
+  단일 axes 가정을 따르지 않고 제목만 `figure.suptitle()`로 적용
+- Export Data → intersection 멤버십 테이블을 Excel/CSV로 저장
+- `BasePlotDialog` 상속 (테마/figure export 인프라 재사용)
+
+**⚠️ 발견된 라이브러리 호환성 버그 및 패치:**
+설치된 `upsetplot==0.9.0`이 이 환경의 `pandas==3.0.3` / `numpy==2.4.6`과 호환되지
+않아 그래프가 그려지지 않는 문제를 발견. 업스트림 수정 버전이 없어 동일 파일에
+monkeypatch로 대응:
+- `UpSet.plot_matrix` — pandas 3.0의 강제 Copy-on-Write 하에서
+  `styles[col].fillna(value, inplace=True)` (chained assignment)가 항상 no-op이
+  되어 facecolor가 NaN으로 남고 `Invalid RGBA argument: nan` 에러 발생 →
+  non-inplace 대입(`styles[col] = styles[col].fillna(value)`)으로 교체
+- `UpSet._label_sizes` — `0.01 * abs(np.diff(ax.get_xlim()))`가 길이 1 ndarray를
+  반환하는데, numpy 2.x에서 matplotlib Text 좌표 변환 시 암묵적 스칼라 변환이
+  거부되어 `only 0-dimensional arrays can be converted to Python scalars` 에러
+  발생 → `float(... [0])`로 명시적 스칼라 변환
+
+두 패치 모두 로직은 원본과 동일하게 유지하고 문제가 된 대입/형변환 부분만 교체.
+
+### D. 메뉴 연결
+
+**`src/gui/main_window.py`** (수정)
+- Visualization 메뉴: `🔗 DA Peak Overlap (ATAC-seq)...` (항상 활성화)
+- `_on_da_peak_overlap()`:
+  1. 로드된 `DatasetType.ATAC_SEQ` 데이터셋 목록 수집 (2개 미만이면 경고)
+  2. 다중 선택 다이얼로그(`QListWidget`, MultiSelection, 기본 전체 선택)로
+     비교 대상 선택
+  3. 선택 개수 2-3개 → `VennDiagramDialog`, 4개 이상 → `UpsetPlotDialog`로 분기
+
+> **계획과의 차이:** "Dataset Tree에서 Ctrl+클릭 다중 선택" 대신, 기존
+> Venn Diagram 메뉴(`_on_venn_diagram`)와 동일한 패턴으로 메뉴 클릭 시 별도
+> 선택 다이얼로그를 띄우는 방식으로 구현 (Dataset Tree의 다중 선택 상태를
+> 활용하는 인프라가 없어 일관성 있는 기존 패턴 재사용).
+
+## 사용 흐름
+
+```
+1. ATAC DA 데이터셋 여러 개 로드 (예: 1D/2D/3D/6H/3H vs Control, 같은 peak set 전제)
+   ↓
+2. Visualization → DA Peak Overlap (ATAC-seq)...
+   ↓
+3. 선택 다이얼로그에서 비교할 데이터셋 선택 (기본 전체 선택)
+   ↓
+4. peak_id 교집합 비율 자동 점검 → 모든 쌍이 5% 미만 겹치면 경고 다이얼로그
+   ↓
+5. 2-3개 → Venn Diagram / 4개 이상 → UpSet Plot
+   ↓
+6. Export Data → intersection 멤버십 테이블을 Excel/CSV로 저장
+```
+
+## Phase 3D 체크리스트
+
+- [x] `src/utils/peak_overlap.py` — peak_id set 추출 + consensus 점검
+- [x] `venn_dialog.py` — ATAC 데이터셋 peak_id 키 지원으로 확장 (2-3개)
+- [x] `src/gui/upset_plot_dialog.py` — 4개 이상 UpSet plot 신규 구현
+- [x] `upsetplot` pandas 3.0 / numpy 2.x 호환성 버그 패치 (monkeypatch)
+- [x] consensus peak set 여부 자동 검증 + 경고 UI
+- [x] `main_window.py` — `Visualization → DA Peak Overlap (ATAC-seq)...` 메뉴 + 선택 다이얼로그
+- [x] Export: intersection 멤버십 테이블 (Excel/CSV)
+- [x] 더미 데이터(1D/2D/3D/6H/3H vs Control 패턴)로 Venn·UpSet 동작 검증
+- [ ] 실제 파이프라인 데이터로 검증 (현재는 합성 데이터로만 확인)
+- [ ] Unit tests for peak_overlap.py
+
+---
+
+---
+
+# 🔮 Phase 3E: Peak-Gene 발현 상관관계 (장기 계획)
 
 **전제조건:** ≥3 샘플 쌍(RNA + ATAC)이 있어야 통계적 의미가 있음.
 샘플 수가 충분하지 않으면 통계적으로 의미 없음 → 현재 구현 우선순위 낮음.
@@ -946,10 +1082,10 @@ featureCounts -F SAF -a peaks.saf -o peak_counts.txt sample1.bam sample2.bam ...
 
 ---
 
-## Technical Architecture: 현재 상태 (v1.2.2)
+## Technical Architecture: 현재 상태 (v1.2.3)
 
 ```
-CMG-SeqViewer (v1.2.2)
+CMG-SeqViewer (v1.2.3)
 ├── DatasetType
 │   ├── DIFFERENTIAL_EXPRESSION    ✅
 │   ├── GO_ANALYSIS                ✅
@@ -976,12 +1112,13 @@ CMG-SeqViewer (v1.2.2)
 │   ├── MA Plot (ATAC)                  ✅
 │   ├── Heatmap                         ✅
 │   ├── GO Dot Plot / Network           ✅
-│   ├── Venn Diagram                    ✅
+│   ├── Venn Diagram                    ✅ (2-3개, peak_id 또는 gene 키)
 │   ├── Genomic Distribution            ✅
 │   ├── TSS Distance Plot               ✅
 │   ├── TF Motif Enrichment Plot        ✅ (Phase 3A — HOMER / AME)
 │   ├── TF Activity Plot (Footprint)    ✅ (Phase 3B — TOBIAS BINDetect)
-│   └── chromVAR TF Activity Plot       ✅ (Phase 3C — Volcano/Scatter/Heatmap)
+│   ├── chromVAR TF Activity Plot       ✅ (Phase 3C — Volcano/Scatter/Heatmap)
+│   └── DA Peak Overlap (UpSet Plot)    ✅ (Phase 3D — 4개 이상 ATAC 데이터셋)
 ├── MultiOmicsPanel                     ✅ Phase 2 완료
 │   ├── Dataset pairing (RNA + ATAC)    ✅
 │   ├── Integration method              ✅ (nearest_gene / promoter_only)
@@ -1047,3 +1184,5 @@ CMG-SeqViewer (v1.2.2)
 | 4.0 | 2026-06-08 | Phase 3A 완료 반영; Phase 3B·3C·4 상세화; 파이프라인 데이터 형식 문서화 |
 | 5.0 | 2026-06-08 | Phase 3B 완료 반영 (TOBIAS BINDetect 로더 + TF Activity Scatter Plot) |
 | 6.0 | 2026-06-09 | Phase 3C 완료 반영 (chromVAR 로더 + Volcano/Scatter/Heatmap); Phase 3C→3D 재번호 |
+| 7.0 | 2026-06-18 | Phase 3D 신설 (Multi-Condition DA Peak Overlap, peak 좌표 기반); 기존 Phase 3D(Peak-Gene 상관관계)→3E 재번호 |
+| 8.0 | 2026-06-18 | Phase 3D 완료 반영 (peak_overlap 유틸 + Venn peak_id 확장 + UpSet Plot 신규); upsetplot pandas 3.0/numpy 2.x 호환성 패치 기록 |

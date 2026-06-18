@@ -675,9 +675,9 @@ class VolcanoPlotWidget(QWidget):
         if mode_idx == 0:   # None
             return
 
-        # gene name 컬럼 결정 (symbol 우선)
+        # gene name 컬럼 결정: nearest_gene > gene_name > symbol > gene_id
         gene_col = None
-        for c in ('symbol', 'gene_id'):
+        for c in ('nearest_gene', 'gene_name', 'symbol', 'gene_id'):
             if c in df.columns:
                 gene_col = c
                 break
@@ -756,8 +756,12 @@ class VolcanoPlotWidget(QWidget):
         if min_dist < 0.5:  # 충분히 가까울 때만 표시
             row = deg_df.loc[min_dist_idx]
 
-            # Symbol이 있으면 표시, 없으면 gene_id
-            gene_name = row.get('symbol', row.get('gene_id', 'Unknown'))
+            # gene symbol 우선순위: nearest_gene > gene_name > symbol > gene_id
+            gene_name = next(
+                (str(row[c]) for c in ('nearest_gene', 'gene_name', 'symbol', 'gene_id')
+                 if c in row.index and pd.notna(row[c])),
+                'Unknown'
+            )
             log2fc = row['log2FC']
             padj = row['padj']
 

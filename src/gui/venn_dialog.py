@@ -1,7 +1,7 @@
 """
 Venn Diagram Dialog
 
-2-3개 데이터셋 간의 유전자 overlap을 Venn diagram으로 시각화
+2-3개 데이터셋 간의 유전자(또는 ATAC peak) overlap을 Venn diagram으로 시각화
 """
 
 from PyQt6.QtWidgets import (
@@ -13,6 +13,8 @@ import pandas as pd
 import logging
 
 from gui.base_plot_dialog import BasePlotDialog
+from models.data_models import DatasetType
+from utils import peak_overlap
 
 
 class VennDiagramDialog(BasePlotDialog):
@@ -54,10 +56,24 @@ class VennDiagramDialog(BasePlotDialog):
     # ── Data helpers ──────────────────────────────────────────────────────
 
     def _get_gene_sets(self):
+        """데이터셋별 비교 set 추출.
+
+        ATAC_SEQ 데이터셋은 peak_id(좌표) 기준, 그 외(RNA-seq DE 등)는
+        gene symbol/gene_id 기준으로 set을 구성한다.
+        """
         gene_sets = []
         filter_type = self.filter_combo.currentIndex() if hasattr(self, 'filter_combo') else 0
 
+        padj_threshold = {1: 0.05, 2: 0.01}.get(filter_type)
+        log2fc_threshold = {1: 1.0, 2: 2.0}.get(filter_type)
+
         for dataset in self.datasets:
+            if dataset.dataset_type == DatasetType.ATAC_SEQ:
+                items = peak_overlap.get_peak_set(dataset, padj_threshold, log2fc_threshold)
+                gene_sets.append(items)
+                self.logger.info(f"Dataset '{dataset.name}': {len(items)} peaks")
+                continue
+
             df = dataset.dataframe.copy()
 
             if filter_type == 1:
@@ -126,8 +142,10 @@ class VennDiagramDialog(BasePlotDialog):
                 if patch:
                     patch.set_color(color)
 
+        is_atac = all(ds.dataset_type == DatasetType.ATAC_SEQ for ds in self.datasets)
+        unit = "Peak" if is_atac else "Gene"
         filter_name = self.filter_combo.currentText() if hasattr(self, 'filter_combo') else "All Genes"
-        title = f"Gene Overlap - {filter_name}\n"
+        title = f"{unit} Overlap - {filter_name}\n"
 
         if len(gene_sets) == 2:
             common = gene_sets[0] & gene_sets[1]
