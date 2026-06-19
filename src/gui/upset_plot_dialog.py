@@ -247,7 +247,7 @@ class UpsetPlotDialog(BasePlotDialog):
 
         self.log2fc_spin = QDoubleSpinBox()
         self.log2fc_spin.setRange(0.0, 10.0)
-        self.log2fc_spin.setDecimals(2)
+        self.log2fc_spin.setDecimals(4)
         self.log2fc_spin.setValue(1.0)
         self.log2fc_spin.setSingleStep(0.1)
         self.log2fc_spin.valueChanged.connect(self._update_plot)

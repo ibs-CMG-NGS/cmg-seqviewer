@@ -134,7 +134,7 @@ class MultiOmicsPanel(QWidget):
     @staticmethod
     def _setup_lfc_spin(spin: QDoubleSpinBox, default: float):
         spin.setRange(0.0, 10.0)
-        spin.setDecimals(2)
+        spin.setDecimals(4)
         spin.setSingleStep(0.5)
         spin.setValue(default)
 

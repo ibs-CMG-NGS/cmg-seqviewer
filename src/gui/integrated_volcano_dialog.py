@@ -63,7 +63,7 @@ class IntegratedVolcanoDialog(BasePlotDialog):
 
         self.lfc_spin = QDoubleSpinBox()
         self.lfc_spin.setRange(0.0, 10.0)
-        self.lfc_spin.setDecimals(2)
+        self.lfc_spin.setDecimals(4)
         self.lfc_spin.setValue(1.0)
         self.lfc_spin.valueChanged.connect(self._update_plot)
         thresh_form.addRow("RNA |log2FC| ≥", self.lfc_spin)
