@@ -171,9 +171,9 @@ class FilterPanel(QWidget):
         self.log2fc_input = QDoubleSpinBox()
         self.log2fc_input.setRange(0.0, 10.0)
         self.log2fc_input.setSingleStep(0.1)
-        self.log2fc_input.setDecimals(2)
+        self.log2fc_input.setDecimals(4)
         self.log2fc_input.setValue(1.0)
-        self.log2fc_input.setMaximumWidth(80)
+        self.log2fc_input.setMaximumWidth(95)
         de_thresholds_layout.addWidget(self.log2fc_input)
         
         de_thresholds_layout.addStretch()
