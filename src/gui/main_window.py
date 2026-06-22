@@ -910,7 +910,7 @@ class MainWindow(QMainWindow):
         
         # 정렬 인디케이터 초기화 (화살표 없음)
         table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
-        
+
         # 저장된 컬럼 너비 복원
         self._restore_table_column_widths(table)
         
@@ -924,21 +924,16 @@ class MainWindow(QMainWindow):
                 break
     
     def _sort_table_by_column(self, table: QTableWidget, col: int):
-        """헤더 클릭 시 수동 정렬 (setSortingEnabled 미사용)"""
+        """헤더 클릭 시 수동 정렬 (setSortingEnabled 미사용)
+
+        QHeaderView.setSectionsClickable(True)를 켜면 setSortingEnabled 여부와
+        무관하게 Qt가 sectionClicked를 emit하기 *전에* 내부적으로 sort indicator를
+        이미 올바른 방향으로 토글해 둔다(Qt 자체 동작). 여기서 또 토글하면 클릭마다
+        두 번 토글되어 항상 같은 방향(Descending)에 고정되는 문제가 있었다.
+        Qt가 이미 정해 둔 현재 indicator 값을 그대로 사용해 실제 행 정렬만 적용한다.
+        """
         header = table.horizontalHeader()
-        current_col = header.sortIndicatorSection()
-        current_order = header.sortIndicatorOrder()
-        
-        if current_col == col:
-            # 같은 컬럼 재클릭: 방향 토글
-            new_order = (Qt.SortOrder.DescendingOrder
-                         if current_order == Qt.SortOrder.AscendingOrder
-                         else Qt.SortOrder.AscendingOrder)
-        else:
-            new_order = Qt.SortOrder.AscendingOrder
-        
-        table.sortItems(col, new_order)
-        header.setSortIndicator(col, new_order)
+        table.sortItems(header.sortIndicatorSection(), header.sortIndicatorOrder())
     
     def _filter_columns(self, all_columns: List[str], dataset=None) -> List[str]:
         """
