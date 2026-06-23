@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 from PyQt6.QtGui import QAction, QIcon, QFont, QActionGroup, QPixmap
 import logging
+import math
 from pathlib import Path
 from typing import Optional, List, Dict
 import pandas as pd
@@ -36,15 +37,26 @@ from presenters.main_presenter import MainPresenter
 
 class NumericTableWidgetItem(QTableWidgetItem):
     """숫자 정렬을 지원하는 QTableWidgetItem"""
-    
+
     def __init__(self, value, display_text):
         super().__init__(display_text)
         self.numeric_value = value
-    
+
     def __lt__(self, other):
-        """정렬을 위한 비교 연산자"""
+        """정렬을 위한 비교 연산자.
+
+        NaN은 IEEE754 규칙상 모든 비교(<, >)가 항상 False라서, 정렬 알고리즘이
+        요구하는 전순서(total order)가 깨진다. NaN을 항상 "가장 큰 값"으로
+        취급해 일관되게 비교해야 NaN과 무관한 다른 행들의 순서도 깨지지 않는다
+        (pandas의 na_position='last'와 동일한 관례).
+        """
         if isinstance(other, NumericTableWidgetItem):
-            return self.numeric_value < other.numeric_value
+            a, b = self.numeric_value, other.numeric_value
+            a_nan = isinstance(a, float) and math.isnan(a)
+            b_nan = isinstance(b, float) and math.isnan(b)
+            if a_nan or b_nan:
+                return False if a_nan else True
+            return a < b
         return super().__lt__(other)
 
 

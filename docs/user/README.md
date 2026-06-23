@@ -15,6 +15,7 @@
 |------|------|--------|
 | [사용자 매뉴얼](user-guide.md) | 전체 기능 상세 설명 | ⭐⭐ 중급 |
 | [컬럼 매핑 가이드](COLUMN_MAPPING_GUIDE.md) | Excel 데이터 임포트 | ⭐ 기초 |
+| [ATAC-seq & RNA-ATAC 통합 분석 가이드](atac-rna-integration-analysis-guide.md) | ATAC 단독 분석(DA, motif, footprint, chromVAR 등) + RNA-ATAC 통합 분석의 알고리즘·입출력·해석 정리 | ⭐⭐⭐ 심화 |
 
 ### 문제 해결
 | 문서 | 설명 | 난이도 |
