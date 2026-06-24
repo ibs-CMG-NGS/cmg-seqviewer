@@ -12,7 +12,8 @@ from PyQt6.QtWidgets import (
     QSpinBox, QDoubleSpinBox, QTableWidget, QTableWidgetItem,
     QHeaderView, QSplitter, QWidget, QTabWidget, QTextEdit,
     QFileDialog, QMessageBox, QProgressBar, QGroupBox, QFormLayout,
-    QSlider, QCheckBox, QListWidget, QListWidgetItem, QScrollArea, QSizePolicy
+    QSlider, QCheckBox, QListWidget, QListWidgetItem, QScrollArea, QSizePolicy,
+    QComboBox,
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QBrush, QColor, QPixmap, QIcon
