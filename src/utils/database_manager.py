@@ -627,9 +627,11 @@ class DatabaseManager:
                 # 파일 경로를 파일명만으로 정규화
                 meta.file_path = Path(meta.file_path).name
 
-                # 중복 체크
-                if meta.dataset_id in existing_ids or meta.file_path in existing_files:
-                    self.logger.debug(f"import_from_folder: skipping duplicate '{meta.alias}'")
+                # 중복 체크: dataset_id(UUID)가 동일하면 이미 반입된 데이터셋
+                # file_path는 검사하지 않음 — organism이 달라도 조건명이 같으면
+                # 파일명이 겹칠 수 있으며, 파일명 충돌은 아래 uuid-suffix 코드가 처리한다
+                if meta.dataset_id in existing_ids:
+                    self.logger.debug(f"import_from_folder: skipping duplicate '{meta.alias}' (same dataset_id)")
                     skipped_dup += 1
                     continue
 
@@ -668,16 +670,15 @@ class DatabaseManager:
             source_datasets_dir = source_dir / "datasets"
             search_dir = source_datasets_dir if source_datasets_dir.exists() else source_dir
 
-            existing_files = {m.file_path for m in self.metadata_list}
-
             for parquet_file in sorted(search_dir.glob("*.parquet")):
-                if parquet_file.name in existing_files:
-                    skipped_dup += 1
-                    continue
-
                 dest_name = parquet_file.name
                 dest_parquet = self.datasets_dir / dest_name
                 if dest_parquet.exists():
+                    # 파일 크기가 같으면 동일 파일로 간주하고 스킵
+                    if dest_parquet.stat().st_size == parquet_file.stat().st_size:
+                        skipped_dup += 1
+                        continue
+                    # 크기가 다르면 다른 파일(같은 조건명, 다른 organism 등) → uuid suffix 부여
                     stem = parquet_file.stem
                     suffix = str(uuid.uuid4())[:8]
                     dest_name = f"{stem}_{suffix}.parquet"
