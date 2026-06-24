@@ -135,6 +135,148 @@ class GONetworkDialog(BasePlotDialog):
         self._top_n_spin.valueChanged.connect(self._update_plot)
         dot_form.addRow("Top N clusters:", self._top_n_spin)
 
+        # ── Dot Size ─────────────────────────────────────────────────────────
+        size_group = QGroupBox("Dot Size")
+        size_form = QFormLayout(size_group)
+        size_form.setVerticalSpacing(6)
+
+        self._dot_size_min_spin = QDoubleSpinBox()
+        self._dot_size_min_spin.setRange(10.0, 1000.0)
+        self._dot_size_min_spin.setValue(40.0)
+        self._dot_size_min_spin.setDecimals(0)
+        self._dot_size_min_spin.setSingleStep(10.0)
+        self._dot_size_min_spin.setToolTip("단일 멤버 클러스터의 최소 점 크기 (pt²)")
+        self._dot_size_min_spin.valueChanged.connect(self._update_plot)
+        size_form.addRow("Min size:", self._dot_size_min_spin)
+
+        self._dot_size_scale_spin = QDoubleSpinBox()
+        self._dot_size_scale_spin.setRange(1.0, 500.0)
+        self._dot_size_scale_spin.setValue(20.0)
+        self._dot_size_scale_spin.setDecimals(1)
+        self._dot_size_scale_spin.setSingleStep(5.0)
+        self._dot_size_scale_spin.setToolTip("멤버 수 × 이 값 = 점 크기 (pt²)")
+        self._dot_size_scale_spin.valueChanged.connect(self._update_plot)
+        size_form.addRow("Scale (×members):", self._dot_size_scale_spin)
+
+        self._size_legend_check = QCheckBox("Show size legend")
+        self._size_legend_check.setChecked(True)
+        self._size_legend_check.toggled.connect(self._update_plot)
+        size_form.addRow("", self._size_legend_check)
+
+        dot_form.addRow(size_group)
+
+        # ── Axis Range ───────────────────────────────────────────────────────
+        axis_group = QGroupBox("Axis Range")
+        axis_form = QFormLayout(axis_group)
+        axis_form.setVerticalSpacing(6)
+
+        # X range
+        xrange_row = QWidget()
+        xrange_layout = QHBoxLayout(xrange_row)
+        xrange_layout.setContentsMargins(0, 0, 0, 0)
+        self._xauto_check = QCheckBox("Auto")
+        self._xauto_check.setChecked(True)
+        self._xauto_check.toggled.connect(self._on_xauto_toggled)
+        self._xauto_check.toggled.connect(self._update_plot)
+        xrange_layout.addWidget(self._xauto_check)
+        xrange_layout.addWidget(QLabel("Min:"))
+        self._xmin_spin = QDoubleSpinBox()
+        self._xmin_spin.setRange(-1000.0, 1000.0)
+        self._xmin_spin.setValue(0.0)
+        self._xmin_spin.setDecimals(2)
+        self._xmin_spin.setEnabled(False)
+        self._xmin_spin.valueChanged.connect(self._update_plot)
+        xrange_layout.addWidget(self._xmin_spin)
+        xrange_layout.addWidget(QLabel("Max:"))
+        self._xmax_spin = QDoubleSpinBox()
+        self._xmax_spin.setRange(-1000.0, 1000.0)
+        self._xmax_spin.setValue(10.0)
+        self._xmax_spin.setDecimals(2)
+        self._xmax_spin.setEnabled(False)
+        self._xmax_spin.valueChanged.connect(self._update_plot)
+        xrange_layout.addWidget(self._xmax_spin)
+        axis_form.addRow("X:", xrange_row)
+
+        # Y range
+        yrange_row = QWidget()
+        yrange_layout = QHBoxLayout(yrange_row)
+        yrange_layout.setContentsMargins(0, 0, 0, 0)
+        self._yauto_check = QCheckBox("Auto")
+        self._yauto_check.setChecked(True)
+        self._yauto_check.toggled.connect(self._on_yauto_toggled)
+        self._yauto_check.toggled.connect(self._update_plot)
+        yrange_layout.addWidget(self._yauto_check)
+        yrange_layout.addWidget(QLabel("Min:"))
+        self._ymin_spin = QSpinBox()
+        self._ymin_spin.setRange(-1, 500)
+        self._ymin_spin.setValue(0)
+        self._ymin_spin.setEnabled(False)
+        self._ymin_spin.setToolTip("Visible row index (0 = bottom term)")
+        self._ymin_spin.valueChanged.connect(self._update_plot)
+        yrange_layout.addWidget(self._ymin_spin)
+        yrange_layout.addWidget(QLabel("Max:"))
+        self._ymax_spin = QSpinBox()
+        self._ymax_spin.setRange(0, 500)
+        self._ymax_spin.setValue(30)
+        self._ymax_spin.setEnabled(False)
+        self._ymax_spin.setToolTip("Visible row index (n-1 = top term)")
+        self._ymax_spin.valueChanged.connect(self._update_plot)
+        yrange_layout.addWidget(self._ymax_spin)
+        axis_form.addRow("Y (rows):", yrange_row)
+
+        dot_form.addRow(axis_group)
+
+        # ── Colorbar ─────────────────────────────────────────────────────────
+        cbar_group = QGroupBox("Colorbar  (FDR color mode only)")
+        cbar_form = QFormLayout(cbar_group)
+        cbar_form.setVerticalSpacing(6)
+
+        # Z range
+        zrange_row = QWidget()
+        zrange_layout = QHBoxLayout(zrange_row)
+        zrange_layout.setContentsMargins(0, 0, 0, 0)
+        self._zauto_check = QCheckBox("Auto")
+        self._zauto_check.setChecked(True)
+        self._zauto_check.toggled.connect(self._on_zauto_toggled)
+        self._zauto_check.toggled.connect(self._update_plot)
+        zrange_layout.addWidget(self._zauto_check)
+        zrange_layout.addWidget(QLabel("Min FDR:"))
+        self._zmin_spin = QDoubleSpinBox()
+        self._zmin_spin.setRange(0.0, 1.0)
+        self._zmin_spin.setValue(0.000001)
+        self._zmin_spin.setDecimals(6)
+        self._zmin_spin.setSingleStep(0.0001)
+        self._zmin_spin.setEnabled(False)
+        self._zmin_spin.setToolTip("Color scale lower bound (most significant FDR)")
+        self._zmin_spin.valueChanged.connect(self._update_plot)
+        zrange_layout.addWidget(self._zmin_spin)
+        zrange_layout.addWidget(QLabel("Max:"))
+        self._zmax_spin = QDoubleSpinBox()
+        self._zmax_spin.setRange(0.0, 1.0)
+        self._zmax_spin.setValue(0.05)
+        self._zmax_spin.setDecimals(4)
+        self._zmax_spin.setSingleStep(0.005)
+        self._zmax_spin.setEnabled(False)
+        self._zmax_spin.setToolTip("Color scale upper bound (least significant FDR)")
+        self._zmax_spin.valueChanged.connect(self._update_plot)
+        zrange_layout.addWidget(self._zmax_spin)
+        cbar_form.addRow("Z range:", zrange_row)
+
+        self._cbar_pos_combo = QComboBox()
+        self._cbar_pos_combo.addItems(["right", "left", "bottom", "top"])
+        self._cbar_pos_combo.currentTextChanged.connect(self._update_plot)
+        cbar_form.addRow("Position:", self._cbar_pos_combo)
+
+        self._cbar_size_spin = QDoubleSpinBox()
+        self._cbar_size_spin.setRange(0.1, 1.0)
+        self._cbar_size_spin.setValue(0.6)
+        self._cbar_size_spin.setSingleStep(0.05)
+        self._cbar_size_spin.setDecimals(2)
+        self._cbar_size_spin.valueChanged.connect(self._update_plot)
+        cbar_form.addRow("Size:", self._cbar_size_spin)
+
+        dot_form.addRow(cbar_group)
+
         self._ctrl_tabs.addTab(dot_widget, "Dot Plot")
 
         layout.addWidget(self._ctrl_tabs)
@@ -143,6 +285,20 @@ class GONetworkDialog(BasePlotDialog):
         # Network 탭 비활성화 중 — 재사용 시 아래 주석 해제
         # return [("Export Network", self._export_network)]
         return []
+
+    # ── Auto-toggle helpers ───────────────────────────────────────────────────
+
+    def _on_xauto_toggled(self, checked: bool):
+        self._xmin_spin.setEnabled(not checked)
+        self._xmax_spin.setEnabled(not checked)
+
+    def _on_yauto_toggled(self, checked: bool):
+        self._ymin_spin.setEnabled(not checked)
+        self._ymax_spin.setEnabled(not checked)
+
+    def _on_zauto_toggled(self, checked: bool):
+        self._zmin_spin.setEnabled(not checked)
+        self._zmax_spin.setEnabled(not checked)
 
     # ── Plot dispatcher ───────────────────────────────────────────────────────
 
@@ -435,15 +591,19 @@ class GONetworkDialog(BasePlotDialog):
 
         n_terms = len(rep_df)
 
-        # Y labels
+        # Y labels — "C001: term name" 형식
         desc_col = next(
             (c for c in [StandardColumns.DESCRIPTION, 'Description', 'Term']
              if c in rep_df.columns), None
         )
+        cluster_ids = rep_df[StandardColumns.CLUSTER_ID].tolist()
         if desc_col:
-            y_labels = [str(v)[:70] for v in rep_df[desc_col]]
+            y_labels = [
+                f"C{cid}: {str(v)[:60]}"
+                for cid, v in zip(cluster_ids, rep_df[desc_col])
+            ]
         else:
-            y_labels = [f"Cluster {cid}" for cid in rep_df[StandardColumns.CLUSTER_ID]]
+            y_labels = [f"C{cid}" for cid in cluster_ids]
 
         # X values
         x_axis = self._xaxis_combo.currentText()
@@ -484,9 +644,16 @@ class GONetworkDialog(BasePlotDialog):
 
         if color_by == "FDR" and StandardColumns.FDR in rep_df.columns:
             fdr_vals = [float(v) for v in rep_df[StandardColumns.FDR]]
-            vmin = max(min(fdr_vals), 1e-300)
-            vmax = max(fdr_vals, default=1.0)
-            scatter_norm = mcolors.LogNorm(vmin=vmin, vmax=max(vmax, vmin * 10))
+            if self._zauto_check.isChecked():
+                vmin = max(min(fdr_vals), 1e-300)
+                vmax = max(fdr_vals, default=1.0)
+                vmax = max(vmax, vmin * 10)
+            else:
+                vmin = max(self._zmin_spin.value(), 1e-300)
+                vmax = self._zmax_spin.value()
+                if vmax <= vmin:
+                    vmax = vmin * 10
+            scatter_norm = mcolors.LogNorm(vmin=vmin, vmax=vmax)
             scatter_cmap = 'YlOrRd_r'
             dot_colors = fdr_vals
         elif color_by == "Ontology" and StandardColumns.ONTOLOGY in rep_df.columns:
@@ -507,7 +674,9 @@ class GONetworkDialog(BasePlotDialog):
         else:
             dot_colors = '#3498db'
 
-        dot_sizes = [max(40, float(s) * 20) for s in rep_df['_cluster_size']]
+        dot_min = self._dot_size_min_spin.value()
+        dot_scale = self._dot_size_scale_spin.value()
+        dot_sizes = [max(dot_min, float(s) * dot_scale) for s in rep_df['_cluster_size']]
 
         # Figure height에 따라 동적 조정
         fig_h = max(5, n_terms * 0.38 + 1.5)
@@ -528,12 +697,55 @@ class GONetworkDialog(BasePlotDialog):
         )
 
         if color_by == "FDR" and scatter_cmap:
-            cbar = self.figure.colorbar(sc, ax=ax, shrink=0.6, pad=0.02)
+            cbar_loc = self._cbar_pos_combo.currentText()
+            cbar_shrink = self._cbar_size_spin.value()
+            cbar = self.figure.colorbar(
+                sc, ax=ax,
+                location=cbar_loc,
+                shrink=cbar_shrink,
+                pad=0.02
+            )
             cbar.set_label('FDR', fontsize=9)
 
+        # Size legend
+        size_handles = []
+        if self._size_legend_check.isChecked():
+            max_members = int(rep_df['_cluster_size'].max())
+            legend_counts = [c for c in [1, 5, 10, 20, 50] if c <= max_members]
+            if not legend_counts:
+                legend_counts = [1]
+            if max_members not in legend_counts:
+                legend_counts.append(max_members)
+            size_handles = [
+                ax.scatter([], [], s=max(dot_min, cnt * dot_scale),
+                           c='#aaaaaa', alpha=0.7,
+                           edgecolors='black', linewidths=0.8,
+                           label=f'{cnt}')
+                for cnt in legend_counts
+            ]
+
+        # Color legend (Ontology / Direction)
         if legend_handles:
-            ax.legend(handles=legend_handles, loc='lower right', fontsize=8,
-                      title=color_by, framealpha=0.9)
+            color_leg = ax.legend(
+                handles=legend_handles,
+                loc='lower right',
+                fontsize=8,
+                title=color_by,
+                framealpha=0.9
+            )
+            ax.add_artist(color_leg)
+
+        # Size legend (별도 범례로 추가)
+        if size_handles:
+            ax.legend(
+                handles=size_handles,
+                title="Members",
+                loc='upper right',
+                fontsize=7,
+                framealpha=0.9,
+                handletextpad=1.2,
+                labelspacing=1.0
+            )
 
         ax.set_yticks(y_pos)
         ax.set_yticklabels(y_labels, fontsize=8)
@@ -545,6 +757,23 @@ class GONetworkDialog(BasePlotDialog):
         )
         ax.grid(axis='x', alpha=0.3, linestyle='--')
         ax.axvline(x=0, color='gray', linewidth=0.6)
+
+        # X 축 범위 수동 설정
+        if not self._xauto_check.isChecked():
+            ax.set_xlim(self._xmin_spin.value(), self._xmax_spin.value())
+
+        # Y 축 범위 수동 설정 (row 인덱스 기준)
+        if not self._yauto_check.isChecked():
+            y_lo = self._ymin_spin.value() - 0.5
+            y_hi = self._ymax_spin.value() + 0.5
+            ax.set_ylim(y_lo, y_hi)
+        else:
+            # Y max spinbox 범위를 현재 term 수에 맞게 갱신
+            self._ymax_spin.blockSignals(True)
+            self._ymax_spin.setMaximum(max(n_terms - 1, 0))
+            self._ymax_spin.setValue(max(n_terms - 1, 0))
+            self._ymin_spin.setMaximum(max(n_terms - 1, 0))
+            self._ymax_spin.blockSignals(False)
 
         self.figure.tight_layout()
 
