@@ -2416,10 +2416,7 @@ class MainWindow(QMainWindow):
                     self.presenter.current_dataset = dataset
                     self.logger.info(f"Tab changed to index {index}: current_dataset updated to '{dataset.name}'")
 
-            # GO_ANALYSIS 데이터일 때만 Gene List 탭에 모드 토글 표시
-            self._update_filter_panel_go_mode(index)
-
-            # ATAC-seq 필터 섹션 및 전용 시각화 메뉴 업데이트
+            # 필터 패널 동적 섹션 + 시각화 메뉴 업데이트 (DatasetType 분기는 _update_atac_ui에서 통합)
             self._update_atac_ui(index)
 
             # 트리 선택 동기화
@@ -2629,25 +2626,6 @@ class MainWindow(QMainWindow):
                 sheet_label = self.data_tabs.tabText(tab_index)
                 self.dataset_manager.add_sheet(dataset_name, tab_index, sheet_label, 'whole')
 
-    def _update_filter_panel_go_mode(self, tab_index: int):
-        """
-        현재 탭의 dataset type이 GO_ANALYSIS이면 FilterPanel Gene List 탭에
-        GO Term ID 모드 토글을 표시하고, 그 외에는 숨긴다.
-        Gene Symbol 모드로 초기화하지 않아 사용자의 선택을 유지한다.
-        """
-        from models.data_models import DatasetType
-        is_go = False
-        if tab_index in self.tab_data:
-            dataset = self.tab_data[tab_index]['dataset']
-            if dataset is not None and dataset.dataset_type == DatasetType.GO_ANALYSIS:
-                is_go = True
-
-        if hasattr(self.filter_panel, 'go_mode_widget'):
-            self.filter_panel.go_mode_widget.setVisible(is_go)
-            # GO 탭이 아니면 항상 Gene Symbol 모드로 복귀
-            if not is_go and hasattr(self.filter_panel, 'gene_symbol_radio'):
-                self.filter_panel.gene_symbol_radio.setChecked(True)
-
     def _update_atac_ui(self, tab_index: int):
         """
         현재 탭이 ATAC_SEQ 데이터셋이면:
@@ -2671,9 +2649,9 @@ class MainWindow(QMainWindow):
         is_chromvar = (dataset is not None and
                        dataset.dataset_type == DatasetType.CHROMVAR_DIFF_TF)
 
-        # FilterPanel 갱신
+        # FilterPanel 갱신 (dataset type에 따라 섹션 동적 표시/숨김)
         if hasattr(self.filter_panel, 'update_for_dataset'):
-            self.filter_panel.update_for_dataset(dataset if is_atac else None)
+            self.filter_panel.update_for_dataset(dataset)
 
         # ATAC 전용 Visualization 메뉴 활성화
         if hasattr(self, 'genomic_dist_action'):

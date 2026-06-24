@@ -3,7 +3,7 @@
 ## 배경
 
 `2026-ljh-hiy-human-atac`(human) 결과를 CMG-SeqViewer Database Browser로 들여오는 과정에서
-두 가지 문제를 발견했다. 둘 다 **앱 버그가 아니라 3차 분석 파이프라인이 `seqviewer/datasets/`
+세 가지 문제를 발견했다. 셋 모두 **앱 버그가 아니라 3차 분석 파이프라인이 `seqviewer/datasets/`
 패키지를 만들 때 빠뜨린 부분**이며, 다음 파이프라인 개선 시 반영이 필요하다.
 
 ---
@@ -112,9 +112,86 @@ backlog에 등록할 것.
 
 ---
 
+## 문제 3: GO/KEGG parquet에 분석 메타데이터 행이 데이터와 섞임
+
+### 증상
+
+CMG-SeqViewer에서 GO/KEGG 데이터셋을 열면 테이블 하단에 아래와 같이
+모든 컬럼이 `nan`인 행들이 보인다:
+
+| ontology | category  | term_id | description | … |
+|----------|-----------|---------|-------------|---|
+| Info     | *(NaN)*   | *(NaN)* | *(NaN)*     | … |
+| Info     | *(NaN)*   | *(NaN)* | *(NaN)*     | … |
+
+이 행들에는 `Parameter` / `Value` 컬럼에만 값이 있으며, 실제로는 분석 파라미터 요약이다:
+
+```
+Parameter               Value
+Comparison              1D vs CONTROL
+Analysis Date           2026-06-22
+DE Method               DESeq2
+P-value Cutoff (padj)   0.05
+Log2FC Cutoff           1
+GO P-value Cutoff       0.05
+GO Q-value Cutoff       0.25
+Species                 mouse
+Organism Database       org.Mm.eg.db
+Total GO Terms Found    32519
+...
+```
+
+RNA-seq GO/KEGG parquet 파일에서도 동일하게 발생한다.
+
+### 원인
+
+파이프라인 R 스크립트가 분석 파라미터와 통계 요약값을 결과 DataFrame의
+하단에 `ontology = "Info"` 행으로 이어붙인 뒤 parquet(또는 Excel)으로 저장한다.
+CMG-SeqViewer는 이 행들을 일반 GO term 행과 구분 없이 읽기 때문에 테이블에 노출된다.
+
+### 올바른 위치 — `seqviewer_manifest.json`
+
+이 정보들은 이미 `seqviewer_manifest.json`에 넣을 수 있는 필드들과 완전히 겹친다:
+
+| `Parameter` 값 | manifest 필드 |
+|---|---|
+| `Comparison` | `experiment_condition` |
+| `DE Method` | *(신규 필드 `de_method` 추가 권장)* |
+| `P-value Cutoff (padj)` | `padj_cutoff` |
+| `Log2FC Cutoff` | `log2fc_cutoff` |
+| `Species` | `organism` |
+| `Total GO Terms Found` | `row_count` |
+| `Analysis Date` | *(신규 필드 `analysis_date` 추가 권장)* |
+
+### 요구사항
+
+GO/KEGG parquet(및 Excel) 파일을 저장하기 전에, R 스크립트에서 `ontology = "Info"` 행과
+`Parameter` / `Value` 컬럼을 제거한다. 해당 정보는 `seqviewer_manifest.json`에만 기록한다.
+
+```r
+# 변경 전 (현재)
+final_df <- bind_rows(go_results, info_rows)   # Info 행을 결과에 이어붙임
+write_parquet(final_df, output_path)
+
+# 변경 후
+# Info 행은 manifest에만 기록하고 parquet에는 넣지 않음
+write_parquet(go_results, output_path)         # 순수 GO/KEGG term 행만 저장
+```
+
+### ⚠️ 앱 측 방어 처리 (이미 완료, 참고)
+
+**CMG-SeqViewer v1.2.4 이상**에서는 로드 시 `ontology = 'Info'` 행과
+`Parameter` / `Value` 컬럼을 자동으로 제거하는 방어 로직이 추가되어 있다
+(`go_kegg_loader.py`, `data_loader.py`). 이 조치는 기존 parquet 파일과의 호환성을
+위한 것이며, 파이프라인 측 수정이 근본 해결책이다.
+
+---
+
 ## 체크리스트 (다음 파이프라인 개선 시)
 
 - [ ] `seqviewer/datasets/`에 `tf_variability.csv` 포함 (chromVAR 데이터셋 존재 시)
 - [ ] 모든 ATAC 프로젝트 실행에서 `seqviewer_manifest.json` + `seqviewer/staging/*_entries.json` 생성을 표준화
 - [ ] manifest에 `genome_build`, `peak_caller` 필드 추가 (현재는 빠져 있음)
+- [ ] GO/KEGG parquet 저장 전 `ontology='Info'` 행 및 `Parameter`/`Value` 컬럼 제거 — manifest에만 기록
+- [ ] manifest에 `de_method`, `analysis_date` 필드 추가 (GO Info 행에서 이동)
 - [ ] (앱 측, 별도 작업) Database Browser "Import Folder"가 manifest를 읽도록 개선

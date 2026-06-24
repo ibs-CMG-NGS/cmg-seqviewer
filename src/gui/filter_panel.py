@@ -146,15 +146,19 @@ class FilterPanel(QWidget):
         stats_tab = QWidget()
         stats_layout = QVBoxLayout(stats_tab)
         stats_layout.setContentsMargins(10, 10, 10, 10)
-        
-        # === DE Analysis Filtering Section ===
+
+        # === DE/DA Analysis Filtering Section (동적 표시) ===
+        self.de_filter_widget = QWidget()
+        de_inner = QVBoxLayout(self.de_filter_widget)
+        de_inner.setContentsMargins(0, 0, 0, 0)
+        de_inner.setSpacing(4)
+
         self.de_label = QLabel("<b>DE Analysis Filtering:</b>")
-        stats_layout.addWidget(self.de_label)
-        
+        de_inner.addWidget(self.de_label)
+
         # Adj p-value와 log2FC를 한 줄로 배열
         de_thresholds_layout = QHBoxLayout()
-        
-        # Adjusted p-value
+
         de_thresholds_layout.addWidget(QLabel("Adj. p-value ≤"))
         self.adj_pvalue_input = QDoubleSpinBox()
         self.adj_pvalue_input.setRange(0.0, 1.0)
@@ -163,10 +167,9 @@ class FilterPanel(QWidget):
         self.adj_pvalue_input.setValue(0.05)
         self.adj_pvalue_input.setMaximumWidth(80)
         de_thresholds_layout.addWidget(self.adj_pvalue_input)
-        
+
         de_thresholds_layout.addSpacing(20)
-        
-        # log2 Fold Change
+
         de_thresholds_layout.addWidget(QLabel("|log₂FC| ≥"))
         self.log2fc_input = QDoubleSpinBox()
         self.log2fc_input.setRange(0.0, 10.0)
@@ -175,65 +178,70 @@ class FilterPanel(QWidget):
         self.log2fc_input.setValue(1.0)
         self.log2fc_input.setMaximumWidth(95)
         de_thresholds_layout.addWidget(self.log2fc_input)
-        
+
         de_thresholds_layout.addStretch()
-        stats_layout.addLayout(de_thresholds_layout)
-        
-        # Regulation Direction for DE
+        de_inner.addLayout(de_thresholds_layout)
+
+        # Regulation Direction for DE/DA
         de_direction_layout = QHBoxLayout()
         de_direction_layout.addWidget(QLabel("Regulation:"))
         self.regulation_group = QButtonGroup()
-        
+
         self.both_radio = QRadioButton("Both")
         self.both_radio.setChecked(True)
         self.both_radio.setToolTip("Show both up- and down-regulated genes")
         self.regulation_group.addButton(self.both_radio, 0)
         de_direction_layout.addWidget(self.both_radio)
-        
+
         self.up_radio = QRadioButton("Up")
         self.up_radio.setToolTip("Show only up-regulated genes (log2FC > 0)")
         self.regulation_group.addButton(self.up_radio, 1)
         de_direction_layout.addWidget(self.up_radio)
-        
+
         self.down_radio = QRadioButton("Down")
         self.down_radio.setToolTip("Show only down-regulated genes (log2FC < 0)")
         self.regulation_group.addButton(self.down_radio, 2)
         de_direction_layout.addWidget(self.down_radio)
-        
+
         de_direction_layout.addStretch()
-        stats_layout.addLayout(de_direction_layout)
-        
-        # === Horizontal Line ===
-        separator = QLabel()
-        separator.setStyleSheet("border-top: 2px solid #cccccc; margin: 10px 0px;")
-        separator.setFixedHeight(2)
-        stats_layout.addWidget(separator)
-        stats_layout.addSpacing(5)
-        
-        # === GO/KEGG Analysis Filtering Section ===
+        de_inner.addLayout(de_direction_layout)
+
+        stats_layout.addWidget(self.de_filter_widget)
+
+        # === GO/KEGG Analysis Filtering Section (동적 표시) ===
+        self.go_filter_widget = QWidget()
+        go_inner = QVBoxLayout(self.go_filter_widget)
+        go_inner.setContentsMargins(0, 0, 0, 0)
+        go_inner.setSpacing(4)
+
+        # 구분선 — go_filter_widget 안에 포함시켜 GO 섹션과 함께 표시/숨김
+        go_separator = QLabel()
+        go_separator.setStyleSheet("border-top: 2px solid #cccccc; margin: 10px 0px;")
+        go_separator.setFixedHeight(2)
+        go_inner.addWidget(go_separator)
+        go_inner.addSpacing(5)
+
         go_label = QLabel("<b>GO/KEGG Analysis Filtering:</b>")
-        stats_layout.addWidget(go_label)
-        
+        go_inner.addWidget(go_label)
+
         # FDR cutoff (자유 입력, scientific notation 지원)
         go_fdr_layout = QHBoxLayout()
         go_fdr_layout.addWidget(QLabel("FDR ≤"))
-        
+
         self.go_fdr_input = QLineEdit()
         self.go_fdr_input.setText("0.05")
         self.go_fdr_input.setFixedWidth(80)
         self.go_fdr_input.setPlaceholderText("e.g., 1e-5")
         self.go_fdr_input.setToolTip("Enter FDR threshold (supports scientific notation like 1e-5)")
-        
-        # Validation
+
         from PyQt6.QtGui import QDoubleValidator
         validator = QDoubleValidator(0.0, 1.0, 20)
         validator.setNotation(QDoubleValidator.Notation.ScientificNotation)
         self.go_fdr_input.setValidator(validator)
         go_fdr_layout.addWidget(self.go_fdr_input)
-        
+
         go_fdr_layout.addSpacing(16)
 
-        # Fold Enrichment 최솟값 필터
         go_fdr_layout.addWidget(QLabel("FE ≥"))
         self.go_fe_input = QDoubleSpinBox()
         self.go_fe_input.setRange(0.0, 100.0)
@@ -245,35 +253,35 @@ class FilterPanel(QWidget):
         go_fdr_layout.addWidget(self.go_fe_input)
 
         go_fdr_layout.addStretch()
-        stats_layout.addLayout(go_fdr_layout)
-        
+        go_inner.addLayout(go_fdr_layout)
+
         # Ontology와 Direction을 한 줄로 배치
         go_filters_layout = QHBoxLayout()
-        
-        # Ontology 선택
+
         go_filters_layout.addWidget(QLabel("Ontology:"))
         self.ontology_combo = QComboBox()
         self.ontology_combo.addItems(["All", "BP", "MF", "CC", "KEGG"])
         self.ontology_combo.setToolTip("Biological Process / Molecular Function / Cellular Component / KEGG")
         go_filters_layout.addWidget(self.ontology_combo)
-        
+
         go_filters_layout.addSpacing(20)
-        
-        # Gene Set 선택 (UP/DOWN/TOTAL DEG)
+
         go_filters_layout.addWidget(QLabel("Gene Set:"))
         self.go_direction_combo = QComboBox()
         self.go_direction_combo.addItems(["All", "UP", "DOWN", "TOTAL"])
         self.go_direction_combo.setToolTip("DEG group used for GO/KEGG analysis (UP-regulated, DOWN-regulated, or TOTAL DEGs)")
         go_filters_layout.addWidget(self.go_direction_combo)
-        
+
         go_filters_layout.addStretch()
-        stats_layout.addLayout(go_filters_layout)
-        
-        # Advanced Filtering 버튼
+        go_inner.addLayout(go_filters_layout)
+
         self.advanced_go_filter_btn = QPushButton("⚙️ Advanced Filtering...")
         self.advanced_go_filter_btn.setToolTip("Open advanced GO/KEGG filtering dialog")
         self.advanced_go_filter_btn.clicked.connect(lambda: self.analysis_requested.emit("go_advanced_filter"))
-        stats_layout.addWidget(self.advanced_go_filter_btn)
+        go_inner.addWidget(self.advanced_go_filter_btn)
+
+        self.go_filter_widget.setVisible(False)  # 기본 숨김; update_for_dataset에서 제어
+        stats_layout.addWidget(self.go_filter_widget)
 
         # === ATAC-seq Filtering Section ===
         self.atac_filter_widget = QWidget()
@@ -646,19 +654,35 @@ class FilterPanel(QWidget):
 
     def update_for_dataset(self, dataset) -> None:
         """
-        현재 탭의 데이터셋 타입에 따라 ATAC 필터 섹션을 표시/숨김하고
-        annotation 드롭다운을 해당 데이터셋의 카테고리로 채웁니다.
+        데이터셋 타입에 따라 Statistical 탭의 섹션과 Gene List 탭의 모드 토글을
+        동적으로 표시/숨김합니다.
 
         Args:
-            dataset: Dataset 객체 (None이면 ATAC 섹션 숨김)
+            dataset: Dataset 객체 (None이면 DE 섹션만 표시)
         """
         from models.data_models import DatasetType
         is_atac = (dataset is not None and
                    dataset.dataset_type == DatasetType.ATAC_SEQ)
+        is_go = (dataset is not None and
+                 dataset.dataset_type == DatasetType.GO_ANALYSIS)
+
+        # Statistical 탭: DE/DA 섹션 — GO 데이터일 때만 숨김
+        self.de_filter_widget.setVisible(not is_go)
+        # Statistical 탭: GO/KEGG 섹션 — GO 데이터일 때만 표시
+        self.go_filter_widget.setVisible(is_go)
+        # Statistical 탭: ATAC 섹션 — ATAC 데이터일 때만 표시
         self.atac_filter_widget.setVisible(is_atac)
+
+        # DE ↔ DA 레이블 전환
         self.de_label.setText(
             "<b>DA Analysis Filtering:</b>" if is_atac else "<b>DE Analysis Filtering:</b>"
         )
+
+        # Gene List 탭: GO Term ID 모드 토글 — GO 데이터일 때만 표시
+        if hasattr(self, 'go_mode_widget'):
+            self.go_mode_widget.setVisible(is_go)
+            if not is_go and hasattr(self, 'gene_symbol_radio'):
+                self.gene_symbol_radio.setChecked(True)
 
         if not is_atac:
             return
@@ -674,7 +698,6 @@ class FilterPanel(QWidget):
         self.atac_annotation_combo.addItem("All")
         for cat in categories:
             self.atac_annotation_combo.addItem(cat)
-        # 이전 선택 복원 (없으면 "All" 유지)
         idx = self.atac_annotation_combo.findText(current)
         if idx >= 0:
             self.atac_annotation_combo.setCurrentIndex(idx)

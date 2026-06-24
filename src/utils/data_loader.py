@@ -397,8 +397,37 @@ class DataLoader:
         # GO 데이터의 경우 fold_enrichment 파생 계산
         if dataset_type == DatasetType.GO_ANALYSIS:
             df = self._compute_fold_enrichment(df)
+            df = self._strip_go_metadata_rows(df)
 
         return df, original_columns
+
+    def _strip_go_metadata_rows(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        파이프라인이 GO 결과 DataFrame 하단에 삽입하는 분석 메타데이터 행 제거.
+
+        일부 파이프라인은 Comparison, DE Method, cutoff 등 분석 파라미터를
+        ontology='Info' 행으로 데이터에 함께 저장한다. 이는 GO term 결과가
+        아니므로 로드 시 제거한다. 해당 메타데이터는 seqviewer_manifest.json에
+        저장하는 것이 올바른 방식이다.
+        """
+        import pandas as pd
+
+        if 'ontology' not in df.columns:
+            return df
+
+        info_mask = df['ontology'].astype(str).str.strip().str.lower() == 'info'
+        if info_mask.any():
+            n = int(info_mask.sum())
+            df = df[~info_mask].copy()
+            self.logger.info(f"Dropped {n} pipeline metadata rows (ontology='Info')")
+
+        # Parameter/Value 컬럼은 Info 행 전용이라 제거
+        drop_cols = [c for c in ['Parameter', 'Value'] if c in df.columns]
+        if drop_cols:
+            df = df.drop(columns=drop_cols)
+            self.logger.info(f"Dropped pipeline-metadata-only columns: {drop_cols}")
+
+        return df
 
     def _compute_fold_enrichment(self, df: pd.DataFrame) -> pd.DataFrame:
         """

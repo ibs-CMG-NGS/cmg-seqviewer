@@ -377,6 +377,20 @@ class GOKEGGLoader:
         # Fold Enrichment 파생 계산 (gene_ratio / bg_ratio)
         df = self._compute_fold_enrichment(df)
 
+        # 파이프라인이 분석 파라미터를 ontology='Info' 행으로 삽입한 경우 제거
+        ontology_col = StandardColumns.ONTOLOGY  # 'ontology'
+        if ontology_col in df.columns:
+            info_mask = df[ontology_col].astype(str).str.strip().str.lower() == 'info'
+            if info_mask.any():
+                n = int(info_mask.sum())
+                df = df[~info_mask].copy()
+                self.logger.info(f"Dropped {n} pipeline metadata rows (ontology='Info')")
+        # Parameter/Value 컬럼은 Info 행 전용이라 제거
+        drop_cols = [c for c in ['Parameter', 'Value'] if c in df.columns]
+        if drop_cols:
+            df = df.drop(columns=drop_cols)
+            self.logger.info(f"Dropped pipeline-metadata-only columns: {drop_cols}")
+
         return df
 
     def _compute_fold_enrichment(self, df: pd.DataFrame) -> pd.DataFrame:
