@@ -106,7 +106,8 @@ class GONetworkDialog(BasePlotDialog):
         self._show_labels_check.toggled.connect(self._update_plot)
         net_form.addRow("", self._show_labels_check)
 
-        self._ctrl_tabs.addTab(net_widget, "Network")
+        # Network 탭 비활성화 — 재사용 시 아래 주석 해제
+        # self._ctrl_tabs.addTab(net_widget, "Network")
 
         # ── Tab 2: Dot Plot ──────────────────────────────────────────────────
         dot_widget = QWidget()
@@ -139,7 +140,9 @@ class GONetworkDialog(BasePlotDialog):
         layout.addWidget(self._ctrl_tabs)
 
     def _extra_buttons(self) -> list:
-        return [("Export Network", self._export_network)]
+        # Network 탭 비활성화 중 — 재사용 시 아래 주석 해제
+        # return [("Export Network", self._export_network)]
+        return []
 
     # ── Plot dispatcher ───────────────────────────────────────────────────────
 
@@ -157,10 +160,11 @@ class GONetworkDialog(BasePlotDialog):
             self.canvas.draw()
             return
 
-        if self._ctrl_tabs.currentIndex() == 0:
-            self._do_cluster_network()
-        else:
-            self._do_dotplot()
+        # Network 탭 비활성화 중 — 항상 Dot Plot 표시
+        # if self._ctrl_tabs.currentIndex() == 0:
+        #     self._do_cluster_network()
+        # else:
+        self._do_dotplot()
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
