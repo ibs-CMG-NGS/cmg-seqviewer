@@ -686,9 +686,13 @@ class GONetworkDialog(BasePlotDialog):
         dot_scale = self._dot_size_scale_spin.value()
         dot_sizes = [max(dot_min, float(s) * dot_scale) for s in rep_df['_cluster_size']]
 
-        # Figure height에 따라 동적 조정
-        fig_h = max(5, n_terms * 0.38 + 1.5)
-        self.figure.set_size_inches(10, fig_h)
+        # 너비: 현재 캔버스 위젯 크기를 그대로 사용 (창 크기에 맞춤)
+        # 높이: term 수에 따라 동적 계산
+        dpi = self.figure.dpi
+        canvas_w_px = self.canvas.width()
+        w_in = (canvas_w_px / dpi) if canvas_w_px > 50 else 8.0
+        fig_h = max(5.0, n_terms * 0.38 + 1.5)
+        self.figure.set_size_inches(w_in, fig_h)
         ax = self.figure.add_subplot(111)
         y_pos = list(range(n_terms))
 
