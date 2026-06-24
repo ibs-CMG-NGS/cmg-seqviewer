@@ -314,12 +314,12 @@ class GOClusteringDialog(QDialog):
         
         howto_text = QLabel(
             "<ol style='margin-left: -20px;'>"
-            "<li><b>Set similarity threshold</b> - Default 0.7 works well</li>"
-            "<li><b>Set cluster size range</b> - Filter valid cluster sizes</li>"
-            "<li><b>Click 'Run Clustering'</b> - Wait for analysis</li>"
-            "<li><b>Explore network</b> - Hover, zoom, adjust labels</li>"
-            "<li><b>Review clusters</b> - Check Summary and tables</li>"
-            "<li><b>Export results</b> - Save to Excel for further use</li>"
+            "<li><b>Set Similarity Threshold</b> — 0.7 recommended (higher = fewer, tighter clusters)</li>"
+            "<li><b>Set Min Terms</b> — minimum members for a valid cluster (default 2)</li>"
+            "<li><b>Click 'Run Clustering'</b> — Jaccard similarity + hierarchical clustering</li>"
+            "<li><b>Explore grid</b> — click a cluster cell to see its detail network</li>"
+            "<li><b>Review tabs</b> — Summary / Clustered Terms / Representatives</li>"
+            "<li><b>Click Apply</b> — creates Clustered tab, then open Cluster Dot Plot</li>"
             "</ol>"
         )
         howto_text.setWordWrap(True)
@@ -329,7 +329,7 @@ class GOClusteringDialog(QDialog):
         layout.addWidget(howto_group)
         
         # Visualization Guide
-        guide_group = QGroupBox("📊 Network Visualization")
+        guide_group = QGroupBox("📊 Cluster Grid Guide")
         guide_layout = QVBoxLayout(guide_group)
         
         help_content = QTextEdit()
@@ -345,32 +345,24 @@ class GOClusteringDialog(QDialog):
             .highlight { color: #007bff; font-weight: bold; }
         </style>
         
-        <h4>🔵 Nodes</h4>
+        <h4>🔵 Grid Cells</h4>
         <ul>
-            <li><span class="highlight">Large</span>: Representative terms (lowest FDR)</li>
-            <li><span class="highlight">Small</span>: Member terms</li>
-            <li><span class="highlight">Colors</span>: Unique per cluster</li>
-            <li><span class="highlight">Gray</span>: Singletons or excluded</li>
+            <li>각 셀 = 하나의 유효 클러스터 (C001, C002…)</li>
+            <li><span class="highlight">헤더</span>: 클러스터 ID + 멤버 수 + 대표 term 이름</li>
+            <li><span class="highlight">빨간 노드</span>: 대표 term (최저 FDR)</li>
+            <li><span class="highlight">파란 노드</span>: 일반 멤버 term</li>
         </ul>
-        
-        <h4>📐 Layout</h4>
+
+        <h4>🔗 Edges (셀 내부)</h4>
         <ul>
-            <li><b>Valid clusters</b>: Grid layout on left/center</li>
-            <li><b>Small/Large clusters</b>: Right side column</li>
-            <li><b>Hulls</b>: Convex boundaries around clusters</li>
+            <li>Jaccard 유사도로 연결 (edge threshold 이상)</li>
+            <li>굵기 = 유사도 강도</li>
         </ul>
-        
-        <h4>🔗 Edges</h4>
-        <ul>
-            <li>Connect similar terms (Jaccard >0.3)</li>
-            <li>Width = similarity strength</li>
-        </ul>
-        
+
         <h4>🖱️ Interaction</h4>
         <ul>
-            <li><b>Hover</b>: See term details</li>
-            <li><b>Zoom/Pan</b>: Use toolbar</li>
-            <li><b>Refresh</b>: Update label count & node size</li>
+            <li><b>셀 클릭</b>: Cluster Detail 탭에서 확대 뷰</li>
+            <li><b>Zoom/Pan</b>: 상단 툴바 사용</li>
         </ul>
         """)
         guide_layout.addWidget(help_content)

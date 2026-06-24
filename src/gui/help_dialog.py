@@ -1720,29 +1720,41 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
         <p><i>Note: "Gene Set" is different from "Regulation" - it shows which DEG group was used for GO analysis.</i></p>
         
         <h2>GO Term Clustering</h2>
-        <p>Cluster similar GO terms to reduce redundancy (ClueGO-style):</p>
+        <p>Jaccard similarity 기반 계층적 군집화로 중복 GO term을 통합합니다:</p>
         <ol>
-            <li>Filter GO data (e.g., FDR &lt; 1e-5, BP, UP)</li>
-            <li>Select <b>Analysis &rarr; Cluster GO Terms</b></li>
-            <li>Configure:
+            <li>GO/KEGG 데이터 필터링 (예: FDR &lt; 1e-5, BP, UP)</li>
+            <li><b>Analysis &rarr; Cluster GO Terms</b> 선택</li>
+            <li>파라미터 설정:
                 <ul>
-                    <li><b>Similarity Method:</b> Jaccard (shared genes) or Kappa</li>
-                    <li><b>Threshold:</b> 0.0-1.0 (default: 0.3, higher = stricter)</li>
-                    <li><b>Clustering Method:</b> average, complete, single, ward</li>
+                    <li><b>Similarity Threshold:</b> 0.0–1.0 (기본값 0.7 — 높을수록 더 엄격, 클러스터 수 감소)</li>
+                    <li><b>Min Terms:</b> 유효 클러스터 최소 term 수 (기본값 2, singleton 제외)</li>
                 </ul>
             </li>
-            <li>View interactive dialog with network visualization</li>
-            <li>Click <b>Apply</b> to create Clustered tab</li>
+            <li><b>Run Clustering</b> 실행 — 5개 탭 결과 확인:
+                <ul>
+                    <li><b>Network Visualization:</b> 클러스터별 Jaccard 네트워크 그리드; 셀 클릭 → Cluster Detail 탭에서 확대</li>
+                    <li><b>Summary:</b> 전체 term 수, 유효 클러스터 수, singleton 수 통계</li>
+                    <li><b>Clustered Terms:</b> 전체 term에 C001/C002… 형식의 클러스터 ID 표시</li>
+                    <li><b>Representatives:</b> 유효 클러스터별 대표 term (최저 FDR)</li>
+                    <li><b>Cluster Detail:</b> 선택 클러스터의 단일 Jaccard 네트워크 확대 뷰</li>
+                </ul>
+            </li>
+            <li><b>Apply</b> 클릭 → Clustered 탭 생성 (클러스터 ID 컬럼 포함)</li>
         </ol>
-        
-        <h3>Clustering Features:</h3>
+
+        <h3>알고리즘 요약:</h3>
         <ul>
-            <li>Interactive network (pan, zoom, hover for details)</li>
-            <li>Color-coded cluster legend (collapsible)</li>
-            <li>Representative terms for each cluster</li>
-            <li>Singleton terms (unclustered)</li>
-            <li>Multiple layout algorithms</li>
-            <li>Results table with cluster IDs</li>
+            <li>Jaccard 유사도: 두 term의 공유 유전자 수 ÷ 합집합 유전자 수</li>
+            <li>계층적 군집화(average linkage) + distance threshold = 1 − Similarity Threshold</li>
+            <li>Min Terms 미만 클러스터는 singleton으로 분류 (클러스터 ID 미할당)</li>
+            <li>대표 term = 각 클러스터에서 FDR이 가장 낮은 term</li>
+            <li>클러스터 ID: C001, C002… 형식 (0-padding, 문자열 정렬 가능)</li>
+        </ul>
+
+        <h3>클러스터링 후 시각화:</h3>
+        <ul>
+            <li>Clustered 탭 활성 상태에서 <b>Visualization &rarr; Cluster Dot Plot</b> 실행</li>
+            <li>각 점 = 클러스터 대표 term, 점 크기 = 멤버 수, 색상 = FDR</li>
         </ul>
         
         <h2>GO/KEGG Visualization</h2>
