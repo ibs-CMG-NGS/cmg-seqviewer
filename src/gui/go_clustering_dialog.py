@@ -927,8 +927,8 @@ class GOClusteringDialog(QDialog):
         # 뷰포트 가로 픽셀 → 인치 (스크롤바 너비 약 20px 제외)
         viewport_w  = self.canvas_scroll.viewport().width() - 20
         fig_w_in    = max(8.0, viewport_w / dpi)
-        # 행 하나당 약 2.8인치 (헤더 + 노드 영역), 최소 6인치
-        fig_h_in    = max(6.0, grid_rows * 2.8)
+        # 행 하나당 약 3.5인치 (2줄 헤더 + 노드 영역), 최소 6인치
+        fig_h_in    = max(6.0, grid_rows * 3.5)
 
         self.figure.set_size_inches(fig_w_in, fig_h_in)
         # 캔버스 고정 높이 업데이트 (QScrollArea가 세로 스크롤 담당)
@@ -1014,8 +1014,8 @@ class GOClusteringDialog(QDialog):
         GRID_COLS   = 4          # 고정 열 수 (클러스터가 많으면 행만 추가)
         CELL_W      = 1.0        # 셀 너비 (정규화 단위)
         CELL_H      = 1.0        # 셀 높이
-        HEADER_FRAC = 0.18       # 셀 높이 중 헤더가 차지하는 비율
-        PAD         = 0.06       # 셀 내부 padding (비율)
+        HEADER_FRAC = 0.28       # 셀 높이 중 헤더가 차지하는 비율 (2줄 텍스트용)
+        PAD         = 0.05       # 셀 내부 padding (비율)
 
         if valid_clusters:
             valid_clusters_sorted = sorted(valid_clusters, key=lambda x: len(x[1]), reverse=True)
@@ -1091,28 +1091,29 @@ class GOClusteringDialog(QDialog):
             )
             ax.add_patch(header_rect)
 
-            # 헤더 텍스트: 대표 term 이름
+            # 헤더 텍스트: 2줄 — 1행: ID+크기, 2행: 대표 term 이름
             desc_col = None
             for dcol in ['description', 'Description', 'Term', 'term', 'GO Term', 'KEGG Pathway']:
                 if dcol in self.clustered_df.columns:
                     desc_col = dcol
                     break
-            rep_label = f"C{cluster_id}  (n={len(members)})"
+            id_line = f"C{cluster_id:03d}  (n={len(members)})"
+            name_line = ""
             if desc_col:
                 for m in members:
                     if self.clustered_df.loc[m, 'is_representative']:
                         full = str(self.clustered_df.loc[m, desc_col])
-                        # 헤더 너비에 맞게 truncate (약 35자)
-                        rep_label = (full[:33] + '…') if len(full) > 35 else full
-                        rep_label = f"{rep_label}  (n={len(members)})"
+                        name_line = (full[:38] + '…') if len(full) > 40 else full
                         break
+            rep_label = f"{id_line}\n{name_line}" if name_line else id_line
             ax.text(ox + CELL_W * 0.5,
                     oy + CELL_H - header_h * 0.5,
                     rep_label,
-                    fontsize=max(6, self.label_size - 0.5),
+                    fontsize=max(5, self.label_size - 1),
                     ha='center', va='center',
                     color='#222222', weight='bold',
-                    clip_on=True, zorder=3)
+                    clip_on=True, zorder=3,
+                    linespacing=1.4)
 
         # ── Convex hull (옵션) ────────────────────────────────────────────
         if self.show_hulls:
@@ -1190,9 +1191,9 @@ class GOClusteringDialog(QDialog):
                     break
 
             if rep_term:
-                label = f"C{cluster_id} ({len(members)}): {rep_term if len(rep_term) <= 80 else rep_term[:77] + '...'}"
+                label = f"C{cluster_id:03d} ({len(members)}): {rep_term if len(rep_term) <= 80 else rep_term[:77] + '...'}"
             else:
-                label = f"C{cluster_id} ({len(members)})"
+                label = f"C{cluster_id:03d} ({len(members)})"
 
             try:
                 item = QListWidgetItem(label)
@@ -1431,13 +1432,11 @@ class GOClusteringDialog(QDialog):
             elif cluster_id_raw in self.clusters:
                 cluster_size = len(self.clusters[cluster_id_raw])
                 if cluster_size >= self.min_cluster_size:
-                    # Valid cluster - use cluster number
-                    cluster_id_display = str(cluster_id_raw)
+                    cluster_id_display = f"{int(cluster_id_raw):03d}"
                 else:
-                    # Small cluster (shouldn't happen often)
                     cluster_id_display = 'Small'
             else:
-                cluster_id_display = str(cluster_id_raw)
+                cluster_id_display = f"{int(cluster_id_raw):03d}" if cluster_id_raw != -1 else str(cluster_id_raw)
             
             # Debug: log first few rows
             if i < 3:
@@ -1604,8 +1603,8 @@ class GOClusteringDialog(QDialog):
                     # Singleton
                     cluster_value = 'Singleton'
                 elif cluster_id_raw in self.clusters:
-                    # Valid cluster (already filtered by size)
-                    cluster_value = str(cluster_id_raw)
+                    # Valid cluster — zero-padded 3자리로 저장 (정렬 일관성)
+                    cluster_value = f"{int(cluster_id_raw):03d}"
                 else:
                     # Not in clusters dict means it was filtered out (too small)
                     cluster_value = 'Small'
