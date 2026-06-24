@@ -48,7 +48,7 @@ class GONetworkDialog(BasePlotDialog):
         else:
             self._valid_ids = []
 
-        super().__init__("GO/KEGG Cluster Visualization", parent, figsize=(12, 10))
+        super().__init__("GO/KEGG Cluster Dot Plot", parent, figsize=(12, 10))
         self.resize(1100, 750)
         self._update_plot()
 
@@ -261,6 +261,14 @@ class GONetworkDialog(BasePlotDialog):
         self._zmax_spin.valueChanged.connect(self._update_plot)
         zrange_layout.addWidget(self._zmax_spin)
         cbar_form.addRow("Z range:", zrange_row)
+
+        self._cbar_cmap_combo = QComboBox()
+        self._cbar_cmap_combo.addItems([
+            'YlOrRd_r', 'RdPu_r', 'Blues_r', 'Greens_r', 'Purples_r',
+            'viridis_r', 'plasma_r', 'magma_r', 'BuPu_r', 'RdYlBu',
+        ])
+        self._cbar_cmap_combo.currentTextChanged.connect(self._update_plot)
+        cbar_form.addRow("Colormap:", self._cbar_cmap_combo)
 
         self._cbar_pos_combo = QComboBox()
         self._cbar_pos_combo.addItems(["right", "left", "bottom", "top"])
@@ -654,7 +662,7 @@ class GONetworkDialog(BasePlotDialog):
                 if vmax <= vmin:
                     vmax = vmin * 10
             scatter_norm = mcolors.LogNorm(vmin=vmin, vmax=vmax)
-            scatter_cmap = 'YlOrRd_r'
+            scatter_cmap = self._cbar_cmap_combo.currentText()
             dot_colors = fdr_vals
         elif color_by == "Ontology" and StandardColumns.ONTOLOGY in rep_df.columns:
             onts = rep_df[StandardColumns.ONTOLOGY].tolist()
@@ -705,17 +713,19 @@ class GONetworkDialog(BasePlotDialog):
                 shrink=cbar_shrink,
                 pad=0.02
             )
-            cbar.set_label('FDR', fontsize=9)
+            cbar.set_label('FDR')
 
         # Size legend
         size_handles = []
         if self._size_legend_check.isChecked():
             max_members = int(rep_df['_cluster_size'].max())
-            legend_counts = [c for c in [1, 5, 10, 20, 50] if c <= max_members]
-            if not legend_counts:
-                legend_counts = [1]
-            if max_members not in legend_counts:
-                legend_counts.append(max_members)
+            if max_members <= 4:
+                legend_counts = list(range(1, max_members + 1))
+            else:
+                legend_counts = sorted(set(
+                    [1] + [int(round(v))
+                           for v in np.linspace(max_members / 3, max_members, 3)]
+                ))
             size_handles = [
                 ax.scatter([], [], s=max(dot_min, cnt * dot_scale),
                            c='#aaaaaa', alpha=0.7,
@@ -729,7 +739,6 @@ class GONetworkDialog(BasePlotDialog):
             color_leg = ax.legend(
                 handles=legend_handles,
                 loc='lower right',
-                fontsize=8,
                 title=color_by,
                 framealpha=0.9
             )
@@ -741,19 +750,18 @@ class GONetworkDialog(BasePlotDialog):
                 handles=size_handles,
                 title="Members",
                 loc='upper right',
-                fontsize=7,
                 framealpha=0.9,
                 handletextpad=1.2,
                 labelspacing=1.0
             )
 
         ax.set_yticks(y_pos)
-        ax.set_yticklabels(y_labels, fontsize=8)
-        ax.set_xlabel(x_label, fontsize=10)
+        ax.set_yticklabels(y_labels)
+        ax.set_xlabel(x_label)
         ax.set_title(
             f"GO Cluster Summary Dot Plot\n"
             f"Top {n_terms} clusters  ·  dot size = cluster member count",
-            fontsize=11, fontweight='bold'
+            fontweight='bold'
         )
         ax.grid(axis='x', alpha=0.3, linestyle='--')
         ax.axvline(x=0, color='gray', linewidth=0.6)
