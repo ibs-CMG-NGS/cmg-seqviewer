@@ -1761,13 +1761,13 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
             <li>Color-coded by ontology</li>
         </ul>
         
-        <h3>Network Chart:</h3>
+        <h3>Cluster Dot Plot:</h3>
         <ul>
-            <li>Select <b>Visualization &rarr; GO/KEGG Network Chart</b></li>
-            <li>Requires Clustered tab</li>
-            <li>Nodes sized by gene count or FDR</li>
-            <li>Edges weighted by similarity</li>
-            <li>Color-coded by cluster with legend</li>
+            <li>Select <b>Visualization &rarr; GO/KEGG Cluster Dot Plot</b></li>
+            <li>Requires Clustered tab (run GO Clustering first)</li>
+            <li>One dot per cluster representative term</li>
+            <li>Dot size = cluster member count, color = FDR</li>
+            <li>X axis: -log10(FDR), Gene Ratio, or Fold Enrichment</li>
         </ul>
         
         <h2>Common Workflows</h2>
@@ -1785,7 +1785,7 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
             <li>Filter (FDR &lt; 1e-5, BP)</li>
             <li>Cluster GO Terms</li>
             <li>Apply clustering</li>
-            <li>Create Network Chart</li>
+            <li>Create Cluster Dot Plot</li>
             <li>Export clustered results</li>
         </ol>
         

@@ -612,7 +612,7 @@ class MainWindow(QMainWindow):
         self.go_barplot_action.triggered.connect(lambda: self._on_go_visualization("barplot"))
         viz_menu.addAction(self.go_barplot_action)
         
-        self.go_network_action = QAction("🧬 Network Chart (GO/KEGG)", self)
+        self.go_network_action = QAction("🧬 Cluster Dot Plot (GO/KEGG)", self)
         self.go_network_action.triggered.connect(lambda: self._on_go_visualization("network"))
         viz_menu.addAction(self.go_network_action)
 
@@ -4494,22 +4494,22 @@ class MainWindow(QMainWindow):
             )
             dataset = filtered_dataset
         
-        # Network Chart는 Clustered 탭에서만 가능
+        # Cluster Dot Plot는 Clustered 탭에서만 가능
         if plot_type == "network":
             current_tab_name = self.data_tabs.tabText(current_index)
             if not current_tab_name.startswith("Clustered:"):
                 QMessageBox.information(
                     self,
                     "Use Clustered Data",
-                    "Network Chart should be used with clustered data for better performance.\n\n"
+                    "Cluster Dot Plot requires clustered data.\n\n"
                     "Please:\n"
                     "1. Filter your GO/KEGG data (Statistical Filter tab)\n"
                     "2. Select the 'Filtered:' tab\n"
                     "3. Run 'GO Analysis → Cluster GO Terms'\n"
                     "4. Select the generated 'Clustered:' tab\n"
-                    "5. Then open Network Chart\n\n"
-                    "This shows cluster-level relationships instead of all term-to-term connections,\n"
-                    "greatly reducing computational load."
+                    "5. Then open Cluster Dot Plot\n\n"
+                    "Each dot represents one cluster's representative term,\n"
+                    "sized by cluster member count and colored by FDR."
                 )
                 return
         

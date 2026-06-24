@@ -1374,9 +1374,9 @@ class GOClusteringDialog(QDialog):
         </table>
         
         <div class="filter-info">
-            <b>ℹ️ Cluster Details:</b> All cluster information including IDs, 
-            sizes, and representative terms are shown in the <b>Network Visualization legend</b> 
-            on the right side of the network chart. Use the legend to identify clusters by color.
+            <b>ℹ️ Cluster Details:</b> All cluster information including IDs,
+            sizes, and representative terms are shown in the <b>Cluster Dot Plot</b>
+            (Visualization → Cluster Dot Plot). Use the Y-axis labels to identify each cluster.
         </div>
         
         </body></html>
