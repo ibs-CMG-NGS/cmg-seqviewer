@@ -6,53 +6,68 @@
 
 | 문서 | 설명 | 상태 | 우선순위 |
 |------|------|------|---------|
-| [ATAC-seq 통합 계획](ATAC_SEQ_INTEGRATION_PLAN.md) | 멀티오믹스 통합 로드맵 | ✅ 완료 | 높음 |
+| [ATAC-seq 통합 계획](ATAC_SEQ_INTEGRATION_PLAN.md) | ATAC-seq 및 Multi-Omics 통합 로드맵 | ✅ 완료 (v1.2.1) | 높음 |
+| [Multi-Group Heatmap 계획](multi-group-heatmap.md) | 3개+ 그룹 비교 및 LRT 히트맵 | ✅ 완료 (v1.2.1) | 높음 |
+| [헤더 표준화 제안](header-standardization.md) | 컬럼명 표준화 (`StandardColumns`) | ✅ 완료 (v1.2.0) | 높음 |
+| [온라인 GO/KEGG 분석 계획](ONLINE_ENRICHMENT_ANALYSIS_PLAN.md) | gseapy/Enrichr 기반 온디맨드 농축 분석 | 📝 계획 | 중간 |
+| [Dataset Tree Panel 계획](dataset-tree-panel.md) | 좌측 트리 패널로 데이터셋 계층 표시 | 📝 계획 | 중간 |
+| [Figure 품질·재현성 계획](FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md) | 논문급 figure 세밀 제어 + FigureSpec 기반 재현성/재사용성 (Phase 1–4) | 📋 계획 | 중간 |
 
 ---
 
 ## 🎯 현재 기획
 
-### ATAC-seq 통합 (v2.0.0)
+### ✅ ATAC-seq + Multi-Omics 통합 (v1.2.x) — 완료
 
-**목표**: RNA-seq + ATAC-seq 멀티오믹스 분석 플랫폼
-
-**Phase 1: ATAC-seq Standalone** (1주)
-- ATAC-seq 데이터 전용 탭 인터페이스
+**Phase 1: ATAC-seq Standalone** ✅
+- ATAC-seq 데이터 전용 로더 (`AtacSeqLoader`)
 - Peak 필터링 (FDR, fold change, distance to TSS)
-- Peak 시각화 (Volcano, Genomic distribution, Heatmap)
+- 시각화: Genomic Distribution, TSS Distance, MA Plot
 
-**Phase 2: Multi-omics Integration** (1주)
-- RNA-seq + ATAC-seq 동시 로드
-- 유전자-Peak 연결 (nearest, promoter, enhancer)
-- 통합 시각화 (Scatter, Quadrant, Integrated heatmap)
+**Phase 2: Multi-Omics Integration** ✅
+- RNA-seq + ATAC-seq 동시 로드 및 연결
+- 7-category Concordance 분류
+- 통합 시각화: Concordance Bar Chart, Integrated Volcano Plot
+- F1 Help 섹션 추가
 
-**상세 계획**: [ATAC-seq 통합 계획](ATAC_SEQ_INTEGRATION_PLAN.md)
+**Multi-Group Heatmap** ✅
+- LRT omnibus 결과 + VST abundance → Z-score clustermap
+- Hierarchical clustering (dendrogram cut, k 지정)
+- gene_cluster 컬럼 export
+
+**상세 계획**: [ATAC-seq 통합 계획](ATAC_SEQ_INTEGRATION_PLAN.md) | [Multi-Group Heatmap](multi-group-heatmap.md)
 
 ---
 
 ## 🗺️ 로드맵
 
-### v1.2.0 (현재) - External Data Folder
+### v1.2.0 — External Data Folder + IGV Integration
 - ✅ 외부 데이터 폴더 지원
 - ✅ Gene/GO/KEGG 컨텍스트 메뉴
+- ✅ IGV 연동
 - ✅ 데이터베이스 새로고침 기능
 
+### v1.2.1 (현재) — ATAC-seq & Multi-Omics Integration
+- ✅ ATAC-seq Standalone (Phase 1)
+- ✅ Multi-Omics Integration (Phase 2): Concordance 분류, Integrated Volcano
+- ✅ Multi-Group Heatmap (LRT + hierarchical clustering)
+- ✅ 컬럼 표준화 (`StandardColumns`)
+- ✅ Visualization 메뉴 명칭 표준화
+
 ### v1.3.0 (계획) - UI/UX 개선
+- [ ] Dataset Tree Panel (좌측 계층 트리)
 - [ ] 다크 모드 지원
 - [ ] 사용자 설정 저장 (필터 프리셋, 색상 테마)
-- [ ] 드래그 앤 드롭 개선
 - [ ] Recent files 확장 (10 → 20)
 
-### v1.4.0 (계획) - 고급 통계
-- [ ] DESeq2 결과 직접 임포트
-- [ ] EdgeR 결과 지원
+### v1.4.0 (계획) - 온라인 분석 & 고급 통계
+- [ ] 온라인 GO/KEGG 분석 (gseapy/Enrichr)
+- [ ] PCA/t-SNE 시각화
 - [ ] Batch effect correction
-- [ ] PCA/t-SNE visualization
 
-### v2.0.0 (장기) - Multi-omics
-- [ ] ATAC-seq 통합 (Phase 1, 2)
-- [ ] ChIP-seq 지원 (Phase 3)
-- [ ] Hi-C 데이터 통합 (Phase 4)
+### v2.0.0 (장기) - Multi-omics 확장
+- [ ] ChIP-seq 지원
+- [ ] Hi-C 데이터 통합
 - [ ] 멀티오믹스 네트워크
 
 ---

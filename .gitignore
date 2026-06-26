@@ -159,3 +159,7 @@ data/metadata.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Temporary test files
+test.svg
+test_db.py

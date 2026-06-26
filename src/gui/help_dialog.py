@@ -90,8 +90,12 @@ class HelpDialog(QDialog):
             "3. Dataset Database",
             "4. Data Filtering",
             "5. GO/KEGG Analysis",
+            "5b. GO Term Comparison",
+            "5c. ATAC-seq Analysis",
+            "5d. Multi-Omics Integration",
             "6. Statistical Analysis",
             "7. Visualization",
+            "7b. Project Save/Load",
             "8. Multi-Group Heatmap",
             "9. PCA Plot",
             "10. Dataset Comparison",
@@ -114,8 +118,12 @@ class HelpDialog(QDialog):
             self._get_dataset_database(),
             self._get_filtering(),
             self._get_go_kegg_analysis(),
+            self._get_go_term_comparison(),
+            self._get_atac_seq_analysis(),
+            self._get_multi_omics_integration(),
             self._get_statistical_analysis(),
             self._get_visualization(),
+            self._get_project_save_load(),
             self._get_multi_group_heatmap(),
             self._get_pca_plot(),
             self._get_comparison(),
@@ -133,26 +141,32 @@ class HelpDialog(QDialog):
         <h1>1. Getting Started</h1>
         
         <h2>Overview</h2>
-        <p>CMG-SeqViewer is a comprehensive tool for analyzing and visualizing 
-        RNA-Seq differential expression data. This application provides:</p>
+        <p>CMG-SeqViewer is a comprehensive tool for analyzing and visualizing
+        genomic sequencing data. This application provides:</p>
         <ul>
             <li>Multi-dataset management and comparison</li>
-            <li>Flexible filtering options</li>
+            <li>Flexible filtering options (statistical, gene list, annotation-based)</li>
             <li>Statistical analysis tools (Fisher's Exact, GSEA)</li>
-            <li>Interactive visualizations (Volcano, Heatmap, Dot Plot, Venn)</li>
+            <li>Interactive visualizations (Volcano, MA Plot, Heatmap, Dot Plot, Venn)</li>
+            <li><b>RNA-seq</b> differential expression (DE) analysis results</li>
+            <li><b>ATAC-seq</b> differential accessibility (DA) analysis results</li>
+            <li><b>GO/KEGG</b> enrichment analysis results</li>
         </ul>
         
         <h2>Main Interface</h2>
         <p>The interface consists of four main areas:</p>
         <ul>
-            <li><b>Top:</b> Dataset Manager - Add, rename, remove, and switch datasets</li>
-            <li><b>Left Panel:</b> 
+            <li><b>Left Panel (top):</b> Dataset Tree — hierarchical view of all loaded datasets
+                and their derived sheets (Filtered, Comparison, Plot). Click a node to switch tabs.</li>
+            <li><b>Left Panel (bottom):</b>
                 <ul>
                     <li>Filter Panel - Apply gene list or statistical filters</li>
                     <li>Comparison Panel - Compare multiple datasets</li>
                 </ul>
             </li>
             <li><b>Center:</b> Data View - Tabbed display of datasets and results</li>
+            <li><b>Right (auto-shown):</b> Plot Settings Dock — appears when a Plot tab is active;
+                lets you adjust visualization parameters without opening a dialog</li>
             <li><b>Bottom:</b> Log Terminal - System messages and status updates</li>
         </ul>
         
@@ -160,11 +174,13 @@ class HelpDialog(QDialog):
         <p>All menus are always accessible. The application will show appropriate error messages 
         if an operation cannot be performed in the current context.</p>
         <ul>
-            <li><b>File:</b> Open datasets, database browser, recent files, export data</li>
+            <li><b>File:</b> Open datasets, database browser, recent files, export data,
+                <b>Save/Open Project</b> (.seqproj)</li>
             <li><b>Analysis:</b> Filtering, Fisher's Exact Test, GSEA, dataset comparison,
                 <b>🌡️ Multi-Group Heatmap</b></li>
             <li><b>View:</b> Column display level, decimal precision</li>
-            <li><b>Visualization:</b> Volcano plots, histograms, heatmaps, PCA plots, dot plots, Venn diagrams</li>
+            <li><b>Visualization:</b> Volcano plots, histograms, heatmaps, PCA plots, dot plots, Venn diagrams,
+                <b>📊 Gene Expression Bar+Scatter (Grouped)</b></li>
             <li><b>Help:</b> About dialog and user documentation</li>
         </ul>
         """
@@ -195,10 +211,13 @@ class HelpDialog(QDialog):
         </ul>
         
         <h2>Managing Datasets</h2>
-        <p>Use the Dataset Manager (top of window) to:</p>
+        <p>Use the Dataset Tree (top of window) to:</p>
         <ul>
-            <li><b>Switch:</b> Select a dataset from the dropdown to view it</li>
-            <li><b>Rename:</b> Click <b>Rename</b> to change the dataset name</li>
+            <li><b>Switch:</b> Click a root dataset to view its <b>Whole Dataset</b>, or a
+                child node (Filtered / Comparison / Clustered / Plot) to jump to that sheet</li>
+            <li><b>Rename:</b> Select a node and click <b>Rename</b> — works for both
+                <b>root datasets and derived sheets</b> (e.g. rename a "Filtered:" sheet to
+                disambiguate identical filters applied to different datasets)</li>
             <li><b>Remove:</b> Click <b>Remove</b> to delete a dataset from the session</li>
         </ul>
         
@@ -229,10 +248,11 @@ class HelpDialog(QDialog):
         <h2>Column Display Levels</h2>
         <p>Control which columns are displayed via <b>View &rarr;Column Display Level:</b></p>
         <ul>
-            <li><b>Basic:</b> Gene ID, Symbol, and Abundance columns only</li>
-            <li><b>DE Analysis:</b> Basic + log2FC and padj columns</li>
+            <li><b>Basic:</b> Key identifier columns (Gene ID / peak_id, Symbol / nearest_gene, coordinates)</li>
+            <li><b>Stat:</b> Basic + statistical columns (log2FC, padj, base_mean, direction)</li>
             <li><b>Full:</b> All columns in the dataset</li>
         </ul>
+        <p><i>Works for both RNA-seq (DE) and ATAC-seq (DA) data types.</i></p>
         
         <h2>Decimal Precision</h2>
         <p>Adjust number display precision via <b>View &rarr;Decimal Precision</b>:</p>
@@ -441,6 +461,253 @@ pipeline_run_2026-03-12/
         </ul>
         """
     
+    def _get_atac_seq_analysis(self):
+        """ATAC-seq Analysis section"""
+        return """
+        <h1>5c. ATAC-seq Analysis</h1>
+
+        <p>CMG-SeqViewer supports ATAC-seq Differential Accessibility (DA) results
+        in addition to RNA-seq DE data. The application automatically detects ATAC-seq
+        data on load based on the presence of a <code>peak_id</code> column.</p>
+
+        <h2>Loading ATAC-seq Data</h2>
+        <p>Use <b>File &rarr; Open ATAC-seq Dataset&hellip;</b> or drag-and-drop an Excel/Parquet file.
+        Supported formats match the standard DESeq2 DA output (HOMER-annotated):</p>
+        <table border="1" cellpadding="4" cellspacing="0" style="border-collapse:collapse;">
+            <tr style="background:#f0f0f0;"><th>Standard column</th><th>Accepted input names</th></tr>
+            <tr><td>peak_id</td><td>peak_id, peakid, peak_name, interval</td></tr>
+            <tr><td>chromosome</td><td>chr, chromosome, seqnames</td></tr>
+            <tr><td>peak_start / peak_end</td><td>start / end, startpos / endpos</td></tr>
+            <tr><td>nearest_gene</td><td>gene_name, nearest_gene, symbol</td></tr>
+            <tr><td>annotation</td><td>annotation, peak_annotation, feature</td></tr>
+            <tr><td>distance_to_tss</td><td>distancetotss, distance_to_tss, distance.to.tss</td></tr>
+            <tr><td>base_mean</td><td>baseMean, base_mean, conc</td></tr>
+            <tr><td>log2fc</td><td>log2FoldChange, log2fc, logFC</td></tr>
+            <tr><td>adj_pvalue</td><td>padj, adj_pvalue, FDR</td></tr>
+            <tr><td>direction</td><td>direction, regulation</td></tr>
+        </table>
+        <p>A <code>peak_width</code> column is automatically calculated as
+        <code>peak_end &minus; peak_start</code>.</p>
+
+        <h2>Column Display Levels</h2>
+        <p>Use <b>View &rarr; Column Display Level</b> to adjust visible columns:</p>
+        <ul>
+            <li><b>Basic:</b> peak_id, chromosome, peak_start, peak_end, nearest_gene</li>
+            <li><b>Stat:</b> Basic + base_mean, log2fc, pvalue, adj_pvalue, direction</li>
+            <li><b>Full:</b> Stat + lfcse, annotation, distance_to_tss, gene_id, peak_width</li>
+        </ul>
+
+        <h2>ATAC-seq Filtering (Statistical tab)</h2>
+        <p>When an ATAC-seq dataset is active, the <b>ATAC-seq Filtering</b> section
+        becomes visible below the standard DE filters:</p>
+        <ul>
+            <li><b>Annot:</b> Filter by genomic annotation category
+                (e.g., Intergenic, Intron, Promoter-TSS). Categories are populated
+                automatically from the loaded data.</li>
+            <li><b>|TSS| &le;:</b> Keep only peaks whose absolute distance to the nearest
+                TSS is within the specified number of base pairs.</li>
+            <li><b>Peak Width:</b> Filter by minimum and/or maximum peak width (bp).</li>
+        </ul>
+        <p>Statistical filters (adj. p-value, |log2FC|, direction) also apply to ATAC-seq data.</p>
+
+        <h2>Gene List Filtering</h2>
+        <p>Paste <b>gene symbols</b> (nearest gene names) into the Gene List tab, one per line.
+        The filter matches against the <code>nearest_gene</code> column.</p>
+
+        <h2>ATAC-seq Visualizations</h2>
+        <p>When an ATAC-seq tab is active, three dedicated plots are available under
+        <b>Visualization</b>:</p>
+
+        <h3>Genomic Distribution</h3>
+        <ul>
+            <li>Pie chart of peak annotation categories (Intergenic, Intron, Promoter-TSS, Exon, TTS, &hellip;)</li>
+            <li>HOMER/ChIPseeker annotation strings are normalized to broad categories automatically</li>
+            <li>Shows peak count and percentage per category</li>
+        </ul>
+
+        <h3>TSS Distance Plot</h3>
+        <ul>
+            <li>Histogram of peak distances to the nearest TSS</li>
+            <li>Default range: &plusmn;50,000 bp; configurable with Range and Bins controls</li>
+            <li>Reference lines at 0 bp (TSS), &plusmn;2 kb, &plusmn;5 kb</li>
+            <li>Summary bar: % peaks within &le;2 kb and &le;5 kb from TSS</li>
+        </ul>
+
+        <h3>MA Plot</h3>
+        <ul>
+            <li>X axis: log&#8322;(base mean accessibility); Y axis: log&#8322; fold change</li>
+            <li>Points colored by regulation direction (Up / Down / Not Significant)</li>
+            <li>Configurable adj. p-value and |log2FC| thresholds</li>
+            <li>Gene label annotation: Top N by |log2FC|, or custom gene list</li>
+            <li>Hover tooltip shows nearest_gene, log2FC, base mean, adj. p-value</li>
+        </ul>
+
+        <p>The standard <b>Volcano Plot</b> also works with ATAC-seq data
+        (uses log2fc and adj_pvalue columns).</p>
+
+        <h2>Annotation Column Explained</h2>
+        <p>ATAC-seq peaks are annotated with a genomic context string (HOMER format):</p>
+        <ul>
+            <li><code>annotation</code> — the gene body that the peak <b>physically overlaps</b>
+                (e.g., &ldquo;intron (ENSMUSG00000097836, intron 2 of 4)&rdquo;)</li>
+            <li><code>nearest_gene</code> + <code>gene_id</code> — the gene whose
+                <b>TSS is closest</b> to the peak center (used for regulatory interpretation)</li>
+        </ul>
+        <p>These can differ: a peak may overlap an intron of a large gene (annotation) while
+        the nearest TSS belongs to a different gene (nearest_gene). For downstream analysis
+        (e.g., gene list filtering), <code>nearest_gene</code> is used.</p>
+        """
+
+    def _get_multi_omics_integration(self):
+        """Multi-Omics Integration section"""
+        return """
+        <h1>5d. Multi-Omics Integration</h1>
+
+        <h2>Overview</h2>
+        <p>Multi-Omics Integration combines <b>RNA-seq DE</b> results and
+        <b>ATAC-seq DA</b> results to reveal genes that are both
+        transcriptionally and epigenomically regulated.
+        For each gene, the analysis asks: is there concordant evidence from both modalities?</p>
+
+        <h2>Requirements</h2>
+        <ul>
+            <li>At least one <b>RNA-seq</b> dataset and one <b>ATAC-seq</b> dataset loaded</li>
+            <li>Both datasets must share gene identifiers (RNA uses <code>symbol</code>;
+                ATAC uses <code>nearest_gene</code>)</li>
+        </ul>
+
+        <h2>Step-by-Step Workflow</h2>
+        <ol>
+            <li>Load an RNA-seq DE dataset (e.g., via <b>File &rarr; Open Dataset&hellip;</b>)</li>
+            <li>Load an ATAC-seq DA dataset (e.g., via <b>File &rarr; Open ATAC-seq Dataset&hellip;</b>)</li>
+            <li>Open <b>Analysis &rarr; 🔗 Integrate RNA + ATAC&hellip;</b></li>
+            <li>In the <b>Multi-Omics Panel</b> that appears on the left:</li>
+            <ul>
+                <li>Select the RNA dataset from the drop-down</li>
+                <li>Select the ATAC dataset from the drop-down</li>
+                <li>Choose an <b>Integration Method</b></li>
+                <li>Set significance thresholds for RNA and ATAC</li>
+            </ul>
+            <li>Click <b>Integrate</b></li>
+            <li>A new tab appears: <em>&ldquo;Multi-Omics: [RNA name] × [ATAC name]&rdquo;</em></li>
+        </ol>
+
+        <h2>Integration Methods</h2>
+        <table border="1" cellpadding="5" cellspacing="0" style="border-collapse:collapse; width:100%;">
+            <tr style="background:#f0f0f0;"><th>Method</th><th>Description</th></tr>
+            <tr>
+                <td><b>Nearest Gene</b></td>
+                <td>All ATAC peaks whose annotated <code>nearest_gene</code> matches
+                    an RNA-seq gene are grouped and summarised per gene.
+                    Captures distal enhancers and all regulatory peaks.</td>
+            </tr>
+            <tr>
+                <td><b>Promoter Only</b></td>
+                <td>Only peaks with <code>|distance_to_tss|</code> within the TSS Window
+                    (default 2,000 bp) are used.
+                    Focuses on proximal promoter regulation.</td>
+            </tr>
+        </table>
+
+        <h2>Significance Thresholds</h2>
+        <ul>
+            <li><b>RNA padj &le;:</b> Adjusted p-value cutoff for RNA-seq significance (default 0.05)</li>
+            <li><b>RNA |log2FC| &ge;:</b> Fold-change cutoff for RNA-seq (default 1.0)</li>
+            <li><b>ATAC padj &le;:</b> Adjusted p-value cutoff for ATAC-seq (default 0.05)</li>
+            <li><b>ATAC |log2FC| &ge;:</b> Fold-change cutoff for ATAC-seq (default 0.5)</li>
+        </ul>
+        <p>A gene is &ldquo;RNA-significant&rdquo; if <b>both</b> thresholds are met.
+        Likewise for ATAC.</p>
+
+        <h2>Concordance Categories</h2>
+        <p>Each gene is assigned one of seven concordance labels:</p>
+        <table border="1" cellpadding="5" cellspacing="0" style="border-collapse:collapse; width:100%;">
+            <tr style="background:#f0f0f0;"><th>Category</th><th>Meaning</th><th>Color</th></tr>
+            <tr>
+                <td><b>Concordant_Both_UP</b></td>
+                <td>RNA up <em>and</em> ATAC more accessible — epigenomically supported activation</td>
+                <td style="background:#D73027; color:white;">&nbsp;#D73027&nbsp;</td>
+            </tr>
+            <tr>
+                <td><b>Concordant_Both_DOWN</b></td>
+                <td>RNA down <em>and</em> ATAC less accessible — epigenomically supported repression</td>
+                <td style="background:#4575B4; color:white;">&nbsp;#4575B4&nbsp;</td>
+            </tr>
+            <tr>
+                <td><b>Discordant_RNA_UP_ATAC_DOWN</b></td>
+                <td>RNA up but ATAC less accessible — post-transcriptional or indirect regulation</td>
+                <td style="background:#FC8D59; color:white;">&nbsp;#FC8D59&nbsp;</td>
+            </tr>
+            <tr>
+                <td><b>Discordant_RNA_DOWN_ATAC_UP</b></td>
+                <td>RNA down but ATAC more accessible — repressor activation or complex regulation</td>
+                <td style="background:#74ADD1; color:white;">&nbsp;#74ADD1&nbsp;</td>
+            </tr>
+            <tr>
+                <td><b>RNA_only</b></td>
+                <td>RNA significant, no significant ATAC peaks associated</td>
+                <td style="background:#F46D43; color:white;">&nbsp;#F46D43&nbsp;</td>
+            </tr>
+            <tr>
+                <td><b>ATAC_only</b></td>
+                <td>Significant ATAC peaks but RNA not significantly changed</td>
+                <td style="background:#ABD9E9;">&nbsp;#ABD9E9&nbsp;</td>
+            </tr>
+            <tr>
+                <td><b>Not_significant</b></td>
+                <td>Neither RNA nor ATAC is significant</td>
+                <td style="background:#CCCCCC;">&nbsp;#CCCCCC&nbsp;</td>
+            </tr>
+        </table>
+
+        <h2>Integrated Result Columns</h2>
+        <ul>
+            <li><code>symbol</code> — gene symbol</li>
+            <li><code>rna_log2fc</code>, <code>rna_padj</code>, <code>rna_base_mean</code> — RNA-seq stats</li>
+            <li><code>peak_count</code> — number of ATAC peaks associated with this gene</li>
+            <li><code>atac_log2fc_mean</code>, <code>atac_log2fc_max</code> — ATAC log2FC summary</li>
+            <li><code>atac_padj_min</code> — most significant ATAC peak p-value</li>
+            <li><code>concordance</code> — one of the 7 concordance categories above</li>
+            <li><code>regulatory_status</code> — human-readable regulatory interpretation</li>
+        </ul>
+
+        <h2>Visualizations (Multi-Omics only)</h2>
+        <p>When a Multi-Omics integrated tab is active, the following are available
+        under <b>Visualization</b>:</p>
+        <ul>
+            <li><b>◈ Quadrant Plot</b> — RNA log2FC (Y) vs ATAC log2FC (X), colored by concordance</li>
+            <li><b>🔥 Concordance Heatmap</b> — genes × [RNA_log2FC, ATAC_log2FC] with concordance sidebar</li>
+            <li><b>📊 Concordance Summary</b> — bar chart and count/percentage table per concordance category</li>
+            <li><b>🌋 Integrated Volcano</b> — RNA-seq Volcano Plot where each point is:
+                <ul>
+                    <li>Colored by concordance category (ATAC support)</li>
+                    <li>Sized proportionally to the number of nearby ATAC peaks (<code>peak_count</code>)</li>
+                </ul>
+            </li>
+        </ul>
+
+        <h2>Export</h2>
+        <p>Use <b>File &rarr; Export Multi-Omics Results&hellip;</b> to save a multi-sheet Excel file:</p>
+        <ul>
+            <li><b>Integrated_Summary</b> — all genes</li>
+            <li><b>Concordant_UP</b> — Concordant_Both_UP genes</li>
+            <li><b>Concordant_DOWN</b> — Concordant_Both_DOWN genes</li>
+            <li><b>Discordant</b> — all discordant genes</li>
+            <li><b>RNA_only</b> — RNA-significant without ATAC support</li>
+            <li><b>ATAC_only</b> — ATAC-significant without RNA change</li>
+        </ul>
+
+        <h2>Typical Biological Interpretation</h2>
+        <ul>
+            <li><b>Concordant genes</b> are the highest-confidence candidates for
+                direct transcription-factor-driven regulation</li>
+            <li><b>RNA_only genes</b> may be regulated post-transcriptionally or
+                by distal enhancers outside the peak window</li>
+            <li><b>ATAC_only regions</b> may indicate pre-poised enhancers or
+                pioneer-factor binding without immediate transcription change</li>
+        </ul>
+        """
+
     def _get_statistical_analysis(self):
         """Statistical Analysis section"""
         return """
@@ -556,10 +823,52 @@ pipeline_run_2026-03-12/
             <li>Helps assess data quality and significance thresholds</li>
         </ul>
         
+        <h2>Gene Expression Bar + Scatter (Grouped)</h2>
+        <p>Compare per-gene expression across sample groups with a grouped bar (mean)
+        plus individual replicate points. Best used on a <b>Filtered</b> sheet so only a
+        small, readable set of genes is shown.</p>
+        <ul>
+            <li>Select <b>Visualization &rarr; 📊 Gene Expression Bar+Scatter (Grouped)</b>
+                while a DE or Multi-Group tab is active</li>
+            <li><b>Groups are auto-detected</b> from (in order): dataset metadata &rarr;
+                the dataset name (<i>"A vs B"</i>) &rarr; sample-column name prefixes — so
+                balanced 3:3 / 4:4 designs are recognized on open</li>
+            <li><b>Sample Groups (editable):</b> reassign any sample to a different group,
+                merge groups, or leave a group name empty to exclude it; click <b>Apply Groups</b></li>
+            <li><b>Group Colors:</b> pick a custom color per group</li>
+            <li><b>Significance stars:</b> compares each group to a chosen <b>Reference group</b>
+                (Welch t-test or Mann-Whitney U) — <code>* ≤.05, ** ≤.01, *** ≤.001, **** ≤.0001, ns</code></li>
+            <li><b>Controls:</b> max genes, sort (Original input order / Symbol / Mean / |log2FC|),
+                error bars (SEM / SD / None), show/hide points, log-scale Y</li>
+            <li><b>Values:</b> raw counts by default; supports <b>3+ groups</b> including Multi-Group datasets</li>
+            <li><b>Export:</b> figure (PNG / PDF / SVG / TIFF, 300 dpi) and per-group
+                mean / SD / SEM / n + p-value table (CSV / Excel)</li>
+        </ul>
+
         <h2>Common Features (All Plots)</h2>
         <ul>
             <li><b>High z-order:</b> Tooltips always appear above plot elements and colorbars</li>
             <li><b>Matplotlib toolbar:</b> Pan, zoom, home, back, forward, save image</li>
+        </ul>
+
+        <h2>📌 Pin to Tab</h2>
+        <p>Keep a plot open as a persistent tab instead of a dialog popup:</p>
+        <ol>
+            <li>Open any Volcano Plot or Heatmap dialog and configure the plot</li>
+            <li>Click <b>📌 Pin to Tab</b> at the bottom of the dialog</li>
+            <li>The plot appears as a new tab (📈) in the center data view</li>
+            <li>The tab is also registered in the Dataset Tree under the parent dataset</li>
+        </ol>
+        <p>Pinned plot tabs are saved with the project (<b>.seqproj</b>) and restored on next open.</p>
+
+        <h2>Plot Settings Dock (Right Panel)</h2>
+        <p>When a pinned plot tab is active, a <b>Plot Settings</b> panel automatically appears
+        on the right side of the window:</p>
+        <ul>
+            <li>All the same controls as the dialog left panel (thresholds, colors, colormap, etc.)</li>
+            <li>Changes apply to the plot in real time</li>
+            <li>The dock hides automatically when you switch to a non-plot tab</li>
+            <li>Can be moved or floated like any standard dock panel</li>
         </ul>
         """
 
@@ -1249,6 +1558,14 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
                 <td>Exit Application</td>
             </tr>
             <tr>
+                <td><b>Ctrl+Shift+S</b></td>
+                <td>Save Project (.seqproj)</td>
+            </tr>
+            <tr>
+                <td><b>Ctrl+Shift+O</b></td>
+                <td>Open Project (.seqproj)</td>
+            </tr>
+            <tr>
                 <td><b>F1</b></td>
                 <td>Open this Help Documentation</td>
             </tr>
@@ -1275,6 +1592,18 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
         
         <h2>New Features Summary</h2>
         <ul>
+            <li><b>📂 Dataset Tree Panel:</b> Left panel now shows datasets as a tree with child nodes
+                for each derived sheet (Whole, Filtered, Comparison, Plot). Click to switch tabs,
+                bidirectional sync with the tab bar.</li>
+            <li><b>💾 Project Save/Load (.seqproj):</b> Save your entire analysis session
+                (datasets, filters, plot tabs) and restore it later. Use
+                <b>File &rarr; Save Project</b> (Ctrl+Shift+S) / <b>Open Project</b> (Ctrl+Shift+O).
+                Recent Projects sub-menu for quick access.</li>
+            <li><b>📌 Pin to Tab:</b> Plot dialogs now have a "📌 Pin to Tab" button to embed
+                Volcano Plot or Heatmap as a persistent tab in the main window.</li>
+            <li><b>Plot Settings Dock:</b> Right-side dock panel appears automatically when
+                a pinned plot tab is active. Adjust thresholds, colors, and colormaps
+                without reopening dialogs.</li>
             <li><b>🌡️ Multi-Group Heatmap:</b> LRT omnibus result CSV → interactive Z-score clustermap
                 with group color bars, gene cluster cutting, and CSV export</li>
             <li><b>Gene List Filtering on Multi-Group:</b> Filter by gene symbol on multi-group sheets;
@@ -1284,6 +1613,8 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
             <li><b>merge_db.py:</b> CLI tool for batch-merging multiple pipeline runs</li>
             <li><b>Auto-Register:</b> Drop parquet files and click Refresh — no metadata editing</li>
             <li><b>🔵 PCA Plot:</b> Sample-level PCA from abundance columns (Ctrl+P)</li>
+            <li><b>🔍 GO Term List Filtering:</b> Paste GO:XXXXXXX IDs into the Filter Panel to filter GO datasets to specific terms</li>
+            <li><b>📊 GO Term Comparison:</b> Compare enriched GO/KEGG terms across multiple datasets side by side with an interactive dot plot</li>
             <li><b>Window Icons:</b> Each window has a unique icon for easy identification in taskbar</li>
             <li><b>Dataset Rename:</b> Change dataset names anytime - updates everywhere automatically</li>
             <li><b>Recent Files:</b> Quick access to your 10 most recent files with path preview</li>
@@ -1312,6 +1643,62 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
         </ul>
         """
     
+    def _get_project_save_load(self):
+        """Project Save/Load section"""
+        return """
+        <h1>7b. Project Save/Load</h1>
+
+        <h2>Overview</h2>
+        <p>CMG-SeqViewer can save your entire analysis session — loaded datasets,
+        applied filters, and pinned plot tabs — to a <b>.seqproj</b> file.
+        Opening the file later restores the session exactly as you left it.</p>
+
+        <h2>Saving a Project</h2>
+        <ol>
+            <li>Go to <b>File &rarr; Save Project...</b> or press <b>Ctrl+Shift+S</b></li>
+            <li>Choose a location and filename (extension <code>.seqproj</code> is added automatically)</li>
+            <li>All current datasets and their derived sheets are saved</li>
+        </ol>
+        <p>What is saved in the <code>.seqproj</code> file:</p>
+        <ul>
+            <li><b>Datasets</b> — file paths (relative to the project file for portability) or
+                database IDs for DB-sourced datasets</li>
+            <li><b>Filtered sheets</b> — filter parameters so the filter can be replayed on restore</li>
+            <li><b>Plot tabs (📈)</b> — plot type and all visualization parameters
+                (<code>plot_params</code>) for Volcano and Heatmap tabs pinned via
+                <em>📌 Pin to Tab</em></li>
+            <li><b>UI state</b> — last active tab index</li>
+        </ul>
+
+        <h2>Opening a Project</h2>
+        <ol>
+            <li>Go to <b>File &rarr; Open Project...</b> or press <b>Ctrl+Shift+O</b></li>
+            <li>Select a <code>.seqproj</code> file</li>
+            <li>The app loads each dataset and replays filters and plot tabs in order</li>
+        </ol>
+        <p>If a data file cannot be found, the affected dataset is skipped and a warning
+        dialog lists the missing files. Other datasets load normally.</p>
+
+        <h2>Recent Projects</h2>
+        <p>Recently opened project files appear in <b>File &rarr; Recent Projects</b>
+        for one-click access.</p>
+
+        <h2>File Portability</h2>
+        <p>File paths inside <code>.seqproj</code> are stored as paths <b>relative</b> to
+        the project file. This means you can move the project folder to another machine
+        (keeping the relative directory structure) and it will still open correctly.</p>
+        <p>If a dataset was loaded from the internal <b>database</b>, the database ID is
+        stored instead — no external file needed.</p>
+
+        <h2>Limitations</h2>
+        <ul>
+            <li><b>Comparison sheets</b> are not yet restored automatically (planned)</li>
+            <li><b>Clustered heatmap</b> tabs are not restored (clustering is non-deterministic
+                without a fixed seed)</li>
+            <li>PCA, Venn, and DotPlot dialogs cannot be pinned as tabs yet</li>
+        </ul>
+        """
+
     def _get_go_kegg_analysis(self):
         """GO/KEGG Analysis section"""
         return """
@@ -1333,29 +1720,41 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
         <p><i>Note: "Gene Set" is different from "Regulation" - it shows which DEG group was used for GO analysis.</i></p>
         
         <h2>GO Term Clustering</h2>
-        <p>Cluster similar GO terms to reduce redundancy (ClueGO-style):</p>
+        <p>Jaccard similarity 기반 계층적 군집화로 중복 GO term을 통합합니다:</p>
         <ol>
-            <li>Filter GO data (e.g., FDR &lt; 1e-5, BP, UP)</li>
-            <li>Select <b>Analysis &rarr; Cluster GO Terms</b></li>
-            <li>Configure:
+            <li>GO/KEGG 데이터 필터링 (예: FDR &lt; 1e-5, BP, UP)</li>
+            <li><b>Analysis &rarr; Cluster GO Terms</b> 선택</li>
+            <li>파라미터 설정:
                 <ul>
-                    <li><b>Similarity Method:</b> Jaccard (shared genes) or Kappa</li>
-                    <li><b>Threshold:</b> 0.0-1.0 (default: 0.3, higher = stricter)</li>
-                    <li><b>Clustering Method:</b> average, complete, single, ward</li>
+                    <li><b>Similarity Threshold:</b> 0.0–1.0 (기본값 0.7 — 높을수록 더 엄격, 클러스터 수 감소)</li>
+                    <li><b>Min Terms:</b> 유효 클러스터 최소 term 수 (기본값 2, singleton 제외)</li>
                 </ul>
             </li>
-            <li>View interactive dialog with network visualization</li>
-            <li>Click <b>Apply</b> to create Clustered tab</li>
+            <li><b>Run Clustering</b> 실행 — 5개 탭 결과 확인:
+                <ul>
+                    <li><b>Network Visualization:</b> 클러스터별 Jaccard 네트워크 그리드; 셀 클릭 → Cluster Detail 탭에서 확대</li>
+                    <li><b>Summary:</b> 전체 term 수, 유효 클러스터 수, singleton 수 통계</li>
+                    <li><b>Clustered Terms:</b> 전체 term에 C001/C002… 형식의 클러스터 ID 표시</li>
+                    <li><b>Representatives:</b> 유효 클러스터별 대표 term (최저 FDR)</li>
+                    <li><b>Cluster Detail:</b> 선택 클러스터의 단일 Jaccard 네트워크 확대 뷰</li>
+                </ul>
+            </li>
+            <li><b>Apply</b> 클릭 → Clustered 탭 생성 (클러스터 ID 컬럼 포함)</li>
         </ol>
-        
-        <h3>Clustering Features:</h3>
+
+        <h3>알고리즘 요약:</h3>
         <ul>
-            <li>Interactive network (pan, zoom, hover for details)</li>
-            <li>Color-coded cluster legend (collapsible)</li>
-            <li>Representative terms for each cluster</li>
-            <li>Singleton terms (unclustered)</li>
-            <li>Multiple layout algorithms</li>
-            <li>Results table with cluster IDs</li>
+            <li>Jaccard 유사도: 두 term의 공유 유전자 수 ÷ 합집합 유전자 수</li>
+            <li>계층적 군집화(average linkage) + distance threshold = 1 − Similarity Threshold</li>
+            <li>Min Terms 미만 클러스터는 singleton으로 분류 (클러스터 ID 미할당)</li>
+            <li>대표 term = 각 클러스터에서 FDR이 가장 낮은 term</li>
+            <li>클러스터 ID: C001, C002… 형식 (0-padding, 문자열 정렬 가능)</li>
+        </ul>
+
+        <h3>클러스터링 후 시각화:</h3>
+        <ul>
+            <li>Clustered 탭 활성 상태에서 <b>Visualization &rarr; Cluster Dot Plot</b> 실행</li>
+            <li>각 점 = 클러스터 대표 term, 점 크기 = 멤버 수, 색상 = FDR</li>
         </ul>
         
         <h2>GO/KEGG Visualization</h2>
@@ -1374,13 +1773,13 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
             <li>Color-coded by ontology</li>
         </ul>
         
-        <h3>Network Chart:</h3>
+        <h3>Cluster Dot Plot:</h3>
         <ul>
-            <li>Select <b>Visualization &rarr; GO/KEGG Network Chart</b></li>
-            <li>Requires Clustered tab</li>
-            <li>Nodes sized by gene count or FDR</li>
-            <li>Edges weighted by similarity</li>
-            <li>Color-coded by cluster with legend</li>
+            <li>Select <b>Visualization &rarr; GO/KEGG Cluster Dot Plot</b></li>
+            <li>Requires Clustered tab (run GO Clustering first)</li>
+            <li>One dot per cluster representative term</li>
+            <li>Dot size = cluster member count, color = FDR</li>
+            <li>X axis: -log10(FDR), Gene Ratio, or Fold Enrichment</li>
         </ul>
         
         <h2>Common Workflows</h2>
@@ -1398,10 +1797,37 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
             <li>Filter (FDR &lt; 1e-5, BP)</li>
             <li>Cluster GO Terms</li>
             <li>Apply clustering</li>
-            <li>Create Network Chart</li>
+            <li>Create Cluster Dot Plot</li>
             <li>Export clustered results</li>
         </ol>
         
+        <h2>GO Term List Filtering</h2>
+        <p>Filter a GO/KEGG dataset to a specific set of GO term IDs — useful when you already know
+        which terms you want to compare across datasets.</p>
+
+        <h3>How to use</h3>
+        <ol>
+            <li>Make sure a <b>GO/KEGG dataset tab</b> is active</li>
+            <li>Open the <b>Filter Panel</b> and select the <b>Gene List</b> tab</li>
+            <li>Enter GO term IDs (one per line) — e.g.:
+                <pre style="background:#f4f4f4; padding:6px; border-radius:4px; font-size:11px;">GO:0006915
+GO:0007049
+GO:0008150</pre>
+            </li>
+            <li>Click <b>Apply Filter</b></li>
+            <li>A new tab appears: <em>"Filtered: GO Term List (N terms)"</em></li>
+        </ol>
+
+        <h3>Notes</h3>
+        <ul>
+            <li>GO term IDs must follow the <code>GO:XXXXXXX</code> or <code>KEGG:xxxXXXXX</code> format</li>
+            <li>If the active dataset is not a GO/KEGG type, or if non-GO IDs are entered into
+                Gene Symbol mode, the app shows a warning and aborts</li>
+            <li>The filter matches against the <code>term_id</code> / <code>go_id</code> column
+                of the GO dataset</li>
+            <li>Filtered results can be passed directly to the GO Term Comparison workflow</li>
+        </ul>
+
         <h2>Best Practices</h2>
         <ul>
             <li>Filter to meaningful FDR before clustering (&lt; 1e-5 recommended)</li>
@@ -1409,6 +1835,123 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
             <li>Start with 0.3 similarity threshold, increase for fewer clusters</li>
             <li>Focus on representative terms for biological interpretation</li>
             <li>Re-filter Filtered tabs to narrow down results further</li>
+        </ul>
+        """
+
+    def _get_go_term_comparison(self):
+        """GO Term Comparison section"""
+        return """
+        <h1>5b. GO Term Comparison</h1>
+
+        <h2>Overview</h2>
+        <p>GO Term Comparison lets you compare enriched GO/KEGG terms <b>across multiple datasets</b>
+        side by side. It collects a union of terms from all selected datasets and builds
+        a comparison table with FDR, gene count, and fold enrichment per dataset — then
+        optionally visualizes the result as an interactive dot plot.</p>
+
+        <h2>Requirements</h2>
+        <ul>
+            <li>At least <b>2 GO/KEGG datasets</b> loaded in the session</li>
+            <li>A <b>GO term ID list</b> entered in the Filter Panel (Gene List input area) —
+                the comparison is scoped to these terms only</li>
+        </ul>
+        <p><em>If no GO term IDs are provided, the app shows an error and cancels.</em></p>
+
+        <h2>Step-by-Step Workflow</h2>
+        <ol>
+            <li>Load 2 or more GO/KEGG datasets (e.g., Ctrl_GO, KO_GO, OE_GO)</li>
+            <li>Enter the GO term IDs you want to compare in the <b>Filter Panel → Gene List</b>:
+                <pre style="background:#f4f4f4; padding:6px; border-radius:4px; font-size:11px;">GO:0006915
+GO:0007049
+GO:0008150</pre>
+            </li>
+            <li>Open the <b>Comparison Panel</b> (left panel, below Filter Panel)</li>
+            <li>Select the GO datasets to compare</li>
+            <li>Set <b>Comparison Type</b> to <em>GO Term Comparison</em></li>
+            <li>Click <b>Apply</b></li>
+            <li>A new tab appears: <em>"Comparison: GO Terms"</em></li>
+        </ol>
+
+        <h2>Comparison Results Table</h2>
+        <p>The result tab contains one row per GO term with columns for each dataset:</p>
+        <table border="1" cellpadding="5" cellspacing="0" width="100%">
+            <tr style="background:#f0f0f0;">
+                <th>Column</th><th>Description</th>
+            </tr>
+            <tr><td><code>term_id</code></td><td>GO/KEGG term identifier (e.g., GO:0006915)</td></tr>
+            <tr><td><code>description</code></td><td>Term name / description</td></tr>
+            <tr><td><code>ontology</code></td><td>BP / MF / CC / KEGG</td></tr>
+            <tr><td><code>&lt;Dataset&gt;_fdr</code></td><td>Adjusted p-value (FDR) for each dataset</td></tr>
+            <tr><td><code>&lt;Dataset&gt;_gene_count</code></td><td>Number of enriched genes</td></tr>
+            <tr><td><code>&lt;Dataset&gt;_fold_enrichment</code></td><td>Fold enrichment score</td></tr>
+            <tr><td><code>found_in</code></td><td>Comma-separated list of datasets where the term is significant</td></tr>
+        </table>
+        <p>Terms not found in a dataset receive <code>NaN</code> for that dataset's columns.</p>
+
+        <h2>GO Term Comparison Dot Plot</h2>
+        <p>After running a GO Term Comparison, visualize the result as a dot plot:</p>
+        <ol>
+            <li>Switch to the <em>"Comparison: GO Terms"</em> tab</li>
+            <li>Click <b>Visualization → GO/KEGG Dot Plot</b></li>
+        </ol>
+
+        <h3>Plot Layout</h3>
+        <ul>
+            <li><b>X-axis:</b> Datasets (one column per dataset)</li>
+            <li><b>Y-axis:</b> GO terms</li>
+            <li><b>Dot color:</b> FDR value (color scale: low FDR = deep color)</li>
+            <li><b>Dot size:</b> Gene Count or Fold Enrichment (selectable)</li>
+        </ul>
+
+        <h3>Dot Plot Controls</h3>
+        <table border="1" cellpadding="5" cellspacing="0" width="100%">
+            <tr style="background:#f0f0f0;"><th>Control</th><th>Description</th></tr>
+            <tr><td><b>Dot Size Metric</b></td>
+                <td>Choose what determines dot area:
+                    <ul>
+                        <li><b>Gene Count</b> — absolute number of enriched genes</li>
+                        <li><b>Fold Enrichment</b> — enrichment score relative to background</li>
+                        <li><b>Gene Ratio</b> — fraction of genes in the term (if available)</li>
+                    </ul>
+                </td>
+            </tr>
+            <tr><td><b>Top N Terms</b></td>
+                <td>Limit the plot to the N most significant GO terms (ranked by minimum FDR across datasets)</td>
+            </tr>
+            <tr><td><b>Transpose</b></td>
+                <td>Swap axes: X = GO Terms, Y = Datasets</td>
+            </tr>
+            <tr><td><b>Color Map</b></td>
+                <td>Matplotlib colormap for FDR values (default: <em>RdYlBu_r</em>)</td>
+            </tr>
+            <tr><td><b>FDR range</b></td>
+                <td>Min/max FDR cutoff for the color scale</td>
+            </tr>
+            <tr><td><b>Figure Size</b></td>
+                <td>Width and height in inches</td>
+            </tr>
+        </table>
+
+        <h3>Legend</h3>
+        <p>The dot size legend uses <b>three biologically meaningful reference values</b>
+        (small / medium / large) derived from the chosen metric's typical range,
+        so dot sizes are consistent across different datasets and plots.</p>
+
+        <h3>Export</h3>
+        <ul>
+            <li><b>💾 Save Figure</b> — PNG / SVG / PDF</li>
+            <li>Right-click the comparison result table to copy or export as CSV</li>
+        </ul>
+
+        <h2>Tips</h2>
+        <ul>
+            <li>Pre-filter each GO dataset by FDR before running comparison —
+                this reduces noise in the result table</li>
+            <li>Enter only biologically relevant GO term IDs (e.g., terms from a published
+                pathway list) to keep the comparison focused</li>
+            <li>Use <b>Transpose</b> when you have many datasets but few terms</li>
+            <li>Terms with <code>NaN</code> FDR appear as empty (no dot) in the plot —
+                this visually highlights dataset-specific enrichment</li>
         </ul>
         """
 

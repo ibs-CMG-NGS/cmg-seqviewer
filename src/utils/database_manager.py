@@ -17,6 +17,32 @@ import pandas as pd
 from models.data_models import Dataset, PreloadedDatasetMetadata, DatasetType
 from utils.data_path_config import DataPathConfig
 
+# 3차 분석 파이프라인(seqviewer_manifest.json)이 쓰는 dataset_type 문자열 →
+# 앱의 DatasetType.value 매핑. 일치하는 값(go_analysis, chromvar_diff_tf 등)은
+# 그대로 통과하고, 명명이 다른 것만 여기서 변환한다.
+_MANIFEST_TYPE_MAP = {
+    'differential_accessibility': DatasetType.ATAC_SEQ.value,
+}
+
+# manifest 필드명 → PreloadedDatasetMetadata 필드명 (값이 없을 때만 보완)
+_MANIFEST_FIELD_FALLBACK = {
+    'gene_count': 'peak_count',
+    'significant_genes': 'significant_peaks',
+}
+
+
+def _normalize_manifest_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    """seqviewer_manifest.json의 datasets[] 항목을 PreloadedDatasetMetadata.from_dict()가
+    이해하는 스키마로 변환한다 (dataset_type 명명 차이, peak_count/significant_peaks 등
+    ATAC 전용 필드명 보완)."""
+    norm = dict(item)
+    raw_type = norm.get('dataset_type', '')
+    norm['dataset_type'] = _MANIFEST_TYPE_MAP.get(raw_type, raw_type)
+    for target, source in _MANIFEST_FIELD_FALLBACK.items():
+        if not norm.get(target) and norm.get(source):
+            norm[target] = norm[source]
+    return norm
+
 
 class DatabaseManager:
     """Pre-loaded 데이터셋 데이터베이스 관리자"""
@@ -174,11 +200,53 @@ class DatabaseManager:
             return 0
 
         auto_imported = 0
+        claimed_files: set = set()
 
         try:
             known_files = {meta.file_path for meta in self.metadata_list}
 
+            # ── datasets_dir에 seqviewer_manifest.json이 직접 들어있으면 우선 사용 ──
+            # (3차 파이프라인이 만든 풍부한 메타데이터를 컬럼 추측보다 먼저 적용)
+            manifest_file = datasets_dir / "seqviewer_manifest.json"
+            if manifest_file.exists():
+                try:
+                    with open(manifest_file, 'r', encoding='utf-8') as f:
+                        manifest_data = json.load(f)
+                    existing_ids = {meta.dataset_id for meta in self.metadata_list}
+                    for item in manifest_data.get('datasets', []):
+                        norm_item = _normalize_manifest_item(item)
+                        filename = Path(norm_item.get('file_path', '')).name
+                        if not filename or filename in known_files or filename in claimed_files:
+                            claimed_files.add(filename)
+                            continue
+                        if not (datasets_dir / filename).exists():
+                            continue
+                        try:
+                            meta = PreloadedDatasetMetadata.from_dict(norm_item)
+                        except Exception as e:
+                            self.logger.warning(
+                                f"_scan_and_auto_import: invalid manifest item '{filename}', "
+                                f"falling back to column-based detection — {e}"
+                            )
+                            continue
+                        if meta.dataset_id in existing_ids:
+                            claimed_files.add(filename)
+                            continue
+                        meta.file_path = filename
+                        self.metadata_list.append(meta)
+                        self._file_source_dirs[filename] = str(datasets_dir)
+                        claimed_files.add(filename)
+                        auto_imported += 1
+                        self.logger.info(
+                            f"Auto-imported '{meta.alias}' from seqviewer_manifest.json "
+                            f"({meta.dataset_type.value}, {meta.row_count} rows)"
+                        )
+                except Exception as e:
+                    self.logger.warning(f"Failed to read seqviewer_manifest.json: {e}")
+
             for parquet_file in sorted(datasets_dir.glob("*.parquet")):
+                if parquet_file.name in claimed_files:
+                    continue
                 filename = parquet_file.name
 
                 if filename in known_files:
@@ -193,18 +261,28 @@ class DatabaseManager:
 
                 cols = set(df.columns)
 
-                # DE/GO 자동 판별
+                # ATAC / DE / GO / chromVAR 자동 판별
+                from utils.atac_seq_loader import ATACSeqLoader
+                atac_required = {'peak_id', 'log2fc', 'adj_pvalue'}
                 de_required = {'gene_id', 'log2fc', 'adj_pvalue'}
                 go_required = {'term_id', 'description', 'fdr'}
+                # seqviewer parquet 형식: tf_name, mean_zscore_compare, delta_zscore, padj
+                chromvar_required_parquet = {'tf_name', 'mean_zscore_compare', 'delta_zscore', 'padj'}
+                # diff_tf.csv → parquet 변환 형식: motif, mean_compare, delta, padj
+                chromvar_required_csv = {'motif', 'mean_compare', 'delta', 'padj'}
 
-                if de_required.issubset(cols):
+                if ATACSeqLoader.is_atac_dataframe(df) or atac_required.issubset(cols):
+                    dataset_type = DatasetType.ATAC_SEQ
+                elif chromvar_required_parquet.issubset(cols) or chromvar_required_csv.issubset(cols):
+                    dataset_type = DatasetType.CHROMVAR_DIFF_TF
+                elif de_required.issubset(cols):
                     dataset_type = DatasetType.DIFFERENTIAL_EXPRESSION
                 elif go_required.issubset(cols):
                     dataset_type = DatasetType.GO_ANALYSIS
                 else:
                     self.logger.warning(
                         f"Cannot determine type of '{filename}' "
-                        f"(no DE or GO standard columns found). Skipping."
+                        f"(no ATAC, DE or GO standard columns found). Skipping."
                     )
                     continue
 
@@ -237,7 +315,20 @@ class DatabaseManager:
                 gene_count = 0
                 significant_genes = 0
 
-                if dataset_type == DatasetType.DIFFERENTIAL_EXPRESSION:
+                if dataset_type == DatasetType.ATAC_SEQ:
+                    gene_count = row_count  # ATAC에서는 peak_count 의미
+                    if 'adj_pvalue' in cols:
+                        try:
+                            padj_ok = pd.to_numeric(df['adj_pvalue'], errors='coerce') < 0.05
+                            if 'log2fc' in cols:
+                                lfc_ok = pd.to_numeric(df['log2fc'], errors='coerce').abs() > 1
+                                significant_genes = int((padj_ok & lfc_ok).sum())
+                            else:
+                                significant_genes = int(padj_ok.sum())
+                        except Exception:
+                            significant_genes = 0
+
+                elif dataset_type == DatasetType.DIFFERENTIAL_EXPRESSION:
                     gene_count = row_count
                     if 'adj_pvalue' in cols:
                         try:
@@ -247,6 +338,16 @@ class DatabaseManager:
                                 significant_genes = int((padj_ok & lfc_ok).sum())
                             else:
                                 significant_genes = int(padj_ok.sum())
+                        except Exception:
+                            significant_genes = 0
+
+                elif dataset_type == DatasetType.CHROMVAR_DIFF_TF:
+                    gene_count = row_count  # chromVAR에서는 TF(motif) 개수
+                    if 'padj' in cols:
+                        try:
+                            significant_genes = int(
+                                (pd.to_numeric(df['padj'], errors='coerce') < 0.05).sum()
+                            )
                         except Exception:
                             significant_genes = 0
 
@@ -463,13 +564,16 @@ class DatabaseManager:
 
     def import_from_folder(self, source_dir: Path) -> tuple:
         """
-        외부 폴더에 있는 metadata.json + parquet 파일들을 현재 DB에 병합.
+        외부 폴더에 있는 metadata.json(또는 3차 파이프라인의 seqviewer_manifest.json)
+        + parquet 파일들을 현재 DB에 병합.
 
-        source_dir 안에 metadata.json 이 있으면 해당 항목을 읽어 등록합니다.
-        metadata.json 이 없으면 datasets/ 하위의 parquet 파일만 복사하여
-        _scan_and_auto_import() 방식으로 자동 판별 등록합니다.
+        source_dir 안에 metadata.json 또는 seqviewer_manifest.json 이 있으면 해당 항목을
+        읽어 (experiment_condition / organism / tags 등 메타데이터 포함) 등록합니다.
+        둘 다 없으면 datasets/ 하위의 parquet 파일만 복사하여
+        _scan_and_auto_import() 방식으로 자동 판별 등록합니다 (메타데이터는 비어있음).
 
         - parquet 파일은 self.datasets_dir 로 복사됩니다.
+        - chromVAR 데이터셋이 있고 datasets/ 폴더에 tf_variability.csv 가 있으면 같이 복사합니다.
         - dataset_id 또는 파일명이 이미 존재하면 건너뜁니다(덮어쓰기 안 함).
 
         Args:
@@ -484,14 +588,17 @@ class DatabaseManager:
         skipped_no_file = 0
 
         meta_file = source_dir / "metadata.json"
+        manifest_file = source_dir / "seqviewer_manifest.json"
+        is_manifest = not meta_file.exists() and manifest_file.exists()
+        chosen_file = manifest_file if is_manifest else meta_file
 
-        if meta_file.exists():
-            # ── metadata.json 기반 병합 ──────────────────────────────
+        if chosen_file.exists():
+            # ── metadata.json / seqviewer_manifest.json 기반 병합 ──────────
             try:
-                with open(meta_file, 'r', encoding='utf-8') as f:
+                with open(chosen_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
             except Exception as e:
-                self.logger.error(f"import_from_folder: failed to read {meta_file}: {e}")
+                self.logger.error(f"import_from_folder: failed to read {chosen_file}: {e}")
                 return 0, 0, 0
 
             existing_ids = {m.dataset_id for m in self.metadata_list}
@@ -500,7 +607,16 @@ class DatabaseManager:
             # parquet 파일 검색 경로: metadata.json 옆의 datasets/ 폴더 또는 source_dir 직접
             source_datasets_dir = source_dir / "datasets"
 
+            # chromVAR TF 이름 조회용 tf_variability.csv 동반 복사 (있으면)
+            for var_name in ("tf_variability.csv", "tf_variability.tsv"):
+                src_var = source_datasets_dir / var_name
+                if src_var.exists() and not (self.datasets_dir / var_name).exists():
+                    shutil.copy2(src_var, self.datasets_dir / var_name)
+                    self.logger.info(f"import_from_folder: copied '{var_name}' for chromVAR TF name lookup")
+
             for item in data.get('datasets', []):
+                if is_manifest:
+                    item = _normalize_manifest_item(item)
                 try:
                     meta = PreloadedDatasetMetadata.from_dict(item)
                 except Exception as e:
@@ -511,9 +627,11 @@ class DatabaseManager:
                 # 파일 경로를 파일명만으로 정규화
                 meta.file_path = Path(meta.file_path).name
 
-                # 중복 체크
-                if meta.dataset_id in existing_ids or meta.file_path in existing_files:
-                    self.logger.debug(f"import_from_folder: skipping duplicate '{meta.alias}'")
+                # 중복 체크: dataset_id(UUID)가 동일하면 이미 반입된 데이터셋
+                # file_path는 검사하지 않음 — organism이 달라도 조건명이 같으면
+                # 파일명이 겹칠 수 있으며, 파일명 충돌은 아래 uuid-suffix 코드가 처리한다
+                if meta.dataset_id in existing_ids:
+                    self.logger.debug(f"import_from_folder: skipping duplicate '{meta.alias}' (same dataset_id)")
                     skipped_dup += 1
                     continue
 
@@ -552,16 +670,15 @@ class DatabaseManager:
             source_datasets_dir = source_dir / "datasets"
             search_dir = source_datasets_dir if source_datasets_dir.exists() else source_dir
 
-            existing_files = {m.file_path for m in self.metadata_list}
-
             for parquet_file in sorted(search_dir.glob("*.parquet")):
-                if parquet_file.name in existing_files:
-                    skipped_dup += 1
-                    continue
-
                 dest_name = parquet_file.name
                 dest_parquet = self.datasets_dir / dest_name
                 if dest_parquet.exists():
+                    # 파일 크기가 같으면 동일 파일로 간주하고 스킵
+                    if dest_parquet.stat().st_size == parquet_file.stat().st_size:
+                        skipped_dup += 1
+                        continue
+                    # 크기가 다르면 다른 파일(같은 조건명, 다른 organism 등) → uuid suffix 부여
                     stem = parquet_file.stem
                     suffix = str(uuid.uuid4())[:8]
                     dest_name = f"{stem}_{suffix}.parquet"
@@ -611,8 +728,8 @@ class DatabaseManager:
             metadata.row_count = len(dataset.dataframe)
             metadata.gene_count = len(dataset.get_genes())
             
-            # 유의미한 유전자 수 계산 (padj < 0.05 AND |log2FC| > 1)
-            if dataset.dataset_type == DatasetType.DIFFERENTIAL_EXPRESSION:
+            # 유의미한 유전자/peak 수 계산 (padj < 0.05 AND |log2FC| > 1)
+            if dataset.dataset_type in (DatasetType.DIFFERENTIAL_EXPRESSION, DatasetType.ATAC_SEQ):
                 df = dataset.dataframe
                 if df is not None and 'adj_pvalue' in df.columns:
                     try:
@@ -691,7 +808,27 @@ class DatabaseManager:
             if not file_path or not file_path.exists():
                 self.logger.error(f"Dataset file not found: {metadata.file_path}")
                 return None
-            
+
+            # chromVAR diff TF는 전용 로더로 처리 (컬럼 정규화 + tf_variability.csv TF 이름 조인)
+            if metadata.dataset_type == DatasetType.CHROMVAR_DIFF_TF:
+                from utils.chromvar_loader import ChromVARLoader
+                dataset = ChromVARLoader().load(file_path, metadata.alias)
+                dataset.metadata.update({
+                    'experiment_condition': metadata.experiment_condition,
+                    'cell_type': metadata.cell_type,
+                    'organism': metadata.organism,
+                    'tissue': metadata.tissue,
+                    'timepoint': metadata.timepoint,
+                    'import_date': metadata.import_date,
+                    'notes': metadata.notes,
+                    'tags': metadata.tags,
+                })
+                self.logger.info(
+                    f"Loaded chromVAR dataset from database: {metadata.alias} "
+                    f"({len(dataset.dataframe)} rows)"
+                )
+                return dataset
+
             df = pd.read_parquet(file_path, engine='pyarrow')
             
             # GO 데이터의 경우 _gene_set 컬럼을 set으로 복원
@@ -707,18 +844,25 @@ class DatabaseManager:
             
             # 데이터셋 타입에 따라 필수 컬럼 확인
             if metadata.dataset_type == DatasetType.DIFFERENTIAL_EXPRESSION:
-                # DE 데이터: gene_id, log2fc, adj_pvalue
                 required_standard_cols = [StandardColumns.GENE_ID, StandardColumns.LOG2FC, StandardColumns.ADJ_PVALUE]
             elif metadata.dataset_type == DatasetType.GO_ANALYSIS:
-                # GO 데이터: term_id, description, fdr
                 required_standard_cols = [StandardColumns.TERM_ID, StandardColumns.DESCRIPTION, StandardColumns.FDR]
+            elif metadata.dataset_type == DatasetType.ATAC_SEQ:
+                required_standard_cols = [StandardColumns.PEAK_ID, StandardColumns.LOG2FC, StandardColumns.ADJ_PVALUE]
             else:
                 required_standard_cols = []
             
             all_standard_present = all(col in df.columns for col in required_standard_cols) if required_standard_cols else True
             
-            if not all_standard_present:
-                # 표준화되지 않은 구버전 database - 변환 필요
+            if not all_standard_present and metadata.dataset_type == DatasetType.GO_ANALYSIS:
+                # GO 데이터: GOKEGGLoader로 처리 (GO.ID + KEGG.ID 동시 매핑 지원)
+                from utils.go_kegg_loader import GOKEGGLoader
+                go_loader = GOKEGGLoader()
+                df = go_loader._standardize_columns(df)
+                original_columns = {}
+                self.logger.info(f"Applied GO column standardization via GOKEGGLoader")
+            elif not all_standard_present:
+                # 표준화되지 않은 구버전 database (DE/ATAC) - 변환 필요
                 auto_mapping = loader._map_columns(df, metadata.dataset_type)
                 df, original_columns = loader._standardize_columns(df, auto_mapping, metadata.dataset_type)
                 self.logger.info(f"Converted legacy database columns to standard format")
@@ -789,22 +933,35 @@ class DatabaseManager:
                         if StandardColumns.ONTOLOGY not in df.columns:
                             df[StandardColumns.ONTOLOGY] = 'UNKNOWN'
             
+            # ATAC 데이터의 경우 annotation_categories 복원
+            atac_annotation_categories = []
+            if metadata.dataset_type == DatasetType.ATAC_SEQ:
+                if StandardColumns.ANNOTATION in df.columns:
+                    from utils.atac_seq_loader import ATACSeqLoader
+                    raw_cats = df[StandardColumns.ANNOTATION].dropna().unique().tolist()
+                    atac_annotation_categories = ATACSeqLoader()._normalize_annotation_categories(raw_cats)
+                    self.logger.debug(f"Restored annotation_categories: {atac_annotation_categories}")
+
             # Dataset 객체 생성
+            dataset_meta = {
+                'experiment_condition': metadata.experiment_condition,
+                'cell_type': metadata.cell_type,
+                'organism': metadata.organism,
+                'tissue': metadata.tissue,
+                'timepoint': metadata.timepoint,
+                'import_date': metadata.import_date,
+                'notes': metadata.notes,
+                'tags': metadata.tags,
+            }
+            if atac_annotation_categories:
+                dataset_meta['annotation_categories'] = atac_annotation_categories
+
             dataset = Dataset(
                 name=metadata.alias,
                 dataset_type=metadata.dataset_type,
                 dataframe=df,
-                original_columns=original_columns,  # 원본 컬럼명 참고용
-                metadata={
-                    'experiment_condition': metadata.experiment_condition,
-                    'cell_type': metadata.cell_type,
-                    'organism': metadata.organism,
-                    'tissue': metadata.tissue,
-                    'timepoint': metadata.timepoint,
-                    'import_date': metadata.import_date,
-                    'notes': metadata.notes,
-                    'tags': metadata.tags
-                }
+                original_columns=original_columns,
+                metadata=dataset_meta,
             )
             
             self.logger.info(f"Loaded dataset from database: {metadata.alias} ({len(df)} rows)")

@@ -23,6 +23,8 @@ a = Analysis(
         ('data/README.txt', 'data'),  # 사용 안내 파일
         # Include entire src package
         ('src', 'src'),
+        # Logo image for About dialog
+        ('CMG.png', '.'),
     ],
     hiddenimports=[
         # PyQt6

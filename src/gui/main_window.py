@@ -9,10 +9,12 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QTextEdit, QMenuBar, QMenu, QToolBar, QStatusBar,
                             QLabel, QPushButton, QFileDialog, QMessageBox,
                             QProgressBar, QInputDialog, QLineEdit, QHeaderView,
-                            QSizePolicy, QDialog)
+                            QSizePolicy, QDialog, QToolButton, QFrame,
+                            QDockWidget, QScrollArea)
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 from PyQt6.QtGui import QAction, QIcon, QFont, QActionGroup, QPixmap
 import logging
+import math
 from pathlib import Path
 from typing import Optional, List, Dict
 import pandas as pd
@@ -20,28 +22,41 @@ import pandas as pd
 from core.fsm import FSM, State, Event
 from core.logger import QtLogHandler, LogBuffer, get_audit_logger
 from gui.filter_panel import FilterPanel
-from gui.dataset_manager import DatasetManagerWidget
+from gui.dataset_tree_panel import DatasetTreePanel
 from gui.comparison_panel import ComparisonPanel
-from gui.visualization_dialog import VolcanoPlotDialog, PadjHistogramDialog, HeatmapDialog, DotPlotDialog
+from gui.visualization_dialog import VolcanoPlotWidget, VolcanoPlotDialog, HeatmapWidget, HeatmapDialog, PadjHistogramDialog, DotPlotDialog
 from gui.pca_dialog import PCADialog
 from gui.venn_dialog import VennDiagramDialog
 from gui.venn_dialog_comparison import VennDiagramFromComparisonDialog
+from gui.upset_plot_dialog import UpsetPlotDialog
 from gui.help_dialog import HelpDialog
+from gui.multi_omics_panel import MultiOmicsPanel
 from models.data_models import FilterMode, DatasetType
 from presenters.main_presenter import MainPresenter
 
 
 class NumericTableWidgetItem(QTableWidgetItem):
     """숫자 정렬을 지원하는 QTableWidgetItem"""
-    
+
     def __init__(self, value, display_text):
         super().__init__(display_text)
         self.numeric_value = value
-    
+
     def __lt__(self, other):
-        """정렬을 위한 비교 연산자"""
+        """정렬을 위한 비교 연산자.
+
+        NaN은 IEEE754 규칙상 모든 비교(<, >)가 항상 False라서, 정렬 알고리즘이
+        요구하는 전순서(total order)가 깨진다. NaN을 항상 "가장 큰 값"으로
+        취급해 일관되게 비교해야 NaN과 무관한 다른 행들의 순서도 깨지지 않는다
+        (pandas의 na_position='last'와 동일한 관례).
+        """
         if isinstance(other, NumericTableWidgetItem):
-            return self.numeric_value < other.numeric_value
+            a, b = self.numeric_value, other.numeric_value
+            a_nan = isinstance(a, float) and math.isnan(a)
+            b_nan = isinstance(b, float) and math.isnan(b)
+            if a_nan or b_nan:
+                return False if a_nan else True
+            return a < b
         return super().__lt__(other)
 
 
@@ -78,12 +93,16 @@ class MainWindow(QMainWindow):
         self.decimal_precision = 3
         
         # 각 탭의 원본 데이터 저장 (탭 인덱스 -> (DataFrame, Dataset))
-        self.tab_data: Dict[int, tuple] = {}
+        self.tab_data: Dict[int, dict] = {}
         
         # 최근 파일 히스토리 (최대 10개)
         self.recent_files = []
         self.max_recent_files = 10
         self._load_recent_files()
+
+        # 최근 프로젝트 히스토리
+        self.recent_projects: list = []
+        self._load_recent_projects()
         
         # Database Manager 초기화
         from utils.database_manager import DatabaseManager
@@ -126,48 +145,98 @@ class MainWindow(QMainWindow):
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(5, 5, 5, 5)
         main_layout.setSpacing(5)
-        
-        # 상단: 데이터셋 관리자
-        self.dataset_manager = DatasetManagerWidget()
-        self.dataset_manager.dataset_selected.connect(self._on_dataset_selected)
-        self.dataset_manager.add_dataset_btn.clicked.connect(self._on_add_dataset)
-        self.dataset_manager.dataset_removed.connect(self._on_dataset_removed)
-        # file_dropped 시그널은 제거 (data_tabs로 이동)
-        main_layout.addWidget(self.dataset_manager)
-        
-        # 중앙: Splitter (좌측 패널 + 우측 데이터 뷰) - 인스턴스 변수로 저장
+
+        # ── 3-way horizontal splitter ──────────────────────────────────
+        # [트리 패널] | [기능 패널] | [데이터 탭]
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
-        
-        # 좌측 패널 컨테이너 (필터 + 비교 기능)
-        left_panel = QWidget()
-        left_panel.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)  # 가로: 필요한 만큼, 세로: 확장
-        left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_splitter.setChildrenCollapsible(False)  # 드래그로 완전 접힘 방지
+
+        # ── 패널 0: Dataset Tree ───────────────────────────────────────
+        tree_container = QWidget()
+        tree_container.setMinimumWidth(140)
+        tree_container.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        tree_container_layout = QVBoxLayout(tree_container)
+        tree_container_layout.setContentsMargins(0, 0, 0, 0)
+        tree_container_layout.setSpacing(0)
+
+        # 트리 헤더 (제목)
+        tree_header = QWidget()
+        tree_header.setStyleSheet("background:#f5f5f5; border-bottom:1px solid #ddd;")
+        tree_header_layout = QHBoxLayout(tree_header)
+        tree_header_layout.setContentsMargins(6, 3, 3, 3)
+        tree_title = QLabel("Datasets")
+        tree_title.setStyleSheet("font-weight:bold; font-size:11px;")
+        tree_header_layout.addWidget(tree_title)
+        tree_container_layout.addWidget(tree_header)
+
+        self.dataset_manager = DatasetTreePanel()
+        self.dataset_manager.dataset_selected.connect(self._on_dataset_selected)
+        self.dataset_manager.add_requested.connect(self._on_add_dataset)
+        self.dataset_manager.dataset_removed.connect(self._on_dataset_removed)
+        self.dataset_manager.rename_requested.connect(self._on_dataset_renamed)
+        self.dataset_manager.sheet_rename_requested.connect(self._on_sheet_renamed)
+        self.dataset_manager.file_dropped.connect(self._on_file_dropped)
+        self.dataset_manager.sheet_selected.connect(self._on_tree_sheet_selected)
+        self.dataset_manager.dataset_added.connect(self._on_dataset_tree_root_added)
+        tree_container_layout.addWidget(self.dataset_manager)
+        self.tree_container = tree_container
+        self.main_splitter.addWidget(tree_container)
+
+        # ── 패널 1: 기능 패널 (필터 + 비교) ───────────────────────────
+        func_container = QWidget()
+        func_container.setMinimumWidth(200)
+        func_container.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
+        func_container_layout = QVBoxLayout(func_container)
+        func_container_layout.setContentsMargins(0, 0, 0, 0)
+        func_container_layout.setSpacing(0)
+
+        # 기능 패널 헤더 (제목)
+        func_header = QWidget()
+        func_header.setStyleSheet("background:#f5f5f5; border-bottom:1px solid #ddd;")
+        func_header_layout = QHBoxLayout(func_header)
+        func_header_layout.setContentsMargins(6, 3, 3, 3)
+        func_title = QLabel("Filter / Compare")
+        func_title.setStyleSheet("font-weight:bold; font-size:11px;")
+        func_header_layout.addWidget(func_title)
+        func_container_layout.addWidget(func_header)
+
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setContentsMargins(0, 4, 0, 0)
         left_layout.setSpacing(5)
-        
-        # 필터 패널
+
         self.filter_panel = FilterPanel()
         self.filter_panel.filter_requested.connect(self._on_filter_requested)
         self.filter_panel.analysis_requested.connect(self._on_analysis_requested)
         left_layout.addWidget(self.filter_panel)
-        
-        # 비교 패널
+
         self.comparison_panel = ComparisonPanel()
         self.comparison_panel.compare_requested.connect(self._on_comparison_requested)
         left_layout.addWidget(self.comparison_panel)
-        
-        # === 실행 버튼 레이아웃 (Apply Filter + Start Comparison) ===
-        button_layout = QHBoxLayout()
+
+        self.multi_omics_panel = MultiOmicsPanel()
+        self.multi_omics_panel.integrate_requested.connect(self._on_integrate_requested)
+        self.filter_panel.add_multi_omics_tab(self.multi_omics_panel)
+
+        # 버튼 행을 QWidget으로 감싸서 show/hide 가능하게 함
+        self.action_buttons_widget = QWidget()
+        button_layout = QHBoxLayout(self.action_buttons_widget)
+        button_layout.setContentsMargins(0, 0, 0, 0)
         button_layout.setSpacing(5)
         button_layout.addWidget(self.filter_panel.apply_filter_btn)
         button_layout.addWidget(self.comparison_panel.compare_btn)
-        left_layout.addLayout(button_layout)
-        
-        self.main_splitter.addWidget(left_panel)
-        
-        # 우측: 데이터 뷰 (탭) - 주로 확장되도록 설정
+        left_layout.addWidget(self.action_buttons_widget)
+
+        # RNA+ATAC 탭 전환 시 ComparisonPanel / 버튼 행 자동 show/hide
+        self.filter_panel.filter_tabs.currentChanged.connect(self._on_filter_tab_changed)
+
+        func_container_layout.addWidget(left_widget)
+        self.func_container = func_container
+        self.main_splitter.addWidget(func_container)
+
+        # ── 패널 2: 데이터 탭 ─────────────────────────────────────────
         self.data_tabs = QTabWidget()
-        self.data_tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)  # 가로/세로 모두 확장
+        self.data_tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.data_tabs.setTabsClosable(True)
         self.data_tabs.tabCloseRequested.connect(self._on_tab_close_requested)
         self.data_tabs.currentChanged.connect(self._on_tab_changed)
@@ -175,16 +244,56 @@ class MainWindow(QMainWindow):
         self.data_tabs.dragEnterEvent = self._data_tabs_drag_enter
         self.data_tabs.dropEvent = self._data_tabs_drop
         self.main_splitter.addWidget(self.data_tabs)
-        
+
+        # splitter 스트레치 / collapsible 설정
+        self.main_splitter.setStretchFactor(0, 0)
+        self.main_splitter.setStretchFactor(1, 0)
+        self.main_splitter.setStretchFactor(2, 1)
+        self.main_splitter.setCollapsible(0, False)
+        self.main_splitter.setCollapsible(1, False)
+        self.main_splitter.setCollapsible(2, False)
+
+        # ── Plot Settings Dock (우측) ─────────────────────────────────
+        self.plot_settings_dock = QDockWidget("Plot Settings", self)
+        self.plot_settings_dock.setObjectName("PlotSettingsDock")
+        self.plot_settings_dock.setAllowedAreas(
+            Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.LeftDockWidgetArea
+        )
+        self.plot_settings_dock.setFeatures(
+            QDockWidget.DockWidgetFeature.DockWidgetMovable |
+            QDockWidget.DockWidgetFeature.DockWidgetFloatable |
+            QDockWidget.DockWidgetFeature.DockWidgetClosable
+        )
+        self.plot_settings_dock.setMinimumWidth(300)
+        # 빈 placeholder 위젯으로 초기화
+        _dock_placeholder = QLabel("No plot settings")
+        _dock_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        _dock_placeholder.setStyleSheet("color: grey; font-size: 11px;")
+        self.plot_settings_dock.setWidget(_dock_placeholder)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.plot_settings_dock)
+        self.plot_settings_dock.hide()
+        self._current_settings_widget: QWidget | None = None  # 현재 도크에 들어있는 설정 패널
+
+        # 패널 크기 저장용 (숨기기/복원)
+        self._tree_panel_width: int = 200
+        self._func_panel_width: int = 260
+        self._split_view_active: bool = False
+
+        # 초기 상태: 트리 숨김, 필터 표시
+        self.tree_container.setVisible(False)
+        self.main_splitter.setSizes([0, 260, 940])
+
         # 초기 탭 생성
         self._create_data_tab("Whole Dataset")
-        
-        # Splitter 비율 설정 (좌측 30%, 우측 70%)
-        self.main_splitter.setStretchFactor(0, 30)
-        self.main_splitter.setStretchFactor(1, 70)
-        
-        # Main splitter는 확장 가능, 로그는 고정 높이
-        main_layout.addWidget(self.main_splitter, stretch=100)
+
+        # Activity Bar + Main Splitter 래이아웃
+        content_widget = QWidget()
+        content_layout = QHBoxLayout(content_widget)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+        content_layout.addWidget(self._build_activity_bar())
+        content_layout.addWidget(self.main_splitter)
+        main_layout.addWidget(content_widget, stretch=100)
         
         # 하단: 로그 터미널 (폰트 8pt 기준 5줄 표시)
         self.log_terminal = QTextEdit()
@@ -244,7 +353,24 @@ class MainWindow(QMainWindow):
         self.open_go_kegg_action.setShortcut("Ctrl+G")
         self.open_go_kegg_action.triggered.connect(self._on_open_go_kegg_results)
         file_menu.addAction(self.open_go_kegg_action)
-        
+
+        self.open_atac_action = QAction("Open ATAC-seq Dataset...", self)
+        self.open_atac_action.setShortcut("Ctrl+A")
+        self.open_atac_action.triggered.connect(self._on_open_atac_dataset)
+        file_menu.addAction(self.open_atac_action)
+
+        self.open_motif_action = QAction("Open TF Motif Results...", self)
+        self.open_motif_action.triggered.connect(self._on_open_motif_results)
+        file_menu.addAction(self.open_motif_action)
+
+        self.open_footprint_action = QAction("Open TF Footprint Results...", self)
+        self.open_footprint_action.triggered.connect(self._on_open_footprint_results)
+        file_menu.addAction(self.open_footprint_action)
+
+        self.open_chromvar_action = QAction("Open chromVAR Results...", self)
+        self.open_chromvar_action.triggered.connect(self._on_open_chromvar_results)
+        file_menu.addAction(self.open_chromvar_action)
+
         file_menu.addSeparator()
         
         # Database 서브메뉴
@@ -261,11 +387,28 @@ class MainWindow(QMainWindow):
         database_menu.addAction(self.db_import_action)
         
         file_menu.addSeparator()
-        
+
+        # 프로젝트 저장/불러오기
+        self.save_project_action = QAction("Save Project...", self)
+        self.save_project_action.setShortcut("Ctrl+Shift+S")
+        self.save_project_action.triggered.connect(self._on_save_project)
+        file_menu.addAction(self.save_project_action)
+
+        self.open_project_action = QAction("Open Project...", self)
+        self.open_project_action.setShortcut("Ctrl+Shift+O")
+        self.open_project_action.triggered.connect(self._on_open_project)
+        file_menu.addAction(self.open_project_action)
+
+        file_menu.addSeparator()
+
         # 최근 파일 메뉴
         self.recent_menu = file_menu.addMenu("Recent Files")
         self._update_recent_files_menu()
-        
+
+        # 최근 프로젝트 메뉴
+        self.recent_projects_menu = file_menu.addMenu("Recent Projects")
+        self._update_recent_projects_menu()
+
         file_menu.addSeparator()
         
         self.export_action = QAction("&Export Current Tab...", self)
@@ -273,6 +416,10 @@ class MainWindow(QMainWindow):
         self.export_action.triggered.connect(self._on_export_data)
         # 항상 활성화
         file_menu.addAction(self.export_action)
+
+        self.export_multi_omics_action = QAction("Export Multi-Omics Results (Excel)...", self)
+        self.export_multi_omics_action.triggered.connect(self._on_export_multi_omics)
+        file_menu.addAction(self.export_multi_omics_action)
         
         file_menu.addSeparator()
         
@@ -325,29 +472,61 @@ class MainWindow(QMainWindow):
         self.multi_heatmap_action.triggered.connect(self._on_multi_group_heatmap)
         analysis_menu.addAction(self.multi_heatmap_action)
 
+        analysis_menu.addSeparator()
+
+        # Multi-Omics 통합 분석
+        self.integrate_action = QAction("🔗 Integrate RNA + ATAC...", self)
+        self.integrate_action.triggered.connect(self._on_show_multi_omics_panel)
+        analysis_menu.addAction(self.integrate_action)
+
         # View 메뉴
         view_menu = menubar.addMenu("&View")
-        
+
+        # ── Panels 서브메뉴 ──────────────────────────────────────────
+        panels_menu = view_menu.addMenu("Panels")
+
+        self._menu_datasets_action = QAction("Datasets", self, checkable=True)
+        self._menu_datasets_action.setChecked(False)
+        self._menu_datasets_action.setShortcut("Ctrl+1")
+        self._menu_datasets_action.triggered.connect(self._on_menu_datasets_toggled)
+        panels_menu.addAction(self._menu_datasets_action)
+
+        self._menu_filter_action = QAction("Filter / Compare", self, checkable=True)
+        self._menu_filter_action.setChecked(True)
+        self._menu_filter_action.setShortcut("Ctrl+2")
+        self._menu_filter_action.triggered.connect(self._on_menu_filter_toggled)
+        panels_menu.addAction(self._menu_filter_action)
+
+        panels_menu.addSeparator()
+
+        self._menu_split_action = QAction("Split View", self, checkable=True)
+        self._menu_split_action.setChecked(False)
+        self._menu_split_action.setShortcut("Ctrl+\\")
+        self._menu_split_action.triggered.connect(self._on_menu_split_toggled)
+        panels_menu.addAction(self._menu_split_action)
+
+        view_menu.addSeparator()
+
         # 컬럼 표시 레벨 서브메뉴
         column_level_menu = view_menu.addMenu("📊 Column Display Level")
         
         self.column_level_group = QActionGroup(self)
         self.column_level_group.setExclusive(True)
         
-        basic_action = QAction("Basic (Gene ID + Abundance)", self, checkable=True)
+        basic_action = QAction("Basic", self, checkable=True)
         basic_action.setData("basic")
         basic_action.setChecked(True)  # 기본값: Basic
         basic_action.triggered.connect(lambda: self._on_column_level_changed("basic"))
         self.column_level_group.addAction(basic_action)
         column_level_menu.addAction(basic_action)
-        
-        de_action = QAction("DE Analysis (+ log2FC, padj)", self, checkable=True)
+
+        de_action = QAction("Stat", self, checkable=True)
         de_action.setData("de")
         de_action.triggered.connect(lambda: self._on_column_level_changed("de"))
         self.column_level_group.addAction(de_action)
         column_level_menu.addAction(de_action)
-        
-        full_action = QAction("Full (All Columns)", self, checkable=True)
+
+        full_action = QAction("Full", self, checkable=True)
         full_action.setData("full")
         full_action.triggered.connect(lambda: self._on_column_level_changed("full"))
         self.column_level_group.addAction(full_action)
@@ -375,7 +554,12 @@ class MainWindow(QMainWindow):
         clear_log_action = QAction("Clear Log", self)
         clear_log_action.triggered.connect(self._on_clear_log)
         view_menu.addAction(clear_log_action)
-        
+
+        view_menu.addSeparator()
+        igv_settings_action = QAction("🔬 IGV Settings...", self)
+        igv_settings_action.triggered.connect(self._on_igv_settings)
+        view_menu.addAction(igv_settings_action)
+
         # Visualization 메뉴
         viz_menu = menubar.addMenu("&Visualization")
         
@@ -399,16 +583,20 @@ class MainWindow(QMainWindow):
         self.pca_action.setShortcut("Ctrl+P")
         self.pca_action.triggered.connect(lambda: self._on_visualization_requested("pca"))
         viz_menu.addAction(self.pca_action)
-        
+
+        self.expr_bar_action = QAction("📊 Gene Expression Bar+Scatter (Grouped)", self)
+        self.expr_bar_action.triggered.connect(self._on_gene_expression_bar)
+        viz_menu.addAction(self.expr_bar_action)
+
         viz_menu.addSeparator()
         
         # 비교 데이터 시각화
-        self.dotplot_action = QAction("⚫ Dot Plot (Comparison Data)", self)
+        self.dotplot_action = QAction("⚫ Dot Plot (Comparison)", self)
         self.dotplot_action.triggered.connect(self._on_dotplot_requested)
         # 항상 활성화
         viz_menu.addAction(self.dotplot_action)
         
-        self.venn_action = QAction("⭕ Venn Diagram (2-3 datasets)", self)
+        self.venn_action = QAction("⭕ Venn Diagram (Comparison)", self)
         self.venn_action.triggered.connect(self._on_venn_diagram)
         # 항상 활성화
         viz_menu.addAction(self.venn_action)
@@ -416,17 +604,86 @@ class MainWindow(QMainWindow):
         viz_menu.addSeparator()
         
         # GO/KEGG 시각화 메뉴 (서브메뉴 없이 직접 추가)
-        self.go_dotplot_action = QAction("🧬 GO/KEGG Dot Plot", self)
+        self.go_dotplot_action = QAction("🧬 Dot Plot (GO/KEGG)", self)
         self.go_dotplot_action.triggered.connect(lambda: self._on_go_visualization("dotplot"))
         viz_menu.addAction(self.go_dotplot_action)
         
-        self.go_barplot_action = QAction("🧬 GO/KEGG Bar Chart", self)
+        self.go_barplot_action = QAction("🧬 Bar Chart (GO/KEGG)", self)
         self.go_barplot_action.triggered.connect(lambda: self._on_go_visualization("barplot"))
         viz_menu.addAction(self.go_barplot_action)
         
-        self.go_network_action = QAction("🧬 GO/KEGG Network Chart", self)
+        self.go_network_action = QAction("🧬 Cluster Dot Plot (GO/KEGG)", self)
         self.go_network_action.triggered.connect(lambda: self._on_go_visualization("network"))
         viz_menu.addAction(self.go_network_action)
+
+        viz_menu.addSeparator()
+
+        # ATAC-seq 전용 시각화 (ATAC 탭 활성 시에만 활성화)
+        self.genomic_dist_action = QAction("🧬 Genomic Distribution Plot (ATAC-seq)", self)
+        self.genomic_dist_action.triggered.connect(lambda: self._on_atac_visualization("genomic_distribution"))
+        self.genomic_dist_action.setEnabled(False)
+        viz_menu.addAction(self.genomic_dist_action)
+
+        self.tss_distance_action = QAction("📏 TSS Distance Plot (ATAC-seq)", self)
+        self.tss_distance_action.triggered.connect(lambda: self._on_atac_visualization("tss_distance"))
+        self.tss_distance_action.setEnabled(False)
+        viz_menu.addAction(self.tss_distance_action)
+
+        self.ma_plot_action = QAction("📈 MA Plot (ATAC-seq)", self)
+        self.ma_plot_action.triggered.connect(lambda: self._on_atac_visualization("ma_plot"))
+        self.ma_plot_action.setEnabled(False)
+        viz_menu.addAction(self.ma_plot_action)
+
+        self.motif_enrichment_action = QAction("🔡 TF Motif Enrichment Plot", self)
+        self.motif_enrichment_action.triggered.connect(self._on_motif_enrichment_requested)
+        self.motif_enrichment_action.setEnabled(False)
+        viz_menu.addAction(self.motif_enrichment_action)
+
+        self.tf_footprint_action = QAction("👣 TF Activity Plot (Footprint)", self)
+        self.tf_footprint_action.triggered.connect(self._on_tf_footprint_requested)
+        self.tf_footprint_action.setEnabled(False)
+        viz_menu.addAction(self.tf_footprint_action)
+
+        self.chromvar_action = QAction("🧬 chromVAR TF Activity Plot", self)
+        self.chromvar_action.triggered.connect(self._on_chromvar_requested)
+        self.chromvar_action.setEnabled(False)
+        viz_menu.addAction(self.chromvar_action)
+
+        self.da_peak_overlap_action = QAction("🔗 DA Peak Overlap (ATAC-seq)...", self)
+        self.da_peak_overlap_action.triggered.connect(self._on_da_peak_overlap)
+        # 항상 활성화 — 로드된 ATAC_SEQ 데이터셋 개수는 핸들러 내부에서 확인
+        viz_menu.addAction(self.da_peak_overlap_action)
+
+        viz_menu.addSeparator()
+
+        # Multi-Omics 전용 시각화 (MULTI_OMICS 탭 활성 시에만 활성화)
+        self.quadrant_plot_action = QAction("◈ Quadrant Plot (Multi-Omics)", self)
+        self.quadrant_plot_action.triggered.connect(
+            lambda: self._on_multi_omics_visualization("quadrant")
+        )
+        self.quadrant_plot_action.setEnabled(False)
+        viz_menu.addAction(self.quadrant_plot_action)
+
+        self.concordance_heatmap_action = QAction("🔥 Concordance Heatmap (Multi-Omics)", self)
+        self.concordance_heatmap_action.triggered.connect(
+            lambda: self._on_multi_omics_visualization("heatmap")
+        )
+        self.concordance_heatmap_action.setEnabled(False)
+        viz_menu.addAction(self.concordance_heatmap_action)
+
+        self.concordance_summary_action = QAction("📊 Concordance Bar Chart (Multi-Omics)", self)
+        self.concordance_summary_action.triggered.connect(
+            lambda: self._on_multi_omics_visualization("summary")
+        )
+        self.concordance_summary_action.setEnabled(False)
+        viz_menu.addAction(self.concordance_summary_action)
+
+        self.integrated_volcano_action = QAction("🌋 Integrated Volcano Plot (Multi-Omics)", self)
+        self.integrated_volcano_action.triggered.connect(
+            lambda: self._on_multi_omics_visualization("integrated_volcano")
+        )
+        self.integrated_volcano_action.setEnabled(False)
+        viz_menu.addAction(self.integrated_volcano_action)
 
         # Help 메뉴
         help_menu = menubar.addMenu("&Help")
@@ -500,7 +757,8 @@ class MainWindow(QMainWindow):
         root_logger = logging.getLogger()
         root_logger.addHandler(self.qt_log_handler)
     
-    def _create_data_tab(self, tab_name: str) -> QTableWidget:
+    def _create_data_tab(self, tab_name: str, sheet_type: str = 'whole',
+                         parent_dataset: str = None) -> QTableWidget:
         """새 데이터 탭 생성"""
         table = QTableWidget()
         table.setAlternatingRowColors(True)
@@ -543,8 +801,25 @@ class MainWindow(QMainWindow):
         """)
         
         self.data_tabs.addTab(table, tab_name)
+
+        # tab_data 사전 등록 (아직 없을 때만)
+        new_idx = self.data_tabs.indexOf(table)
+        if new_idx >= 0 and new_idx not in self.tab_data:
+            self.tab_data[new_idx] = {
+                'dataframe': None,
+                'dataset': None,
+                'parent_dataset': parent_dataset,
+                'sheet_type': sheet_type,
+                'sheet_label': tab_name,
+                'filter_params': None,
+                'comparison_params': None,
+            }
+        # 비-whole 시트는 parent_dataset이 있으면 즉시 트리에 등록
+        if parent_dataset and sheet_type != 'whole':
+            self.dataset_manager.add_sheet(parent_dataset, new_idx, tab_name, sheet_type)
+
         return table
-    
+
     def populate_table(self, table: QTableWidget, dataframe: pd.DataFrame, dataset=None):
         """
         테이블에 데이터 채우기 (컬럼 레벨 및 정밀도 적용)
@@ -560,7 +835,24 @@ class MainWindow(QMainWindow):
         # 탭 인덱스 찾기 및 원본 데이터 저장 (시각화를 위해 항상 전체 데이터 저장)
         tab_index = self.data_tabs.indexOf(table)
         if tab_index >= 0:
-            self.tab_data[tab_index] = (dataframe, dataset)
+            if tab_index in self.tab_data:
+                self.tab_data[tab_index]['dataframe'] = dataframe
+                self.tab_data[tab_index]['dataset'] = dataset
+                # 'whole' 시트: parent_dataset이 아직 None이면 dataset.name으로 채움
+                if (dataset is not None
+                        and self.tab_data[tab_index].get('parent_dataset') is None
+                        and self.tab_data[tab_index].get('sheet_type') == 'whole'):
+                    self.tab_data[tab_index]['parent_dataset'] = dataset.name
+            else:
+                self.tab_data[tab_index] = {
+                    'dataframe': dataframe,
+                    'dataset': dataset,
+                    'parent_dataset': dataset.name if dataset else None,
+                    'sheet_type': 'whole',
+                    'sheet_label': '',
+                    'filter_params': None,
+                    'comparison_params': None,
+                }
         
         # 컬럼 필터링 (테이블 표시용 - dataset이 있으면 필터링)
         if dataset:
@@ -621,15 +913,16 @@ class MainWindow(QMainWindow):
                     formatted_value = str(value)
                     item = QTableWidgetItem(formatted_value)
                 
+                item.setData(Qt.ItemDataRole.UserRole, i)
                 table.setItem(i, j, item)
-        
+
         # setSortingEnabled(True)를 사용하지 않음:
         # Qt가 활성화 시 자동으로 sortItems(0, Asc)를 호출하여 입력 순서를 깨뜨림.
         # 대신 sectionClicked 시그널에 _sort_table_by_column을 연결하여 수동 정렬.
         
         # 정렬 인디케이터 초기화 (화살표 없음)
         table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
-        
+
         # 저장된 컬럼 너비 복원
         self._restore_table_column_widths(table)
         
@@ -643,21 +936,16 @@ class MainWindow(QMainWindow):
                 break
     
     def _sort_table_by_column(self, table: QTableWidget, col: int):
-        """헤더 클릭 시 수동 정렬 (setSortingEnabled 미사용)"""
+        """헤더 클릭 시 수동 정렬 (setSortingEnabled 미사용)
+
+        QHeaderView.setSectionsClickable(True)를 켜면 setSortingEnabled 여부와
+        무관하게 Qt가 sectionClicked를 emit하기 *전에* 내부적으로 sort indicator를
+        이미 올바른 방향으로 토글해 둔다(Qt 자체 동작). 여기서 또 토글하면 클릭마다
+        두 번 토글되어 항상 같은 방향(Descending)에 고정되는 문제가 있었다.
+        Qt가 이미 정해 둔 현재 indicator 값을 그대로 사용해 실제 행 정렬만 적용한다.
+        """
         header = table.horizontalHeader()
-        current_col = header.sortIndicatorSection()
-        current_order = header.sortIndicatorOrder()
-        
-        if current_col == col:
-            # 같은 컬럼 재클릭: 방향 토글
-            new_order = (Qt.SortOrder.DescendingOrder
-                         if current_order == Qt.SortOrder.AscendingOrder
-                         else Qt.SortOrder.AscendingOrder)
-        else:
-            new_order = Qt.SortOrder.AscendingOrder
-        
-        table.sortItems(col, new_order)
-        header.setSortIndicator(col, new_order)
+        table.sortItems(header.sortIndicatorSection(), header.sortIndicatorOrder())
     
     def _filter_columns(self, all_columns: List[str], dataset=None) -> List[str]:
         """
@@ -711,12 +999,34 @@ class MainWindow(QMainWindow):
                     seen.add(col)
             return ordered
         
+        # ATAC-seq 데이터인 경우
+        if dataset and dataset.dataset_type == DatasetType.ATAC_SEQ:
+            if self.column_display_level == "full":
+                level_cols = StandardColumns.get_atac_all()
+            elif self.column_display_level == "de":   # 'de' 레벨 → ATAC의 stat 수준
+                level_cols = StandardColumns.get_atac_stat()
+            else:  # "basic"
+                level_cols = StandardColumns.get_atac_basic()
+
+            # 정의된 순서 우선, 나머지 컬럼은 full에만 추가
+            ordered = []
+            seen = set()
+            for col in level_cols:
+                if col in all_columns and col not in internal_columns:
+                    ordered.append(col)
+                    seen.add(col)
+            if self.column_display_level == "full":
+                for col in all_columns:
+                    if col not in seen and col not in internal_columns:
+                        ordered.append(col)
+            return ordered if ordered else [col for col in all_columns if col not in internal_columns]
+
         # DE 데이터인 경우 (기존 로직)
         if self.column_display_level == "full":
             return [col for col in all_columns if col not in internal_columns]
-        
+
         columns_to_show = []
-        
+
         # Basic 레벨: gene_id + symbol + base_mean + 샘플 count 컬럼만
         if self.column_display_level == "basic":
             # 1. 기본 컬럼 추가 (gene_id, symbol, base_mean)
@@ -826,6 +1136,69 @@ class MainWindow(QMainWindow):
                 self._add_recent_file(file_path)
             # Cancel 버튼 누르면 아무것도 안함
     
+    def _on_open_atac_dataset(self):
+        """ATAC-seq DA 데이터셋 열기"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open ATAC-seq Dataset", "",
+            "ATAC-seq Files (*.xlsx *.xls *.parquet);;Excel Files (*.xlsx *.xls);;Parquet Files (*.parquet);;All Files (*)"
+        )
+        if not file_path:
+            return
+
+        default_name = Path(file_path).stem
+        dataset_name, ok = QInputDialog.getText(
+            self, "Dataset Name", "Enter a name for this ATAC-seq dataset:",
+            QLineEdit.EchoMode.Normal, default_name
+        )
+        if not ok:
+            return
+
+        name = dataset_name.strip() or default_name
+        self._add_recent_file(file_path)
+        self.presenter.load_dataset(Path(file_path), custom_name=name)
+
+    def _on_open_motif_results(self):
+        """HOMER knownResults.txt 또는 MEME AME ame.tsv 열기."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open TF Motif Results", "",
+            "Motif Files (*.txt *.tsv);;HOMER knownResults (knownResults.txt);;AME results (ame.tsv);;All Files (*)"
+        )
+        if not file_path:
+            return
+
+        default_name = Path(file_path).stem
+        dataset_name, ok = QInputDialog.getText(
+            self, "Dataset Name", "Enter a name for this motif dataset:",
+            QLineEdit.EchoMode.Normal, default_name
+        )
+        if not ok:
+            return
+
+        name = dataset_name.strip() or default_name
+        self._add_recent_file(file_path)
+        self.presenter.load_dataset(Path(file_path), custom_name=name)
+
+    def _on_open_footprint_results(self):
+        """TOBIAS bindetect_results.txt 열기."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open TF Footprint Results", "",
+            "BINDetect Results (bindetect_results.txt *.txt);;All Files (*)"
+        )
+        if not file_path:
+            return
+
+        default_name = Path(file_path).stem
+        dataset_name, ok = QInputDialog.getText(
+            self, "Dataset Name", "Enter a name for this footprint dataset:",
+            QLineEdit.EchoMode.Normal, default_name
+        )
+        if not ok:
+            return
+
+        name = dataset_name.strip() or default_name
+        self._add_recent_file(file_path)
+        self.presenter.load_dataset(Path(file_path), custom_name=name)
+
     def _on_add_dataset(self):
         """추가 데이터셋 로드"""
         file_path, _ = QFileDialog.getOpenFileName(
@@ -897,8 +1270,17 @@ class MainWindow(QMainWindow):
             self.presenter.load_gene_list(Path(file_path))
     
     def _on_dataset_selected(self, dataset_name: str):
-        """데이터셋 선택"""
+        """데이터셋 선택 → 해당 데이터로 전환하고 공유 'Whole Dataset' 탭으로 이동.
+
+        'Whole Dataset' 탭은 데이터셋마다 따로 있지 않고 하나를 공유한다
+        (switch_dataset → _update_view_with_dataset가 현재 데이터로 다시 채움).
+        루트 클릭 시 그 공유 탭으로 활성 탭을 전환해 데이터를 바로 보여준다.
+        """
         self.presenter.switch_dataset(dataset_name)
+        for i in range(self.data_tabs.count()):
+            if self.data_tabs.tabText(i) == "Whole Dataset":
+                self.data_tabs.setCurrentIndex(i)
+                break
     
     def _on_dataset_removed(self, dataset_name: str):
         """데이터셋 제거"""
@@ -941,9 +1323,24 @@ class MainWindow(QMainWindow):
             # Comparison Panel의 dataset 리스트 업데이트
             all_datasets = self.dataset_manager.get_all_datasets()
             self.comparison_panel.update_dataset_list(all_datasets)
-            
+
             self.logger.info(f"Dataset renamed: {old_name} -> {new_name}")
-    
+
+    def _on_sheet_renamed(self, tab_index: int, new_label: str):
+        """child 시트(필터/비교/클러스터 탭) 이름 변경을 탭/데이터에 반영"""
+        if not (0 <= tab_index < self.data_tabs.count()):
+            return
+        # 탭 텍스트 변경
+        self.data_tabs.setTabText(tab_index, new_label)
+        # tab_data의 라벨과 Dataset 객체 이름 동기화
+        entry = self.tab_data.get(tab_index)
+        if entry is not None:
+            entry['sheet_label'] = new_label
+            ds = entry.get('dataset')
+            if ds is not None:
+                ds.name = new_label
+        self.logger.info(f"Sheet renamed: tab {tab_index} -> {new_label}")
+
     def _on_filter_requested(self):
         """필터링 요청"""
         criteria = self.filter_panel.get_filter_criteria()
@@ -994,40 +1391,44 @@ class MainWindow(QMainWindow):
     def _filter_current_tab(self, criteria, tab_name, table):
         """현재 탭의 데이터를 필터링"""
         try:
-            # 테이블 데이터를 DataFrame으로 변환
             row_count = table.rowCount()
-            col_count = table.columnCount()
-            
             if row_count == 0:
                 QMessageBox.warning(self, "No Data", "Current tab is empty.")
                 return
-            
-            # 헤더 읽기
-            headers = []
-            for col in range(col_count):
-                header_item = table.horizontalHeaderItem(col)
-                if header_item:
-                    headers.append(header_item.text())
-            
-            # 데이터 읽기
-            data = []
-            for row in range(row_count):
-                row_data = {}
+
+            # tab_data에서 전체 DataFrame 사용 (column display level과 무관하게 모든 컬럼 접근 가능)
+            current_index = self.data_tabs.currentIndex()
+            _entry = self.tab_data.get(current_index)
+            stored_df = _entry['dataframe'] if _entry else None
+            tab_dataset = _entry['dataset'] if _entry else None
+
+            if stored_df is not None and not stored_df.empty:
+                df = stored_df.copy()
+            else:
+                # fallback: 테이블 위젯에서 읽기
+                col_count = table.columnCount()
+                headers = []
                 for col in range(col_count):
-                    item = table.item(row, col)
-                    if item:
-                        value = item.text()
-                        # 숫자로 변환 시도
-                        try:
-                            value = float(value)
-                        except:
-                            pass
-                        row_data[headers[col]] = value
-                    else:
-                        row_data[headers[col]] = None
-                data.append(row_data)
-            
-            df = pd.DataFrame(data)
+                    header_item = table.horizontalHeaderItem(col)
+                    if header_item:
+                        headers.append(header_item.text())
+                data = []
+                for row in range(row_count):
+                    row_data = {}
+                    for col in range(col_count):
+                        item = table.item(row, col)
+                        if item:
+                            value = item.text()
+                            try:
+                                value = float(value)
+                            except:
+                                pass
+                            row_data[headers[col]] = value
+                        else:
+                            row_data[headers[col]] = None
+                    data.append(row_data)
+                df = pd.DataFrame(data)
+                tab_dataset = None
             
             # 필터 적용
             if criteria.mode == FilterMode.GENE_LIST:
@@ -1036,9 +1437,6 @@ class MainWindow(QMainWindow):
                     QMessageBox.warning(self, "Empty Gene List", "Please enter genes to filter.")
                     return
 
-                # 현재 탭의 dataset type 확인
-                current_index = self.data_tabs.currentIndex()
-                _, tab_dataset = self.tab_data.get(current_index, (None, None))
                 tab_dataset_type = tab_dataset.dataset_type if tab_dataset else None
 
                 if tab_dataset_type == DatasetType.GO_ANALYSIS:
@@ -1088,11 +1486,7 @@ class MainWindow(QMainWindow):
                     new_tab_name = f"Filtered: {tab_name} - Gene List ({len(criteria.gene_list)} genes)"
                 
             else:  # Statistical filter
-                # Current dataset type 확인
-                current_index = self.data_tabs.currentIndex()
-                _, dataset = self.tab_data.get(current_index, (None, None))
-                dataset_type = dataset.dataset_type if dataset else None
-                
+                dataset_type = tab_dataset.dataset_type if tab_dataset else None
                 filtered_df = df.copy()
                 
                 if dataset_type == DatasetType.DIFFERENTIAL_EXPRESSION:
@@ -1227,7 +1621,8 @@ class MainWindow(QMainWindow):
             
             # 현재 탭의 dataset 정보 가져오기 (GO visualization 등에서 dataset type 필요)
             current_index = self.data_tabs.currentIndex()
-            _, current_dataset = self.tab_data.get(current_index, (None, None))
+            _entry = self.tab_data.get(current_index)
+            current_dataset = _entry['dataset'] if _entry else None
             
             # 필터링된 데이터로 Dataset 객체 생성
             from models.data_models import Dataset
@@ -1243,7 +1638,12 @@ class MainWindow(QMainWindow):
                 filtered_dataset = None
             
             # 새 탭 생성
-            new_table = self._create_data_tab(new_tab_name)
+            _cur_entry = self.tab_data.get(self.data_tabs.currentIndex())
+            parent_root = (_cur_entry.get('parent_dataset') if _cur_entry else None) \
+                or (current_dataset.name if current_dataset else None)
+            new_table = self._create_data_tab(new_tab_name,
+                                              sheet_type='filtered',
+                                              parent_dataset=parent_root)
             self.populate_table(new_table, filtered_df, filtered_dataset)
             self.logger.info(f"Filtered current tab: {len(filtered_df)} rows from {row_count} rows")
             
@@ -1492,7 +1892,7 @@ class MainWindow(QMainWindow):
         
         # 탭 생성
         comparison_tab_name = f"Comparison: Gene List ({len(datasets)} datasets)"
-        table = self._create_data_tab(comparison_tab_name)
+        table = self._create_data_tab(comparison_tab_name, sheet_type='comparison')
         self.populate_table(table, result_df)
         self.logger.info(f"Gene list comparison completed: {len(result_df)} genes across {len(datasets)} datasets")
 
@@ -1655,7 +2055,7 @@ class MainWindow(QMainWindow):
             }
         )
 
-        table = self._create_data_tab(tab_name)
+        table = self._create_data_tab(tab_name, sheet_type='comparison')
         self.populate_table(table, result_df, comp_dataset)
 
         # 비교 탭으로 자동 이동
@@ -1881,9 +2281,9 @@ class MainWindow(QMainWindow):
         
         # 탭 생성
         comparison_tab_name = f"Comparison: Statistics ({len(datasets)} datasets)"
-        table = self._create_data_tab(comparison_tab_name)
+        table = self._create_data_tab(comparison_tab_name, sheet_type='comparison')
         self.populate_table(table, result_df)
-        
+
         # 통계 정보 로그
         self.logger.info(f"Statistics comparison completed:")
         self.logger.info(f"  - Total unique genes: {len(all_genes)}")
@@ -1893,9 +2293,12 @@ class MainWindow(QMainWindow):
             self.logger.info(f"  - Unique to {name}: {len(unique_to_dataset)}")
     
     def _update_comparison_panel_datasets(self):
-        """비교 패널의 데이터셋 리스트 업데이트"""
+        """비교 패널의 데이터셋 리스트 업데이트, Multi-Omics 패널 콤보박스도 갱신"""
         dataset_names = self.dataset_manager.get_all_datasets()
         self.comparison_panel.update_dataset_list(dataset_names)
+        # Multi-Omics 패널이 표시 중이면 콤보박스도 갱신
+        if hasattr(self, 'multi_omics_panel') and self.multi_omics_panel.isVisible():
+            self.multi_omics_panel.refresh_dataset_list(self.presenter.datasets)
 
 
     
@@ -1941,14 +2344,60 @@ class MainWindow(QMainWindow):
             if isinstance(current_tab, QTableWidget):
                 self.presenter.export_data(Path(file_path), current_tab)
     
+    def _remove_tab_safely(self, index: int):
+        """
+        탭 제거 + tab_data 인덱스 재정렬.
+
+        removeTab()이 currentChanged를 동기적으로 발화하기 때문에,
+        tab_data를 먼저 정리한 뒤 실제 탭을 제거해야 _on_tab_changed가
+        올바른 데이터를 읽을 수 있다.
+        """
+        # 1. 트리: 닫히는 시트 노드 제거
+        self.dataset_manager.remove_sheet(index)
+        # 트리: index보다 큰 child 노드의 tab_index를 1씩 당김
+        for key in sorted(self.tab_data.keys()):
+            if key > index:
+                self.dataset_manager.update_sheet_tab_index(key, key - 1)
+
+        # 2. tab_data: 제거 대상 삭제
+        if index in self.tab_data:
+            del self.tab_data[index]
+
+        # 3. index보다 큰 키를 1씩 당김 (removeTab 후 탭 shift 반영)
+        shifted: dict = {}
+        for key, value in self.tab_data.items():
+            shifted[key - 1 if key > index else key] = value
+        self.tab_data = shifted
+
+        # 4. 실제 탭 제거 (currentChanged 신호 발화)
+        self.data_tabs.removeTab(index)
+
+    def _pin_plot_to_tab(self, widget, label: str, plot_type: str,
+                          plot_params: dict, parent_dataset: str = None):
+        """Plot widget을 새 탭으로 고정"""
+        tab_index = self.data_tabs.addTab(widget, f"📈 {label}")
+        # tab_data를 setCurrentIndex 전에 설정해야 _on_tab_changed에서 dock을 바로 업데이트할 수 있음
+        self.tab_data[tab_index] = {
+            'dataframe': None,
+            'dataset': None,
+            'parent_dataset': parent_dataset,
+            'sheet_type': 'plot',
+            'sheet_label': label,
+            'filter_params': None,
+            'comparison_params': None,
+            'plot_type': plot_type,
+            'plot_params': plot_params,
+            'plot_widget': widget,
+        }
+        self.data_tabs.setCurrentIndex(tab_index)
+        if parent_dataset and hasattr(self, 'dataset_manager'):
+            self.dataset_manager.add_sheet(parent_dataset, tab_index, label, 'plot')
+        self.logger.info(f"Plot pinned to tab: {label} (type={plot_type})")
+
     def _on_tab_close_requested(self, index: int):
         """탭 닫기 요청"""
         if index > 0:  # 첫 번째 탭(Whole Dataset)은 닫지 않음
-            self.data_tabs.removeTab(index)
-            # 탭 데이터도 제거
-            if index in self.tab_data:
-                del self.tab_data[index]
-            # 메뉴 상태 업데이트
+            self._remove_tab_safely(index)
             self._update_menu_states(self.presenter.fsm.current_state)
     
     def _on_tab_changed(self, index: int):
@@ -1962,32 +2411,267 @@ class MainWindow(QMainWindow):
             
             # 탭에 저장된 dataset으로 current_dataset 업데이트
             if index in self.tab_data:
-                _, dataset = self.tab_data[index]
+                dataset = self.tab_data[index]['dataset']
                 if dataset is not None:
                     self.presenter.current_dataset = dataset
                     self.logger.info(f"Tab changed to index {index}: current_dataset updated to '{dataset.name}'")
 
-            # GO_ANALYSIS 데이터일 때만 Gene List 탭에 모드 토글 표시
-            self._update_filter_panel_go_mode(index)
-    
-    def _update_filter_panel_go_mode(self, tab_index: int):
+            # 필터 패널 동적 섹션 + 시각화 메뉴 업데이트 (DatasetType 분기는 _update_atac_ui에서 통합)
+            self._update_atac_ui(index)
+
+            # 트리 선택 동기화
+            self.dataset_manager.sync_selection(index)
+
+            # ── Plot Settings Dock 업데이트 ────────────────────────────
+            self._update_plot_settings_dock(index)
+
+    def _update_plot_settings_dock(self, index: int):
+        """현재 탭이 plot 탭이면 우측 Settings Dock에 해당 위젯의 설정 패널을 표시"""
+        if not hasattr(self, 'plot_settings_dock'):
+            return
+
+        entry = self.tab_data.get(index, {})
+        if entry.get('sheet_type') == 'plot':
+            plot_widget = entry.get('plot_widget')
+            if plot_widget and hasattr(plot_widget, 'get_settings_panel'):
+                new_panel = plot_widget.get_settings_panel()
+                if new_panel is not None and new_panel is not self._current_settings_widget:
+                    self.plot_settings_dock.setWidget(new_panel)
+                    self._current_settings_widget = new_panel
+                    # dock 제목을 plot 타입에 맞게 업데이트
+                    plot_type = entry.get('plot_type', 'Plot')
+                    self.plot_settings_dock.setWindowTitle(
+                        f"{plot_type.capitalize()} Settings" if plot_type else "Plot Settings"
+                    )
+                if not self.plot_settings_dock.isVisible():
+                    self.plot_settings_dock.show()
+                return
+        # 비-plot 탭 → dock 숨김
+        self.plot_settings_dock.hide()
+        self._current_settings_widget = None
+
+    # ── Activity Bar ─────────────────────────────────────────────────
+
+    def _build_activity_bar(self) -> QWidget:
+        """Activity Bar 위젯 생성 (좌측 세로 아이콘 바)"""
+        bar = QWidget()
+        bar.setObjectName("ActivityBar")
+        bar.setFixedWidth(44)
+        bar.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+        bar.setStyleSheet("""
+            QWidget#ActivityBar {
+                background: #ebebeb;
+                border-right: 1px solid #ccc;
+            }
+            QToolButton {
+                background: transparent;
+                border: none;
+                color: #555;
+                font-size: 18px;
+                border-radius: 4px;
+                padding: 6px 4px;
+            }
+            QToolButton:hover {
+                background: #d6d6d6;
+                color: #222;
+            }
+            QToolButton:checked {
+                background: #cde4f5;
+                color: #005a9e;
+                border-left: 2px solid #0078d4;
+            }
+        """)
+        bar_layout = QVBoxLayout(bar)
+        bar_layout.setContentsMargins(2, 6, 2, 6)
+        bar_layout.setSpacing(4)
+
+        self._act_dataset_btn = QToolButton()
+        self._act_dataset_btn.setText("≡")
+        self._act_dataset_btn.setToolTip("Datasets")
+        self._act_dataset_btn.setFixedSize(40, 40)
+        self._act_dataset_btn.setCheckable(True)
+        self._act_dataset_btn.setChecked(False)
+        self._act_dataset_btn.clicked.connect(self._on_act_dataset_clicked)
+        bar_layout.addWidget(self._act_dataset_btn)
+
+        self._act_filter_btn = QToolButton()
+        self._act_filter_btn.setText("⊟")
+        self._act_filter_btn.setToolTip("Filter / Compare")
+        self._act_filter_btn.setFixedSize(40, 40)
+        self._act_filter_btn.setCheckable(True)
+        self._act_filter_btn.setChecked(True)
+        self._act_filter_btn.clicked.connect(self._on_act_filter_clicked)
+        bar_layout.addWidget(self._act_filter_btn)
+
+        bar_layout.addStretch()
+
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet("color: #ccc;")
+        bar_layout.addWidget(sep)
+
+        self._act_split_btn = QToolButton()
+        self._act_split_btn.setText("∥")
+        self._act_split_btn.setToolTip("Split View — show both panels")
+        self._act_split_btn.setFixedSize(40, 40)
+        self._act_split_btn.setCheckable(True)
+        self._act_split_btn.setChecked(False)
+        self._act_split_btn.clicked.connect(self._on_act_split_toggled)
+        bar_layout.addWidget(self._act_split_btn)
+
+        return bar
+
+    def _on_act_dataset_clicked(self, checked: bool):
+        """Datasets 패널 토글 (비분할 모드에서는 Filter와 상호 배타)"""
+        if checked and not self._split_view_active:
+            self._set_panel_visible(self.func_container, False, is_func=True)
+            self._act_filter_btn.setChecked(False)
+            self._menu_filter_action.setChecked(False)
+        self._set_panel_visible(self.tree_container, checked, is_func=False)
+        self._menu_datasets_action.setChecked(checked)
+
+    def _on_act_filter_clicked(self, checked: bool):
+        """Filter/Compare 패널 토글 (비분할 모드에서는 Datasets와 상호 배타)"""
+        if checked and not self._split_view_active:
+            self._set_panel_visible(self.tree_container, False, is_func=False)
+            self._act_dataset_btn.setChecked(False)
+            self._menu_datasets_action.setChecked(False)
+        self._set_panel_visible(self.func_container, checked, is_func=True)
+        self._menu_filter_action.setChecked(checked)
+
+    def _on_act_split_toggled(self, checked: bool):
+        """Split View 토글: 두 패널 동시 표시 ↔ 단일 패널"""
+        self._split_view_active = checked
+        self._menu_split_action.setChecked(checked)
+        if checked:
+            self._set_panel_visible(self.tree_container, True, is_func=False)
+            self._set_panel_visible(self.func_container, True, is_func=True)
+            self._act_dataset_btn.setChecked(True)
+            self._act_filter_btn.setChecked(True)
+            self._menu_datasets_action.setChecked(True)
+            self._menu_filter_action.setChecked(True)
+        else:
+            # Filter만 유지, 트리 숨김
+            self._set_panel_visible(self.tree_container, False, is_func=False)
+            self._act_dataset_btn.setChecked(False)
+            self._menu_datasets_action.setChecked(False)
+
+    # ── View 메뉴 핸들러 ───────────────────────────────────────
+
+    def _on_menu_datasets_toggled(self, checked: bool):
+        """View > Panels > Datasets 메뉴 → activity bar로 위임"""
+        self._act_dataset_btn.setChecked(checked)
+        self._on_act_dataset_clicked(checked)
+
+    def _on_menu_filter_toggled(self, checked: bool):
+        """View > Panels > Filter/Compare 메뉴 → activity bar로 위임"""
+        self._act_filter_btn.setChecked(checked)
+        self._on_act_filter_clicked(checked)
+
+    def _on_menu_split_toggled(self, checked: bool):
+        """View > Panels > Split View 메뉴 → activity bar로 위임"""
+        self._act_split_btn.setChecked(checked)
+        self._on_act_split_toggled(checked)
+
+    def _set_panel_visible(self, panel: QWidget, visible: bool, *, is_func: bool):
+        """패널 표시/숨김 + splitter 크기 복원"""
+        if visible == panel.isVisible():
+            return
+        if visible:
+            sizes = self.main_splitter.sizes()
+            panel.setVisible(True)
+            width = (self._func_panel_width if is_func else self._tree_panel_width) or (260 if is_func else 200)
+            idx = 1 if is_func else 0
+            new_sizes = list(sizes)
+            new_sizes[idx] = width
+            new_sizes[2] = max(new_sizes[2] - width, 300)
+            self.main_splitter.setSizes(new_sizes)
+        else:
+            sizes = self.main_splitter.sizes()
+            idx = 1 if is_func else 0
+            if sizes[idx] > 0:
+                if is_func:
+                    self._func_panel_width = sizes[idx]
+                else:
+                    self._tree_panel_width = sizes[idx]
+            panel.setVisible(False)
+
+    def _toggle_tree_panel(self):
+        """레거시 호환 — activity bar로 위임"""
+        checked = not self.tree_container.isVisible()
+        self._act_dataset_btn.setChecked(checked)
+        self._on_act_dataset_clicked(checked)
+
+    def _toggle_func_panel(self):
+        """레거시 호환 — activity bar로 위임"""
+        checked = not self.func_container.isVisible()
+        self._act_filter_btn.setChecked(checked)
+        self._on_act_filter_clicked(checked)
+
+    def _on_tree_sheet_selected(self, tab_index: int):
+        """트리에서 시트 클릭 → 탭 활성화"""
+        if 0 <= tab_index < self.data_tabs.count():
+            self.data_tabs.setCurrentIndex(tab_index)
+
+    def _on_file_dropped(self, file_path: str):
+        """DatasetTreePanel 드롭 → 파일 로드"""
+        self._load_dataset_with_name(file_path)
+
+    def _on_dataset_tree_root_added(self, dataset_name: str):
+        """루트 노드 추가 후 해당 dataset의 whole 시트를 트리에 등록"""
+        for tab_index, entry in self.tab_data.items():
+            if (entry.get('sheet_type') == 'whole'
+                    and entry.get('parent_dataset') == dataset_name
+                    and self.dataset_manager._find_child_by_tab(tab_index) is None):
+                sheet_label = self.data_tabs.tabText(tab_index)
+                self.dataset_manager.add_sheet(dataset_name, tab_index, sheet_label, 'whole')
+
+    def _update_atac_ui(self, tab_index: int):
         """
-        현재 탭의 dataset type이 GO_ANALYSIS이면 FilterPanel Gene List 탭에
-        GO Term ID 모드 토글을 표시하고, 그 외에는 숨긴다.
-        Gene Symbol 모드로 초기화하지 않아 사용자의 선택을 유지한다.
+        현재 탭이 ATAC_SEQ 데이터셋이면:
+          - FilterPanel의 ATAC 섹션 표시 및 annotation 드롭다운 갱신
+          - Visualization 메뉴의 ATAC 전용 항목 활성화
+        그 외에는 ATAC 섹션을 숨기고 메뉴 비활성화.
         """
         from models.data_models import DatasetType
-        is_go = False
+        dataset = None
         if tab_index in self.tab_data:
-            _, dataset = self.tab_data[tab_index]
-            if dataset is not None and dataset.dataset_type == DatasetType.GO_ANALYSIS:
-                is_go = True
+            dataset = self.tab_data[tab_index]['dataset']
 
-        if hasattr(self.filter_panel, 'go_mode_widget'):
-            self.filter_panel.go_mode_widget.setVisible(is_go)
-            # GO 탭이 아니면 항상 Gene Symbol 모드로 복귀
-            if not is_go and hasattr(self.filter_panel, 'gene_symbol_radio'):
-                self.filter_panel.gene_symbol_radio.setChecked(True)
+        is_atac = (dataset is not None and
+                   dataset.dataset_type == DatasetType.ATAC_SEQ)
+        is_multi_omics = (dataset is not None and
+                          dataset.dataset_type == DatasetType.MULTI_OMICS)
+        is_motif = (dataset is not None and
+                    dataset.dataset_type == DatasetType.MOTIF_ENRICHMENT)
+        is_footprint = (dataset is not None and
+                        dataset.dataset_type == DatasetType.TF_FOOTPRINT)
+        is_chromvar = (dataset is not None and
+                       dataset.dataset_type == DatasetType.CHROMVAR_DIFF_TF)
+
+        # FilterPanel 갱신 (dataset type에 따라 섹션 동적 표시/숨김)
+        if hasattr(self.filter_panel, 'update_for_dataset'):
+            self.filter_panel.update_for_dataset(dataset)
+
+        # ATAC 전용 Visualization 메뉴 활성화
+        if hasattr(self, 'genomic_dist_action'):
+            self.genomic_dist_action.setEnabled(is_atac)
+        if hasattr(self, 'tss_distance_action'):
+            self.tss_distance_action.setEnabled(is_atac)
+        if hasattr(self, 'ma_plot_action'):
+            self.ma_plot_action.setEnabled(is_atac)
+        if hasattr(self, 'motif_enrichment_action'):
+            self.motif_enrichment_action.setEnabled(is_motif)
+        if hasattr(self, 'tf_footprint_action'):
+            self.tf_footprint_action.setEnabled(is_footprint)
+        if hasattr(self, 'chromvar_action'):
+            self.chromvar_action.setEnabled(is_chromvar)
+
+        # Multi-Omics 전용 Visualization 메뉴 활성화
+        for action_name in ('quadrant_plot_action', 'concordance_heatmap_action',
+                            'concordance_summary_action', 'integrated_volcano_action'):
+            if hasattr(self, action_name):
+                getattr(self, action_name).setEnabled(is_multi_omics)
 
     def _on_clear_log(self):
         """로그 지우기"""
@@ -2007,7 +2691,8 @@ class MainWindow(QMainWindow):
                 continue
             
             if tab_index in self.tab_data:
-                dataframe, dataset = self.tab_data[tab_index]
+                dataframe = self.tab_data[tab_index]['dataframe']
+                dataset = self.tab_data[tab_index]['dataset']
                 table = self.data_tabs.widget(tab_index)
                 if isinstance(table, QTableWidget):
                     # 테이블 재구성
@@ -2023,7 +2708,8 @@ class MainWindow(QMainWindow):
         # 모든 탭의 데이터를 다시 표시
         for tab_index in range(self.data_tabs.count()):
             if tab_index in self.tab_data:
-                dataframe, dataset = self.tab_data[tab_index]
+                dataframe = self.tab_data[tab_index]['dataframe']
+                dataset = self.tab_data[tab_index]['dataset']
                 table = self.data_tabs.widget(tab_index)
                 if isinstance(table, QTableWidget):
                     # 테이블 재구성
@@ -2094,7 +2780,7 @@ class MainWindow(QMainWindow):
 
         title_label = QLabel(
             "<h2 style='margin:0;'>CMG-SeqViewer</h2>"
-            "<p style='margin:2px 0;'><b>Version 1.1.5</b></p>"
+            "<p style='margin:2px 0;'><b>Version 1.2.1</b></p>"
             "<p style='margin:2px 0; color:#555;'>RNA-Seq Data Analysis &amp; Visualization</p>"
         )
         title_label.setWordWrap(True)
@@ -2169,7 +2855,8 @@ class MainWindow(QMainWindow):
                                   "No data available in current tab.")
                 return
             
-            dataframe, dataset = self.tab_data[current_index]
+            dataframe = self.tab_data[current_index]['dataframe']
+            dataset = self.tab_data[current_index]['dataset']
             
             # Comparison 결과인지 확인 (dataset이 None인 경우)
             if dataset is None:
@@ -2235,12 +2922,20 @@ class MainWindow(QMainWindow):
             # 시각화 다이얼로그 열기
             if viz_type == "volcano":
                 dialog = VolcanoPlotDialog(df, self)
+                _parent_ds = self.tab_data.get(self.data_tabs.currentIndex(), {}).get('parent_dataset')
+                dialog.plot_pinned.connect(
+                    lambda w, lbl, pt, pp, _pd=_parent_ds: self._pin_plot_to_tab(w, lbl, pt, pp, _pd)
+                )
                 dialog.exec()
             elif viz_type == "histogram":
                 dialog = PadjHistogramDialog(df, self)
                 dialog.exec()
             elif viz_type == "heatmap":
                 dialog = HeatmapDialog(df, self)
+                _parent_ds = self.tab_data.get(self.data_tabs.currentIndex(), {}).get('parent_dataset')
+                dialog.plot_pinned.connect(
+                    lambda w, lbl, pt, pp, _pd=_parent_ds: self._pin_plot_to_tab(w, lbl, pt, pp, _pd)
+                )
                 dialog.exec()
             
             self.logger.info(f"Visualization opened: {viz_type}")
@@ -2257,7 +2952,7 @@ class MainWindow(QMainWindow):
             if current_index < 0 or current_index not in self.tab_data:
                 QMessageBox.warning(self, "No Data", "Please load a dataset first.")
                 return
-            _, dataset = self.tab_data[current_index]
+            dataset = self.tab_data[current_index]['dataset']
             from models.data_models import DatasetType as _DT
             if dataset is None or dataset.dataset_type != _DT.MULTI_GROUP:
                 QMessageBox.warning(
@@ -2273,6 +2968,42 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.logger.error(f"Multi-Group Heatmap failed: {e}")
             QMessageBox.critical(self, "Error", f"Failed to open Multi-Group Heatmap:\n{str(e)}")
+
+    def _on_gene_expression_bar(self):
+        """Gene Expression Bar+Scatter (Grouped) 다이얼로그 열기.
+
+        현재 탭의 데이터셋에 샘플별 발현 컬럼이 있어야 한다. filtered DE 시트에서
+        소수 유전자를 그룹별 막대(mean)+개별 점으로 비교하는 데 가장 유용하다.
+        """
+        try:
+            current_index = self.data_tabs.currentIndex()
+            if current_index < 0 or current_index not in self.tab_data:
+                QMessageBox.warning(self, "No Data", "Please open a dataset tab first.")
+                return
+            dataset = self.tab_data[current_index]['dataset']
+            if dataset is None or dataset.dataframe is None or dataset.dataframe.empty:
+                QMessageBox.warning(self, "No Data", "The current tab has no data.")
+                return
+
+            from gui.gene_expression_bar_dialog import GeneExpressionBarDialog
+            # 부모 데이터셋 이름("CTX200A vs CTX0A DE")을 그룹 라벨 시드 힌트로 전달
+            # (filtered 시트는 자기 이름에 그룹 정보가 없으므로 부모 이름이 핵심 단서)
+            name_hint = self.tab_data[current_index].get('parent_dataset') or dataset.name
+            dialog = GeneExpressionBarDialog(dataset, parent=self, name_hint=name_hint)
+            if not dialog.has_data:
+                QMessageBox.warning(
+                    self, "No Sample Columns",
+                    "This plot needs per-sample expression columns "
+                    "(e.g. Ctrl_1, Ctrl_2, Treat_1 ...).\n\n"
+                    "The current dataset has none that could be detected. "
+                    "Open a DE dataset (or its Filtered sheet) that keeps sample-level counts."
+                )
+                return
+            dialog.exec()
+            self.logger.info("Visualization opened: gene_expression_bar")
+        except Exception as e:
+            self.logger.error(f"Gene Expression Bar failed: {e}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"Failed to open Gene Expression Bar plot:\n{str(e)}")
 
     def _on_dotplot_requested(self):
         """Dot Plot 시각화 (Comparison Data)"""
@@ -2404,9 +3135,75 @@ class MainWindow(QMainWindow):
             dialog.exec()
         except Exception as e:
             self.logger.error(f"Failed to create Venn diagram: {e}")
-            QMessageBox.critical(self, "Venn Diagram Error", 
+            QMessageBox.critical(self, "Venn Diagram Error",
                                f"Failed to create Venn diagram:\n{str(e)}")
-    
+
+    def _on_da_peak_overlap(self):
+        """ATAC-seq DA 데이터셋 간 peak_id(좌표) 기반 overlap 분석.
+
+        2-3개 → Venn Diagram(peak_id 키), 4개 이상 → UpSet Plot.
+        전제: 비교 대상 데이터셋들이 같은 consensus peak set에서 나와야 유효함.
+        """
+        atac_datasets = [
+            ds for ds in self.presenter.datasets.values()
+            if ds.dataset_type == DatasetType.ATAC_SEQ
+        ]
+
+        if len(atac_datasets) < 2:
+            QMessageBox.warning(
+                self, "Insufficient Datasets",
+                "DA Peak Overlap 분석에는 ATAC-seq 데이터셋이 2개 이상 필요합니다.\n"
+                "(현재 로드된 ATAC-seq 데이터셋: "
+                f"{len(atac_datasets)}개)"
+            )
+            return
+
+        from PyQt6.QtWidgets import QDialog, QListWidget, QDialogButtonBox
+
+        select_dialog = QDialog(self)
+        select_dialog.setWindowTitle("Select ATAC-seq Datasets for Peak Overlap")
+        select_dialog.setMinimumWidth(420)
+
+        layout = QVBoxLayout(select_dialog)
+        layout.addWidget(QLabel(
+            "비교할 ATAC-seq 데이터셋을 2개 이상 선택하세요.\n"
+            "(같은 peak set/consensus peak에서 나온 결과여야 비교가 유효합니다)"
+        ))
+
+        list_widget = QListWidget()
+        list_widget.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        for ds in atac_datasets:
+            list_widget.addItem(ds.name)
+        for i in range(list_widget.count()):
+            list_widget.item(i).setSelected(True)
+        layout.addWidget(list_widget)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(select_dialog.accept)
+        buttons.rejected.connect(select_dialog.reject)
+        layout.addWidget(buttons)
+
+        if select_dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        selected_indices = [list_widget.row(item) for item in list_widget.selectedItems()]
+        if len(selected_indices) < 2:
+            QMessageBox.warning(self, "Invalid Selection", "2개 이상의 데이터셋을 선택하세요.")
+            return
+
+        selected_datasets = [atac_datasets[i] for i in selected_indices]
+
+        try:
+            if len(selected_datasets) <= 3:
+                dialog = VennDiagramDialog(selected_datasets, self)
+            else:
+                dialog = UpsetPlotDialog(selected_datasets, self)
+            dialog.exec()
+        except Exception as e:
+            self.logger.error(f"Failed to create DA peak overlap plot: {e}")
+            QMessageBox.critical(self, "DA Peak Overlap Error",
+                               f"Failed to create overlap plot:\n{str(e)}")
+
     def _create_venn_from_comparison_sheet(self):
         """Comparison sheet에서 Venn diagram 생성"""
         try:
@@ -2638,7 +3435,349 @@ class MainWindow(QMainWindow):
             self.recent_files = []
             self._save_recent_files()
             self._update_recent_files_menu()
-    
+
+    # ── Project Save / Load ──────────────────────────────────────────
+
+    def _load_recent_projects(self):
+        """최근 프로젝트 히스토리 로드"""
+        try:
+            import json
+            import os
+            config_path = os.path.join(os.path.expanduser("~"), ".rna_seq_viewer_recent_projects.json")
+            if os.path.exists(config_path):
+                with open(config_path, "r", encoding="utf-8") as f:
+                    self.recent_projects = json.load(f)
+                    self.recent_projects = self.recent_projects[:self.max_recent_files]
+        except Exception as e:
+            self.logger.warning(f"Failed to load recent projects: {e}")
+            self.recent_projects = []
+
+    def _save_recent_projects(self):
+        """최근 프로젝트 히스토리 저장"""
+        try:
+            import json
+            import os
+            config_path = os.path.join(os.path.expanduser("~"), ".rna_seq_viewer_recent_projects.json")
+            with open(config_path, "w", encoding="utf-8") as f:
+                json.dump(self.recent_projects, f, indent=2)
+        except Exception as e:
+            self.logger.warning(f"Failed to save recent projects: {e}")
+
+    def _add_recent_project(self, project_path: str):
+        """최근 프로젝트 목록에 추가"""
+        import os
+        project_path = os.path.abspath(project_path)
+        if project_path in self.recent_projects:
+            self.recent_projects.remove(project_path)
+        self.recent_projects.insert(0, project_path)
+        self.recent_projects = self.recent_projects[:self.max_recent_files]
+        self._save_recent_projects()
+        self._update_recent_projects_menu()
+
+    def _update_recent_projects_menu(self):
+        """최근 프로젝트 메뉴 업데이트"""
+        import os
+        self.recent_projects_menu.clear()
+        if not self.recent_projects:
+            action = QAction("(No recent projects)", self)
+            action.setEnabled(False)
+            self.recent_projects_menu.addAction(action)
+        else:
+            for i, proj_path in enumerate(self.recent_projects):
+                display = os.path.basename(proj_path)
+                action = QAction(f"{i+1}. {display}", self)
+                action.setToolTip(proj_path)
+                action.triggered.connect(lambda checked, p=proj_path: self._open_project_path(p))
+                self.recent_projects_menu.addAction(action)
+            self.recent_projects_menu.addSeparator()
+            clear_action = QAction("Clear Recent Projects", self)
+            clear_action.triggered.connect(lambda: self._clear_recent_projects())
+            self.recent_projects_menu.addAction(clear_action)
+
+    def _clear_recent_projects(self):
+        """최근 프로젝트 목록 지우기"""
+        reply = QMessageBox.question(
+            self, "Clear Recent Projects",
+            "Are you sure you want to clear the recent projects list?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.recent_projects = []
+            self._save_recent_projects()
+            self._update_recent_projects_menu()
+
+    def _on_save_project(self):
+        """현재 분석 세션을 .seqproj 파일로 저장"""
+        import os
+        from utils.project_io import ProjectIO
+
+        # 저장할 탭이 없으면 알림
+        if not self.tab_data:
+            QMessageBox.information(self, "Save Project", "There are no datasets to save.")
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Project",
+            os.path.expanduser("~"),
+            "SeqViewer Project (*.seqproj);;All Files (*)",
+        )
+        if not path:
+            return
+        if not path.endswith(".seqproj"):
+            path += ".seqproj"
+
+        try:
+            # 데이터셋 파일 경로 / 타입 맵 구성
+            dataset_file_map: dict = {}
+            dataset_type_map: dict = {}
+            dataset_source_map: dict = {}  # "file" or "database"
+            dataset_db_id_map: dict = {}   # db_dataset_id (database source 전용)
+            for name, ds in self.presenter.datasets.items():
+                fp = getattr(ds, "file_path", None) or ""
+                dataset_file_map[name] = str(fp)
+                dt = getattr(ds, "dataset_type", None)
+                dataset_type_map[name] = dt.value if dt else ""
+                db_id = ds.metadata.get("db_dataset_id", "") if hasattr(ds, "metadata") else ""
+                if db_id:
+                    dataset_source_map[name] = "database"
+                    dataset_db_id_map[name] = db_id
+                else:
+                    dataset_source_map[name] = "file"
+
+            # 트리에서 펼쳐진 루트 항목 수집
+            tree_expanded: list = []
+            if hasattr(self, "dataset_manager"):
+                root = self.dataset_manager.dataset_tree.invisibleRootItem()
+                for i in range(root.childCount()):
+                    item = root.child(i)
+                    if item.isExpanded():
+                        tree_expanded.append(item.text(0))
+
+            spec = ProjectIO.build_spec(
+                tab_data=self.tab_data,
+                dataset_file_map=dataset_file_map,
+                dataset_type_map=dataset_type_map,
+                active_tab_index=self.data_tabs.currentIndex(),
+                tree_expanded=tree_expanded,
+                project_path=None,
+            )
+            # source / db_dataset_id 주입 + 파일 경로 상대화
+            from pathlib import Path as _Path
+            project_dir = _Path(path).parent
+            for ds_spec in spec.get("datasets", []):
+                ds_name = ds_spec.get("name", "")
+                source = dataset_source_map.get(ds_name, "file")
+                ds_spec["source"] = source
+                if source == "database":
+                    ds_spec["db_dataset_id"] = dataset_db_id_map.get(ds_name, "")
+                    ds_spec["file_path"] = ""  # 파일 경로 불필요
+                else:
+                    fp = ds_spec.get("file_path", "")
+                    if fp and os.path.isabs(fp):
+                        try:
+                            ds_spec["file_path"] = os.path.relpath(fp, start=project_dir)
+                        except ValueError:
+                            pass
+
+            ProjectIO.save(path, spec)
+            self._add_recent_project(path)
+            self.logger.info(f"Project saved: {path}")
+            QMessageBox.information(self, "Save Project", f"Project saved successfully:\n{path}")
+
+        except Exception as e:
+            self.logger.error(f"Failed to save project: {e}", exc_info=True)
+            QMessageBox.critical(self, "Save Project Failed", f"Could not save project:\n{e}")
+
+    def _on_open_project(self):
+        """파일 대화상자로 .seqproj 프로젝트 열기"""
+        import os
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open Project",
+            os.path.expanduser("~"),
+            "SeqViewer Project (*.seqproj);;All Files (*)",
+        )
+        if path:
+            self._open_project_path(path)
+
+    def _open_project_path(self, path: str):
+        """지정된 .seqproj 경로의 프로젝트 복원"""
+        import os
+        from utils.project_io import ProjectIO
+        from models.data_models import FilterCriteria, FilterMode
+
+        if not os.path.exists(path):
+            QMessageBox.warning(self, "File Not Found", f"Project file not found:\n{path}")
+            if path in self.recent_projects:
+                self.recent_projects.remove(path)
+                self._save_recent_projects()
+                self._update_recent_projects_menu()
+            return
+
+        try:
+            spec = ProjectIO.load(path)
+        except Exception as e:
+            QMessageBox.critical(self, "Open Project Failed", f"Could not read project file:\n{e}")
+            return
+
+        missing_files: list = []
+        loaded_count = 0
+
+        for ds_spec in spec.get("datasets", []):
+            ds_name = ds_spec.get("name", "")
+            ds_file = ds_spec.get("file_path", "")
+            ds_type = ds_spec.get("type", "")
+            source = ds_spec.get("source", "file")
+            sheets = ds_spec.get("sheets", [])
+            loaded_ds_name = ds_name  # 실제 presenter.datasets 키 (unique_name 적용 시 갱신)
+
+            # ── 데이터베이스 소스 ──
+            if source == "database":
+                db_id = ds_spec.get("db_dataset_id", "")
+                try:
+                    dataset = self.db_manager.load_dataset(db_id or ds_name)
+                    if dataset is None:
+                        raise ValueError(f"Not found in database: {db_id or ds_name}")
+                    unique_name = self.dataset_manager._generate_unique_name(ds_name)
+                    dataset.name = unique_name
+                    dataset.metadata['db_dataset_id'] = db_id
+                    self.presenter.datasets[unique_name] = dataset
+                    meta = {
+                        'file_path': 'database',
+                        'dataset_type': dataset.dataset_type.value,
+                        'row_count': len(dataset.dataframe),
+                        'column_count': len(dataset.dataframe.columns),
+                    }
+                    self.dataset_manager.add_dataset(unique_name, metadata=meta)
+                    self.presenter.current_dataset = dataset
+                    self.presenter._update_view_with_dataset(dataset, add_to_manager=False)
+                    self._update_comparison_panel_datasets()
+                    loaded_ds_name = unique_name  # DB는 unique_name으로 저장됨
+                    loaded_count += 1
+                except Exception as e:
+                    self.logger.warning(f"Failed to load DB dataset '{ds_name}': {e}")
+                    missing_files.append(ds_name)
+                    continue
+
+            # ── 파일 소스 ──
+            else:
+                # 파일 경로가 없거나 존재하지 않으면 DB에서 이름으로 fallback 시도
+                if not ds_file or not os.path.exists(ds_file):
+                    db_meta = next(
+                        (m for m in self.db_manager.get_all_metadata() if m.alias == ds_name),
+                        None,
+                    )
+                    if db_meta:
+                        # DB fallback 성공 → database 소스로 처리
+                        try:
+                            dataset = self.db_manager.load_dataset(db_meta.dataset_id)
+                            if dataset is None:
+                                raise ValueError(f"DB load returned None for {db_meta.dataset_id}")
+                            unique_name = self.dataset_manager._generate_unique_name(ds_name)
+                            dataset.name = unique_name
+                            dataset.metadata['db_dataset_id'] = db_meta.dataset_id
+                            self.presenter.datasets[unique_name] = dataset
+                            meta = {
+                                'file_path': 'database',
+                                'dataset_type': dataset.dataset_type.value,
+                                'row_count': len(dataset.dataframe),
+                                'column_count': len(dataset.dataframe.columns),
+                            }
+                            self.dataset_manager.add_dataset(unique_name, metadata=meta)
+                            self.presenter.current_dataset = dataset
+                            self.presenter._update_view_with_dataset(dataset, add_to_manager=False)
+                            self._update_comparison_panel_datasets()
+                            loaded_ds_name = unique_name  # DB fallback도 unique_name 사용
+                            loaded_count += 1
+                        except Exception as e:
+                            self.logger.warning(f"DB fallback failed for '{ds_name}': {e}")
+                            missing_files.append(ds_name)
+                            continue
+                    else:
+                        missing_files.append(ds_file or ds_name)
+                        continue
+                else:
+                    try:
+                        self.presenter.load_dataset(
+                            Path(ds_file),
+                            custom_name=ds_name if ds_name else None,
+                        )
+                        loaded_count += 1
+                    except Exception as e:
+                        self.logger.warning(f"Failed to load dataset '{ds_name}': {e}")
+                        missing_files.append(ds_file)
+                        continue
+
+            # sheets 재현 (filtered + plot)
+            for sheet in sheets:
+                stype = sheet.get("type")
+
+                if stype == "filtered":
+                    fp_dict = sheet.get("filter_params")
+                    if not fp_dict:
+                        continue
+                    try:
+                        criteria = FilterCriteria.from_dict(fp_dict)
+                        self.presenter.switch_dataset(loaded_ds_name)
+                        self.presenter.apply_filter(criteria)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to replay filter for sheet '{sheet.get('label')}': {e}")
+
+                elif stype == "plot":
+                    plot_type = sheet.get("plot_type", "")
+                    plot_params = sheet.get("plot_params") or {}
+                    label_str = sheet.get("label", "Plot")
+                    try:
+                        target_ds = self.presenter.datasets.get(loaded_ds_name)
+                        if target_ds is None:
+                            raise ValueError(f"Dataset '{loaded_ds_name}' not found")
+                        df = target_ds.dataframe
+                        # Rename standardized columns to visualization names
+                        from models.standard_columns import StandardColumns
+                        _rename_map = {
+                            StandardColumns.LOG2FC: 'log2FC',
+                            StandardColumns.ADJ_PVALUE: 'padj',
+                            StandardColumns.PVALUE: 'pvalue',
+                        }
+                        df = df.rename(columns=_rename_map)
+                        if plot_type == "volcano":
+                            widget = VolcanoPlotWidget(
+                                df, plot_params=plot_params,
+                                show_pin_button=False, embed_settings=False
+                            )
+                            self._pin_plot_to_tab(widget, label_str, "volcano", plot_params, loaded_ds_name)
+                        elif plot_type == "heatmap":
+                            widget = HeatmapWidget(
+                                df, plot_params=plot_params,
+                                show_pin_button=False, embed_settings=False
+                            )
+                            self._pin_plot_to_tab(widget, label_str, "heatmap", plot_params, loaded_ds_name)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to restore plot '{label_str}': {e}")
+
+        # 마지막 활성 탭 복원
+        ui_state = spec.get("ui_state", {})
+        active_idx = ui_state.get("active_tab_index", 0)
+        if 0 <= active_idx < self.data_tabs.count():
+            self.data_tabs.setCurrentIndex(active_idx)
+
+        self._add_recent_project(path)
+
+        # 누락 파일 경고
+        if missing_files:
+            files_list = "\n".join(missing_files[:10])
+            QMessageBox.warning(
+                self,
+                "Missing Files",
+                f"The following files could not be found and were skipped:\n{files_list}",
+            )
+
+        msg = f"Project opened: {loaded_count} dataset(s) loaded."
+        if missing_files:
+            msg += f" {len(missing_files)} file(s) skipped."
+        self.logger.info(msg)
+
     def _set_window_icon(self):
         """윈도우 아이콘 설정"""
         from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont
@@ -2740,6 +3879,7 @@ class MainWindow(QMainWindow):
                     
                     # Presenter에 추가
                     self.presenter.datasets[unique_name] = dataset
+                    dataset.metadata['db_dataset_id'] = dataset_id  # 프로젝트 저장/복원용
                     
                     # Dataset Manager에 추가 (metadata와 함께)
                     metadata = {
@@ -2956,7 +4096,8 @@ class MainWindow(QMainWindow):
             return
         
         # tab_data에서 DataFrame과 Dataset 가져오기
-        dataframe, dataset = self.tab_data[current_tab_index]
+        dataframe = self.tab_data[current_tab_index]['dataframe']
+        dataset = self.tab_data[current_tab_index]['dataset']
         
         if dataframe is None or dataframe.empty:
             QMessageBox.warning(
@@ -3014,12 +4155,25 @@ class MainWindow(QMainWindow):
             logger.info(f"Created clustered dataset: {dataset_name}")
             
             # 새 탭 생성 및 데이터 표시
-            table = self._create_data_tab(dataset_name)
+            table = self._create_data_tab(dataset_name, sheet_type='clustered')
             self.populate_table(table, clustered_data, clustered_dataset)
             
             # 탭 데이터 저장
             tab_index = self.data_tabs.count() - 1  # 방금 추가한 탭
-            self.tab_data[tab_index] = (clustered_data, clustered_dataset)
+            if tab_index in self.tab_data:
+                self.tab_data[tab_index]['dataframe'] = clustered_data
+                self.tab_data[tab_index]['dataset'] = clustered_dataset
+                self.tab_data[tab_index]['sheet_type'] = 'clustered'
+            else:
+                self.tab_data[tab_index] = {
+                    'dataframe': clustered_data,
+                    'dataset': clustered_dataset,
+                    'parent_dataset': None,
+                    'sheet_type': 'clustered',
+                    'sheet_label': 'Clustered',
+                    'filter_params': None,
+                    'comparison_params': None,
+                }
             
             # 새 탭으로 전환 (이때 _on_tab_changed가 호출되어 current_dataset 업데이트)
             self.data_tabs.setCurrentIndex(tab_index)
@@ -3061,11 +4215,245 @@ class MainWindow(QMainWindow):
         dialog = GOFilterDialog(self.presenter.current_dataset, self)
         dialog.exec()
     
+    def _on_atac_visualization(self, plot_type: str):
+        """ATAC-seq 전용 시각화"""
+        from PyQt6.QtWidgets import QMessageBox
+        from models.data_models import DatasetType, Dataset
+
+        current_index = self.data_tabs.currentIndex()
+        if current_index < 0 or current_index not in self.tab_data:
+            QMessageBox.warning(self, "No Data", "Please load an ATAC-seq dataset first.")
+            return
+
+        dataframe = self.tab_data[current_index]['dataframe']
+        dataset = self.tab_data[current_index]['dataset']
+        if dataset is None or dataset.dataset_type != DatasetType.ATAC_SEQ:
+            QMessageBox.warning(self, "Invalid Dataset",
+                                "This visualization is only available for ATAC-seq datasets.")
+            return
+
+        # 현재 탭의 필터링된 dataframe 사용
+        meta_copy = dict(dataset.metadata) if dataset.metadata else {}
+        filtered_dataset = Dataset(
+            name=dataset.name,
+            dataset_type=dataset.dataset_type,
+            dataframe=dataframe,
+            original_columns=dataset.original_columns,
+            metadata=meta_copy,
+        )
+
+        if plot_type == "genomic_distribution":
+            from gui.genomic_distribution_dialog import GenomicDistributionDialog
+            dialog = GenomicDistributionDialog(filtered_dataset, self)
+            dialog.exec()
+        elif plot_type == "tss_distance":
+            from gui.tss_distance_dialog import TSSDistanceDialog
+            dialog = TSSDistanceDialog(filtered_dataset, self)
+            dialog.exec()
+        elif plot_type == "ma_plot":
+            from gui.ma_plot_dialog import MAPlotDialog
+            dialog = MAPlotDialog(filtered_dataset, self)
+            dialog.exec()
+
+    def _on_motif_enrichment_requested(self):
+        """TF Motif Enrichment Plot 요청 처리."""
+        from models.data_models import DatasetType
+        from gui.motif_enrichment_dialog import MotifEnrichmentDialog
+
+        current_index = self.data_tabs.currentIndex()
+        if current_index < 0 or current_index not in self.tab_data:
+            return
+
+        dataset = self.tab_data[current_index]['dataset']
+        if dataset is None or dataset.dataset_type != DatasetType.MOTIF_ENRICHMENT:
+            return
+
+        # 같은 프로젝트 내에 두 번째 MOTIF_ENRICHMENT 데이터셋이 있으면 DOWN 후보로 제안
+        motif_datasets = [
+            ds for ds in self.presenter.datasets.values()
+            if ds.dataset_type == DatasetType.MOTIF_ENRICHMENT and ds is not dataset
+        ]
+        dataset_down = None
+        if motif_datasets:
+            from PyQt6.QtWidgets import QInputDialog
+            names = [ds.name for ds in motif_datasets]
+            choice, ok = QInputDialog.getItem(
+                self,
+                "Compare with another dataset?",
+                "Select a second motif dataset to compare (or Cancel for single view):",
+                names, 0, False
+            )
+            if ok:
+                dataset_down = next(ds for ds in motif_datasets if ds.name == choice)
+
+        dialog = MotifEnrichmentDialog(dataset, dataset_down=dataset_down, parent=self)
+        dialog.resize(1000, 650)
+        dialog.exec()
+
+    def _on_open_chromvar_results(self):
+        """chromVAR diff_tf CSV 또는 parquet 열기."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open chromVAR Results", "",
+            "chromVAR Files (*diff_tf*.csv *chromVAR*.parquet *.csv *.parquet);;All Files (*)"
+        )
+        if not file_path:
+            return
+        default_name = Path(file_path).stem
+        dataset_name, ok = QInputDialog.getText(
+            self, "Dataset Name", "Enter a name for this chromVAR dataset:",
+            QLineEdit.EchoMode.Normal, default_name
+        )
+        if not ok:
+            return
+        name = dataset_name.strip() or default_name
+        self._add_recent_file(file_path)
+        self.presenter.load_dataset(Path(file_path), custom_name=name)
+
+    def _on_chromvar_requested(self):
+        """chromVAR TF Activity Plot 요청 처리."""
+        from models.data_models import DatasetType
+        from gui.chromvar_dialog import ChromVARDialog
+
+        current_index = self.data_tabs.currentIndex()
+        if current_index < 0 or current_index not in self.tab_data:
+            return
+        dataset = self.tab_data[current_index]['dataset']
+        if dataset is None or dataset.dataset_type != DatasetType.CHROMVAR_DIFF_TF:
+            return
+
+        # 같은 프로젝트 내 다른 CHROMVAR_DIFF_TF 데이터셋을 extra로 제공
+        extra = [
+            ds for ds in self.presenter.datasets.values()
+            if ds.dataset_type == DatasetType.CHROMVAR_DIFF_TF and ds is not dataset
+        ]
+        dialog = ChromVARDialog(dataset, extra_datasets=extra if extra else None, parent=self)
+        dialog.resize(950, 720)
+        dialog.exec()
+
+    def _on_tf_footprint_requested(self):
+        """TF Activity Plot (Footprint) 요청 처리."""
+        from models.data_models import DatasetType
+        from gui.tf_footprint_dialog import TFFootprintDialog
+
+        current_index = self.data_tabs.currentIndex()
+        if current_index < 0 or current_index not in self.tab_data:
+            return
+
+        dataset = self.tab_data[current_index]['dataset']
+        if dataset is None or dataset.dataset_type != DatasetType.TF_FOOTPRINT:
+            return
+
+        dialog = TFFootprintDialog(dataset, parent=self)
+        dialog.resize(900, 700)
+        dialog.exec()
+
+    # ------------------------------------------------------------------ #
+    #  Multi-Omics handlers
+    # ------------------------------------------------------------------ #
+
+    def _on_filter_tab_changed(self, index: int):
+        """FilterPanel 탭 전환 시 ComparisonPanel / 버튼 행 show/hide"""
+        is_multi_omics = self.filter_panel.is_multi_omics_tab_active()
+        self.comparison_panel.setVisible(not is_multi_omics)
+        self.action_buttons_widget.setVisible(not is_multi_omics)
+        if is_multi_omics:
+            self.multi_omics_panel.refresh_dataset_list(self.presenter.datasets)
+
+    def _on_show_multi_omics_panel(self):
+        """Analysis > Integrate RNA + ATAC 메뉴 클릭 — RNA+ATAC 탭으로 전환"""
+        self.filter_panel.switch_to_multi_omics_tab()
+        self.multi_omics_panel.refresh_dataset_list(self.presenter.datasets)
+
+    def _on_integrate_requested(
+        self,
+        rna_name: str,
+        atac_name: str,
+        method: str,
+        tss_window: int,
+        rna_padj: float,
+        rna_lfc: float,
+        atac_padj: float,
+        atac_lfc: float,
+    ):
+        """MultiOmicsPanel의 integrate_requested 시그널 처리"""
+        self.logger.info(
+            f"Integration requested: RNA='{rna_name}' ATAC='{atac_name}' "
+            f"method={method}"
+        )
+        self.presenter.integrate_datasets(
+            rna_name=rna_name,
+            atac_name=atac_name,
+            method=method,
+            tss_window=tss_window,
+            rna_padj=rna_padj,
+            rna_lfc=rna_lfc,
+            atac_padj=atac_padj,
+            atac_lfc=atac_lfc,
+        )
+
+    def _on_multi_omics_visualization(self, plot_type: str):
+        """Multi-Omics 전용 시각화"""
+        current_index = self.data_tabs.currentIndex()
+        if current_index < 0 or current_index not in self.tab_data:
+            QMessageBox.warning(self, "No Data",
+                                "Please run RNA + ATAC integration first.")
+            return
+
+        dataframe = self.tab_data[current_index]['dataframe']
+        dataset = self.tab_data[current_index]['dataset']
+        if dataset is None or dataset.dataset_type != DatasetType.MULTI_OMICS:
+            QMessageBox.warning(
+                self, "Invalid Dataset",
+                "This visualization is only available for Multi-Omics integrated datasets."
+            )
+            return
+
+        tab_name = self.data_tabs.tabText(current_index)
+
+        if plot_type == "quadrant":
+            from gui.quadrant_plot_dialog import QuadrantPlotDialog
+            dialog = QuadrantPlotDialog(dataframe, title=tab_name, parent=self)
+            dialog.exec()
+        elif plot_type == "heatmap":
+            from gui.concordance_heatmap_dialog import ConcordanceHeatmapDialog
+            dialog = ConcordanceHeatmapDialog(dataframe, title=tab_name, parent=self)
+            dialog.exec()
+        elif plot_type == "summary":
+            from gui.concordance_summary_dialog import ConcordanceSummaryDialog
+            dialog = ConcordanceSummaryDialog(dataframe, title=tab_name, parent=self)
+            dialog.exec()
+        elif plot_type == "integrated_volcano":
+            from gui.integrated_volcano_dialog import IntegratedVolcanoDialog
+            dialog = IntegratedVolcanoDialog(dataframe, title=tab_name, parent=self)
+            dialog.exec()
+
+    def _on_export_multi_omics(self):
+        """Multi-Omics 결과를 다중 시트 Excel로 내보내기"""
+        current_index = self.data_tabs.currentIndex()
+        if current_index < 0 or current_index not in self.tab_data:
+            return
+
+        dataframe = self.tab_data[current_index]['dataframe']
+        dataset = self.tab_data[current_index]['dataset']
+        if dataset is None or dataset.dataset_type != DatasetType.MULTI_OMICS:
+            QMessageBox.warning(self, "Invalid Dataset",
+                                "Please select a Multi-Omics integrated tab first.")
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Multi-Omics Results",
+            f"{dataset.name}_integrated.xlsx",
+            "Excel (*.xlsx)",
+        )
+        if path:
+            self.presenter.export_multi_omics_excel(dataframe, path)
+            self.logger.info(f"Multi-omics Excel saved: {path}")
+
     def _on_go_visualization(self, plot_type: str):
         """GO/KEGG 시각화"""
         from PyQt6.QtWidgets import QMessageBox
         from models.data_models import DatasetType
-        
+
         # 현재 탭 확인
         current_index = self.data_tabs.currentIndex()
         if current_index < 0:
@@ -3079,7 +4467,8 @@ class MainWindow(QMainWindow):
                               "No data available in current tab.")
             return
         
-        dataframe, dataset = self.tab_data[current_index]
+        dataframe = self.tab_data[current_index]['dataframe']
+        dataset = self.tab_data[current_index]['dataset']
         
         # GO/KEGG 데이터셋인지 확인
         if dataset and dataset.dataset_type != DatasetType.GO_ANALYSIS:
@@ -3105,22 +4494,22 @@ class MainWindow(QMainWindow):
             )
             dataset = filtered_dataset
         
-        # Network Chart는 Clustered 탭에서만 가능
+        # Cluster Dot Plot는 Clustered 탭에서만 가능
         if plot_type == "network":
             current_tab_name = self.data_tabs.tabText(current_index)
             if not current_tab_name.startswith("Clustered:"):
                 QMessageBox.information(
                     self,
                     "Use Clustered Data",
-                    "Network Chart should be used with clustered data for better performance.\n\n"
+                    "Cluster Dot Plot requires clustered data.\n\n"
                     "Please:\n"
                     "1. Filter your GO/KEGG data (Statistical Filter tab)\n"
                     "2. Select the 'Filtered:' tab\n"
                     "3. Run 'GO Analysis → Cluster GO Terms'\n"
                     "4. Select the generated 'Clustered:' tab\n"
-                    "5. Then open Network Chart\n\n"
-                    "This shows cluster-level relationships instead of all term-to-term connections,\n"
-                    "greatly reducing computational load."
+                    "5. Then open Cluster Dot Plot\n\n"
+                    "Each dot represents one cluster's representative term,\n"
+                    "sized by cluster member count and colored by FDR."
                 )
                 return
         
@@ -3164,28 +4553,30 @@ class MainWindow(QMainWindow):
     def _on_filter_completed(self, filtered_df: pd.DataFrame, tab_name: str):
         """필터링/클러스터링 완료 시 새 탭에 결과 표시"""
         try:
-            # 기존 동일한 이름의 탭이 있는지 확인하고 제거
-            existing_indices = []
-            
-            # 동일한 이름의 탭이 있는지 확인 (덮어쓰기용)
-            for i in range(self.data_tabs.count()):
-                current_name = self.data_tabs.tabText(i)
-                # 정확히 같은 이름의 탭이면 제거 대상 (덮어쓰기)
-                if current_name == tab_name:
-                    existing_indices.append(i)
-            
-            # 기존 동일 이름 탭 제거 (역순으로 제거하여 인덱스 문제 방지)
-            if existing_indices:
-                for idx in reversed(existing_indices):
-                    self.data_tabs.removeTab(idx)
-            
-            # 새 탭 생성
-            table = self._create_data_tab(tab_name)
-            new_tab_index = self.data_tabs.indexOf(table)
-            
             # 데이터셋 생성 - 현재 활성 데이터셋의 타입을 유지
             from models.data_models import Dataset, DatasetType
             current_dataset = self.presenter.current_dataset
+            _par = current_dataset.name if current_dataset else None
+
+            # 덮어쓰기 대상: "같은 부모 데이터셋"에서 나온 동일 이름의 필터 탭만.
+            # (다른 데이터셋에 같은 필터를 적용한 결과는 이름이 같아도 보존한다)
+            existing_indices = []
+            for i in range(self.data_tabs.count()):
+                if self.data_tabs.tabText(i) != tab_name:
+                    continue
+                entry = self.tab_data.get(i)
+                if entry is not None and entry.get('parent_dataset') == _par:
+                    existing_indices.append(i)
+
+            # 기존 동일 이름 탭 제거 (역순 처리 + tab_data 재정렬)
+            if existing_indices:
+                for idx in reversed(existing_indices):
+                    self._remove_tab_safely(idx)
+
+            # 새 탭 생성
+            table = self._create_data_tab(tab_name, sheet_type='filtered',
+                                          parent_dataset=_par)
+            new_tab_index = self.data_tabs.indexOf(table)
             dataset_type = current_dataset.dataset_type if current_dataset else DatasetType.GO_ANALYSIS
             
             dataset = Dataset(
@@ -3198,7 +4589,12 @@ class MainWindow(QMainWindow):
             
             # 테이블에 데이터 채우기
             self.populate_table(table, filtered_df, dataset)
-            
+
+            # filter_params를 tab_data에 저장 (Project Save/Load용)
+            criteria = getattr(self.presenter, "last_filter_criteria", None)
+            if criteria is not None and new_tab_index in self.tab_data:
+                self.tab_data[new_tab_index]["filter_params"] = criteria.to_dict()
+
             # 비교 패널 업데이트 (populate_table 이후에 한 번만)
             self._update_comparison_panel_datasets()
             
@@ -3296,42 +4692,70 @@ class MainWindow(QMainWindow):
         from PyQt6.QtWidgets import QMenu
         from PyQt6.QtGui import QDesktopServices
         from PyQt6.QtCore import QUrl
-        
+
         # 클릭된 셀 찾기
         item = table.itemAt(pos)
         if not item:
             return
-        
+
         row = item.row()
         col = item.column()
-        
+
+        # 정렬 후에도 올바른 DataFrame 행을 찾기 위해 원본 인덱스를 UserRole에서 가져옴
+        original_row = item.data(Qt.ItemDataRole.UserRole)
+        if original_row is None:
+            original_row = row  # populate_table이 호출되기 전 행일 경우 fallback
+
         # 컬럼 헤더 이름 가져오기
         header_item = table.horizontalHeaderItem(col)
         if not header_item:
             return
-        
+
         column_name = header_item.text().lower()
-        
+
         # 셀 값 가져오기
         cell_text = item.text().strip()
-        if not cell_text:
-            return
-        
+
         # 컬럼 타입 감지
-        is_gene_column = any(keyword in column_name for keyword in 
-                            ['gene_id', 'gene id', 'geneid', 'symbol', 'gene_symbol', 'gene symbol'])
-        
-        is_go_column = any(keyword in column_name for keyword in 
+        is_gene_column = any(keyword in column_name for keyword in
+                            ['gene_id', 'gene id', 'geneid', 'symbol', 'gene_symbol', 'gene symbol',
+                             'nearest_gene', 'gene_name'])
+
+        is_go_column = any(keyword in column_name for keyword in
                           ['term_id', 'termid', 'go_id', 'goid', 'go term'])
-        
-        is_kegg_column = any(keyword in column_name for keyword in 
+
+        is_kegg_column = any(keyword in column_name for keyword in
                             ['pathway_id', 'pathwayid', 'kegg_id', 'keggid', 'kegg pathway'])
-        
-        is_description_column = any(keyword in column_name for keyword in 
+
+        is_description_column = any(keyword in column_name for keyword in
                                    ['description', 'term_name', 'pathway_name', 'name'])
-        
+
+        # ATAC-seq 여부 — 현재 탭의 dataset 확인
+        current_index = self.data_tabs.indexOf(table)
+        if current_index < 0:
+            current_index = self.data_tabs.currentIndex()
+        is_atac_tab = False
+        atac_dataset = None
+        atac_dataframe = None
+        if current_index in self.tab_data:
+            _df = self.tab_data[current_index]['dataframe']
+            _ds = self.tab_data[current_index]['dataset']
+            if _ds and _ds.dataset_type == DatasetType.ATAC_SEQ:
+                is_atac_tab = True
+                coord_cols = {'chromosome', 'peak_start', 'peak_end'}
+                if _df is not None and coord_cols.issubset(_df.columns):
+                    atac_dataframe = _df
+                    atac_dataset = _ds
+
+        has_atac_coords = atac_dataframe is not None
+
         # 아무 것도 해당하지 않으면 메뉴 표시 안 함
-        if not (is_gene_column or is_go_column or is_kegg_column or is_description_column):
+        if not (is_gene_column or is_go_column or is_kegg_column or is_description_column
+                or is_atac_tab):
+            return
+
+        # 빈 셀이고 ATAC 탭도 아닌 경우 표시 안 함
+        if not cell_text and not is_atac_tab:
             return
         
         # 컨텍스트 메뉴 생성
@@ -3365,7 +4789,18 @@ class MainWindow(QMainWindow):
         # Description 컬럼이지만 GO/KEGG가 아닌 경우 - 일반 검색만
         elif is_description_column:
             self._add_general_search_items(menu, cell_text)
-        
+
+        # ATAC-seq: IGV 이동 / Locus 복사
+        if has_atac_coords:
+            if menu.actions():
+                menu.addSeparator()
+            igv_action = menu.addAction("🔬 Send to IGV")
+            igv_action.triggered.connect(
+                lambda checked=False, r=original_row: self._send_peak_to_igv(atac_dataframe, atac_dataset, r))
+            copy_action = menu.addAction("📋 Copy Locus")
+            copy_action.triggered.connect(
+                lambda checked=False, r=original_row: self._copy_locus(atac_dataframe, r))
+
         # 메뉴 표시
         if menu.actions():  # 메뉴 항목이 있을 때만 표시
             menu.exec(table.viewport().mapToGlobal(pos))
@@ -3525,3 +4960,53 @@ class MainWindow(QMainWindow):
                 QUrl(f"https://pubmed.ncbi.nlm.nih.gov/?term={text}")
             )
         )
+
+    # ──────────────────────────── IGV integration ────────────────────────────
+
+    def _send_peak_to_igv(self, dataframe, dataset, row: int):
+        from utils.igv_connector import IGVConnector
+        from PyQt6.QtWidgets import QMessageBox
+
+        chrom = str(dataframe.iloc[row]['chromosome'])
+        start = int(dataframe.iloc[row]['peak_start'])
+        end = int(dataframe.iloc[row]['peak_end'])
+
+        port = self.settings.value("igv/port", 60151, type=int)
+        padding = self.settings.value("igv/padding", 500, type=int)
+        auto_genome = self.settings.value("igv/auto_genome", True, type=bool)
+
+        connector = IGVConnector(port=port)
+        if not connector.is_running():
+            QMessageBox.warning(
+                self, "IGV Not Running",
+                "IGV에 연결할 수 없습니다.\n\n"
+                "IGV를 실행하고 Tools → Preferences → Advanced에서\n"
+                "'Enable port (60151)'을 체크해 주세요."
+            )
+            return
+
+        if auto_genome:
+            genome = (dataset.metadata.get('genome_build') or
+                      self.settings.value("igv/last_genome", ""))
+            if genome:
+                connector.set_genome(genome)
+
+        success = connector.goto_peak(chrom, start, end, padding)
+        if not success:
+            self.logger.warning(f"IGV goto failed: {chrom}:{start}-{end}")
+
+    def _copy_locus(self, dataframe, row: int):
+        from PyQt6.QtWidgets import QApplication
+
+        chrom = str(dataframe.iloc[row]['chromosome'])
+        start = int(dataframe.iloc[row]['peak_start'])
+        end = int(dataframe.iloc[row]['peak_end'])
+        locus = f"{chrom}:{start}-{end}"
+        QApplication.clipboard().setText(locus)
+        if hasattr(self, 'status_label'):
+            self.status_label.setText(f"Copied: {locus}")
+
+    def _on_igv_settings(self):
+        from gui.igv_settings_dialog import IGVSettingsDialog
+        dialog = IGVSettingsDialog(self.settings, self)
+        dialog.exec()

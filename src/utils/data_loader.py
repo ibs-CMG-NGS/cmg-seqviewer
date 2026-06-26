@@ -136,8 +136,18 @@ class DataLoader:
             # 데이터셋 타입 자동 감지
             if dataset_type is None:
                 dataset_type = self._detect_dataset_type(df)
-                self.logger.debug(f"Detected dataset type: {dataset_type.value}")  # debug로 변경
-            
+                self.logger.debug(f"Detected dataset type: {dataset_type.value}")
+
+            # ATAC-seq 타입은 전용 로더로 위임
+            if dataset_type == DatasetType.ATAC_SEQ:
+                from utils.atac_seq_loader import ATACSeqLoader
+                return ATACSeqLoader().load(file_path, dataset_name)
+
+            # Motif enrichment 타입은 전용 로더로 위임
+            if dataset_type == DatasetType.MOTIF_ENRICHMENT:
+                from utils.motif_loader import MotifLoader
+                return MotifLoader().load(file_path, dataset_name)
+
             # 컬럼 매핑 (자동 + 사용자 정의)
             auto_mapping = self._map_columns(df, dataset_type)
             self.logger.debug(f"Auto-detected column mapping: {auto_mapping}")  # debug로 변경
@@ -229,6 +239,18 @@ class DataLoader:
             if any(pattern in col for col in columns_lower for pattern in patterns):
                 go_score += 1
         
+        # ATAC-seq 타입 확인: peak_id 컬럼 존재 → ATAC DA 데이터
+        # ATAC Excel에 DE와 유사한 컬럼이 많아 DE로 오감지될 수 있으므로 최우선 체크
+        from utils.atac_seq_loader import ATACSeqLoader
+        if ATACSeqLoader.is_atac_dataframe(df):
+            return DatasetType.ATAC_SEQ
+
+        # Multi-Group (LRT) 타입 확인: DE/GO 감지 전에 먼저 확인
+        # (padj는 있으나 log2FC가 없고, 숫자형 샘플 컬럼 3개 이상)
+        from utils.multi_group_loader import MultiGroupLoader
+        if MultiGroupLoader.is_multi_group_dataframe(df):
+            return DatasetType.MULTI_GROUP
+
         # 점수가 높은 타입 선택
         if de_score >= 3:
             return DatasetType.DIFFERENTIAL_EXPRESSION
@@ -375,8 +397,37 @@ class DataLoader:
         # GO 데이터의 경우 fold_enrichment 파생 계산
         if dataset_type == DatasetType.GO_ANALYSIS:
             df = self._compute_fold_enrichment(df)
+            df = self._strip_go_metadata_rows(df)
 
         return df, original_columns
+
+    def _strip_go_metadata_rows(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        파이프라인이 GO 결과 DataFrame 하단에 삽입하는 분석 메타데이터 행 제거.
+
+        일부 파이프라인은 Comparison, DE Method, cutoff 등 분석 파라미터를
+        ontology='Info' 행으로 데이터에 함께 저장한다. 이는 GO term 결과가
+        아니므로 로드 시 제거한다. 해당 메타데이터는 seqviewer_manifest.json에
+        저장하는 것이 올바른 방식이다.
+        """
+        import pandas as pd
+
+        if 'ontology' not in df.columns:
+            return df
+
+        info_mask = df['ontology'].astype(str).str.strip().str.lower() == 'info'
+        if info_mask.any():
+            n = int(info_mask.sum())
+            df = df[~info_mask].copy()
+            self.logger.info(f"Dropped {n} pipeline metadata rows (ontology='Info')")
+
+        # Parameter/Value 컬럼은 Info 행 전용이라 제거
+        drop_cols = [c for c in ['Parameter', 'Value'] if c in df.columns]
+        if drop_cols:
+            df = df.drop(columns=drop_cols)
+            self.logger.info(f"Dropped pipeline-metadata-only columns: {drop_cols}")
+
+        return df
 
     def _compute_fold_enrichment(self, df: pd.DataFrame) -> pd.DataFrame:
         """

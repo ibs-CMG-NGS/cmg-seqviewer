@@ -1,0 +1,53 @@
+[
+  {
+    "dataset_id": "5bc3a6f7-afc9-4eb0-85cd-be67256e6582",
+    "alias": "6H vs CONTROL DA",
+    "original_filename": "6H_vs_CONTROL_DA.parquet",
+    "dataset_type": "differential_accessibility",
+    "assay_type": "atac-seq",
+    "experiment_condition": "6H vs CONTROL",
+    "organism": "mouse",
+    "cell_type": "",
+    "tissue": "",
+    "timepoint": "",
+    "row_count": 125689,
+    "peak_count": 125689,
+    "significant_peaks": 1007,
+    "padj_cutoff": 0.05,
+    "log2fc_cutoff": 1,
+    "import_date": "2026-04-28T10:09:06",
+    "file_path": "6H_vs_CONTROL_DA.parquet",
+    "notes": "DESeq2",
+    "tags": [
+      "DA",
+      "ATAC",
+      "6H",
+      "CONTROL"
+    ]
+  },
+  {
+    "dataset_id": "0f837cdd-426b-4989-9a62-09ec75696767",
+    "alias": "6H vs CONTROL GO+KEGG",
+    "original_filename": "6H_vs_CONTROL_GO_KEGG.parquet",
+    "dataset_type": "go_analysis",
+    "assay_type": "atac-seq",
+    "experiment_condition": "6H vs CONTROL",
+    "organism": "mouse",
+    "cell_type": "",
+    "tissue": "",
+    "timepoint": "",
+    "row_count": 10497,
+    "peak_count": 0,
+    "significant_peaks": 0,
+    "import_date": "2026-04-28T10:09:15",
+    "file_path": "6H_vs_CONTROL_GO_KEGG.parquet",
+    "notes": "clusterProfiler enrichGO + enrichKEGG (peak-associated genes)",
+    "tags": [
+      "GO",
+      "KEGG",
+      "ATAC",
+      "6H",
+      "CONTROL"
+    ]
+  }
+]

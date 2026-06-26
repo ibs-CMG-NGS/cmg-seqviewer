@@ -12,18 +12,24 @@ from PyQt6.QtWidgets import (
     QSpinBox, QDoubleSpinBox, QTableWidget, QTableWidgetItem,
     QHeaderView, QSplitter, QWidget, QTabWidget, QTextEdit,
     QFileDialog, QMessageBox, QProgressBar, QGroupBox, QFormLayout,
-    QSlider, QCheckBox, QListWidget, QListWidgetItem, QScrollArea, QSizePolicy
+    QSlider, QCheckBox, QListWidget, QListWidgetItem, QScrollArea, QSizePolicy,
+    QComboBox,
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont, QBrush, QColor, QPixmap, QIcon
 
 from models.standard_columns import StandardColumns
+from gui.widgets.figure_style_panel import FigureStylePanel
+from utils import figure_theme, figure_export
 import pandas as pd
 import matplotlib
 import matplotlib.patches
-matplotlib.use('Qt5Agg')
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+matplotlib.use('QtAgg')
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+try:
+    from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
+except ImportError:
+    from matplotlib.backends.backend_qt import NavigationToolbar2QT as NavigationToolbar  # type: ignore
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
@@ -145,11 +151,22 @@ class GOClusteringDialog(QDialog):
         # Cluster size filter settings
         self.min_cluster_size = 2
         self.max_cluster_size = 100
-        
+
+        # Grid layout info — populated in _draw_network_graph for click detection
+        self._grid_valid_clusters = None
+        self._grid_cols = 4
+
+        # Cluster detail state
+        self._detail_cluster_id = None
+        self._detail_members = None
+
         self.setWindowTitle("GO Term Clustering")
         self.resize(1400, 900)
-        # Enable maximize button
-        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint)
+        self.setWindowFlags(
+            self.windowFlags()
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowMinimizeButtonHint
+        )
         self._init_ui()
         
     def _init_ui(self):
@@ -297,12 +314,12 @@ class GOClusteringDialog(QDialog):
         
         howto_text = QLabel(
             "<ol style='margin-left: -20px;'>"
-            "<li><b>Set similarity threshold</b> - Default 0.7 works well</li>"
-            "<li><b>Set cluster size range</b> - Filter valid cluster sizes</li>"
-            "<li><b>Click 'Run Clustering'</b> - Wait for analysis</li>"
-            "<li><b>Explore network</b> - Hover, zoom, adjust labels</li>"
-            "<li><b>Review clusters</b> - Check Summary and tables</li>"
-            "<li><b>Export results</b> - Save to Excel for further use</li>"
+            "<li><b>Set Similarity Threshold</b> — 0.7 recommended (higher = fewer, tighter clusters)</li>"
+            "<li><b>Set Min Terms</b> — minimum members for a valid cluster (default 2)</li>"
+            "<li><b>Click 'Run Clustering'</b> — Jaccard similarity + hierarchical clustering</li>"
+            "<li><b>Explore grid</b> — click a cluster cell to see its detail network</li>"
+            "<li><b>Review tabs</b> — Summary / Clustered Terms / Representatives</li>"
+            "<li><b>Click Apply</b> — creates Clustered tab, then open Cluster Dot Plot</li>"
             "</ol>"
         )
         howto_text.setWordWrap(True)
@@ -312,7 +329,7 @@ class GOClusteringDialog(QDialog):
         layout.addWidget(howto_group)
         
         # Visualization Guide
-        guide_group = QGroupBox("📊 Network Visualization")
+        guide_group = QGroupBox("📊 Cluster Grid Guide")
         guide_layout = QVBoxLayout(guide_group)
         
         help_content = QTextEdit()
@@ -328,40 +345,40 @@ class GOClusteringDialog(QDialog):
             .highlight { color: #007bff; font-weight: bold; }
         </style>
         
-        <h4>🔵 Nodes</h4>
+        <h4>🔵 Grid Cells</h4>
         <ul>
-            <li><span class="highlight">Large</span>: Representative terms (lowest FDR)</li>
-            <li><span class="highlight">Small</span>: Member terms</li>
-            <li><span class="highlight">Colors</span>: Unique per cluster</li>
-            <li><span class="highlight">Gray</span>: Singletons or excluded</li>
+            <li>각 셀 = 하나의 유효 클러스터 (C001, C002…)</li>
+            <li><span class="highlight">헤더</span>: 클러스터 ID + 멤버 수 + 대표 term 이름</li>
+            <li><span class="highlight">빨간 노드</span>: 대표 term (최저 FDR)</li>
+            <li><span class="highlight">파란 노드</span>: 일반 멤버 term</li>
         </ul>
-        
-        <h4>📐 Layout</h4>
+
+        <h4>🔗 Edges (셀 내부)</h4>
         <ul>
-            <li><b>Valid clusters</b>: Grid layout on left/center</li>
-            <li><b>Small/Large clusters</b>: Right side column</li>
-            <li><b>Hulls</b>: Convex boundaries around clusters</li>
+            <li>Jaccard 유사도로 연결 (edge threshold 이상)</li>
+            <li>굵기 = 유사도 강도</li>
         </ul>
-        
-        <h4>🔗 Edges</h4>
-        <ul>
-            <li>Connect similar terms (Jaccard >0.3)</li>
-            <li>Width = similarity strength</li>
-        </ul>
-        
+
         <h4>🖱️ Interaction</h4>
         <ul>
-            <li><b>Hover</b>: See term details</li>
-            <li><b>Zoom/Pan</b>: Use toolbar</li>
-            <li><b>Refresh</b>: Update label count & node size</li>
+            <li><b>셀 클릭</b>: Cluster Detail 탭에서 확대 뷰</li>
+            <li><b>Zoom/Pan</b>: 상단 툴바 사용</li>
         </ul>
         """)
         guide_layout.addWidget(help_content)
         
         layout.addWidget(guide_group)
-        
+
+        # ── Figure Style & Export ────────────────────────────────────
+        self._style = FigureStylePanel()
+        self._style.changed.connect(self._on_style_changed)
+        style_group = QGroupBox("Figure Style & Export")
+        sv = QVBoxLayout(style_group)
+        sv.addWidget(self._style)
+        layout.addWidget(style_group)
+
         layout.addStretch()
-        
+
         return panel
         
     def _create_results_panel(self):
@@ -381,6 +398,8 @@ class GOClusteringDialog(QDialog):
         self.tab_widget.addTab(cluster_tab, "Clustered Terms")
         representative_tab = self._create_representative_tab()
         self.tab_widget.addTab(representative_tab, "Representatives")
+        detail_tab = self._create_cluster_detail_tab()
+        self.tab_widget.addTab(detail_tab, "Cluster Detail")
         layout.addWidget(self.tab_widget)
         return panel
         
@@ -466,7 +485,7 @@ class GOClusteringDialog(QDialog):
                 color: #666666;
             }
         """)
-        self.refresh_button.clicked.connect(self._update_network_graph)
+        self.refresh_button.clicked.connect(self._draw_network_graph)
         self.refresh_button.setEnabled(False)
         self.refresh_button.setToolTip("Update the network visualization with current settings")
         settings_layout.addWidget(self.refresh_button)
@@ -475,10 +494,11 @@ class GOClusteringDialog(QDialog):
         
         layout.addWidget(settings_group)
 
-        # Matplotlib figure — 실제 크기는 클러스터 수에 따라 _update_network_graph에서 동적 조정
+        # Matplotlib figure — 실제 크기는 클러스터 수에 따라 _draw_network_graph에서 동적 조정
         self.figure = Figure(figsize=(10, 8))
         self.canvas = FigureCanvas(self.figure)
         self.canvas.mpl_connect('motion_notify_event', self._on_network_hover)
+        self.canvas.mpl_connect('button_press_event', self._on_grid_click)
         # 가로는 뷰포트에 맞추고, 세로만 확장되도록 설정
         self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
@@ -549,10 +569,252 @@ class GOClusteringDialog(QDialog):
         layout.addWidget(self.representative_table)
         return tab
         
+    # ── Cluster Detail Tab ────────────────────────────────────────────────
+
+    def _create_cluster_detail_tab(self):
+        """5번째 탭: 클러스터 셀 클릭 시 단일 클러스터 확대 네트워크 표시."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+
+        self.detail_header_label = QLabel(
+            "Network Visualization 탭에서 클러스터 셀을 클릭하면 여기에 확대 네트워크가 표시됩니다."
+        )
+        self.detail_header_label.setWordWrap(True)
+        self.detail_header_label.setStyleSheet("color: #555; font-style: italic;")
+        layout.addWidget(self.detail_header_label)
+
+        # Settings bar
+        settings_row = QHBoxLayout()
+        settings_row.addWidget(QLabel("Edge threshold (Jaccard ≥):"))
+        self.detail_edge_spin = QDoubleSpinBox()
+        self.detail_edge_spin.setRange(0.0, 1.0)
+        self.detail_edge_spin.setValue(0.1)
+        self.detail_edge_spin.setDecimals(2)
+        self.detail_edge_spin.setSingleStep(0.05)
+        self.detail_edge_spin.setMinimumWidth(70)
+        self.detail_edge_spin.valueChanged.connect(self._refresh_cluster_detail)
+        settings_row.addWidget(self.detail_edge_spin)
+        settings_row.addSpacing(24)
+
+        settings_row.addWidget(QLabel("Node color:"))
+        self.detail_color_combo = QComboBox()
+        self.detail_color_combo.addItems(["FDR", "Uniform"])
+        self.detail_color_combo.currentTextChanged.connect(self._refresh_cluster_detail)
+        settings_row.addWidget(self.detail_color_combo)
+        settings_row.addStretch()
+        layout.addLayout(settings_row)
+
+        # Matplotlib canvas
+        self.detail_figure = Figure(figsize=(8, 6))
+        self.detail_canvas = FigureCanvas(self.detail_figure)
+        self.detail_canvas.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        detail_toolbar = NavigationToolbar(self.detail_canvas, tab)
+        layout.addWidget(detail_toolbar)
+        layout.addWidget(self.detail_canvas)
+
+        return tab
+
+    def _on_grid_click(self, event):
+        """그리드 셀 클릭 → Cluster Detail 탭으로 전환."""
+        if event.inaxes is None or self._grid_valid_clusters is None:
+            return
+        if self.clustered_df is None or event.xdata is None or event.ydata is None:
+            return
+
+        x, y = event.xdata, event.ydata
+        CELL_W, CELL_H = 1.0, 1.0
+
+        col = int(x / CELL_W)
+        row = int(-y / CELL_H)   # y축은 음수 방향
+        cluster_idx = row * self._grid_cols + col
+
+        if 0 <= cluster_idx < len(self._grid_valid_clusters):
+            cluster_id, members = self._grid_valid_clusters[cluster_idx]
+            self._detail_cluster_id = cluster_id
+            self._detail_members = members
+            self._draw_cluster_detail(cluster_id, members)
+            self.tab_widget.setCurrentIndex(4)  # Cluster Detail 탭
+
+    def _draw_cluster_detail(self, cluster_id, members):
+        """단일 클러스터의 확대 네트워크를 detail_figure에 렌더링."""
+        if self.clustered_df is None or not members:
+            return
+
+        member_df = self.clustered_df.iloc[members].copy()
+
+        # 대표 term 이름 찾기
+        desc_col = next(
+            (c for c in ['description', 'Description', 'Term', 'term']
+             if c in member_df.columns), None
+        )
+        rep_term = f"Cluster {cluster_id}"
+        for _, row in member_df.iterrows():
+            if row.get('is_representative', False) and desc_col:
+                rep_term = str(row[desc_col])
+                break
+
+        self.detail_header_label.setText(
+            f"<b>Cluster {cluster_id}</b>  ·  {len(members)} terms  ·  "
+            f"Representative: {rep_term[:80]}"
+        )
+
+        # 유전자 집합 구성
+        gene_col = next(
+            (c for c in ['_gene_set', 'gene_symbols', 'geneID', 'Genes', 'genes']
+             if c in member_df.columns), None
+        )
+        if gene_col == '_gene_set':
+            gene_sets = [
+                gs if isinstance(gs, set) else set()
+                for gs in member_df['_gene_set']
+            ]
+        elif gene_col:
+            gene_sets = [
+                set(str(g).split('/')) if pd.notna(g) else set()
+                for g in member_df[gene_col]
+            ]
+        else:
+            gene_sets = [set() for _ in members]
+
+        # 네트워크 구성
+        G = nx.Graph()
+        node_list = list(member_df.index)
+        for i, (idx, row) in enumerate(member_df.iterrows()):
+            label = str(row[desc_col]) if desc_col else str(idx)
+            G.add_node(idx, label=label, is_rep=bool(row.get('is_representative', False)),
+                       gene_set=gene_sets[i])
+
+        threshold = self.detail_edge_spin.value()
+        for i in range(len(node_list)):
+            for j in range(i + 1, len(node_list)):
+                gi, gj = gene_sets[i], gene_sets[j]
+                union = len(gi | gj)
+                if union == 0:
+                    continue
+                jaccard = len(gi & gj) / union
+                if jaccard >= threshold:
+                    G.add_edge(node_list[i], node_list[j], weight=jaccard)
+
+        self.detail_figure.clear()
+        ax = self.detail_figure.add_subplot(111)
+
+        if len(G.nodes()) == 0:
+            ax.text(0.5, 0.5, 'No terms to display', ha='center', va='center')
+            self.detail_canvas.draw()
+            return
+
+        # 레이아웃
+        n = len(G.nodes())
+        if n > 2:
+            k_val = max(1.0, 3.0 / max(1, n ** 0.3))
+            pos = nx.spring_layout(G, k=k_val, iterations=100, seed=42)
+        elif n == 2:
+            nlist = list(G.nodes())
+            pos = {nlist[0]: (-0.5, 0), nlist[1]: (0.5, 0)}
+        else:
+            pos = {list(G.nodes())[0]: (0.0, 0.0)}
+
+        # 노드 색
+        color_by = self.detail_color_combo.currentText()
+        fdr_col = next(
+            (c for c in ['fdr', 'p.adjust', 'FDR', 'padj'] if c in member_df.columns), None
+        )
+        if color_by == "FDR" and fdr_col:
+            fdr_vals = [
+                float(member_df.loc[n, fdr_col]) if n in member_df.index else 1.0
+                for n in G.nodes()
+            ]
+            node_colors = [-np.log10(max(v, 1e-300)) for v in fdr_vals]
+            cmap = 'YlOrRd'
+            use_cmap = True
+        else:
+            node_colors = [
+                '#FF6B6B' if G.nodes[nd].get('is_rep') else '#4ECDC4'
+                for nd in G.nodes()
+            ]
+            cmap = None
+            use_cmap = False
+
+        # 노드 크기: 대표 term은 크게
+        node_sizes = [900 if G.nodes[nd].get('is_rep') else 350 for nd in G.nodes()]
+
+        # 엣지
+        if G.edges():
+            weights = [G[u][v]['weight'] for u, v in G.edges()]
+            nx.draw_networkx_edges(
+                G, pos, alpha=0.45,
+                width=[w * 5 for w in weights],
+                edge_color='gray', ax=ax
+            )
+
+        # 노드
+        if use_cmap:
+            import matplotlib.pyplot as plt
+            nc = nx.draw_networkx_nodes(
+                G, pos, node_color=node_colors, node_size=node_sizes,
+                cmap=cmap, alpha=0.85, edgecolors='black', linewidths=1.5, ax=ax
+            )
+            plt.colorbar(nc, ax=ax, shrink=0.65, label='-log10(FDR)')
+        else:
+            nx.draw_networkx_nodes(
+                G, pos, node_color=node_colors, node_size=node_sizes,
+                alpha=0.85, edgecolors='black', linewidths=1.5, ax=ax
+            )
+
+        # 레이블 (전체 term 이름)
+        labels = nx.get_node_attributes(G, 'label')
+        nx.draw_networkx_labels(
+            G, pos, labels, font_size=7, font_weight='bold',
+            bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
+                      edgecolor='none', alpha=0.8),
+            ax=ax
+        )
+
+        ax.set_title(
+            f"Cluster {cluster_id}: {rep_term[:60]}\n"
+            f"{len(members)} terms  |  {len(G.edges())} edges  |  "
+            f"Jaccard ≥ {threshold:.2f}  |  Red = Representative",
+            fontsize=10, fontweight='bold'
+        )
+        ax.axis('off')
+        self.detail_figure.tight_layout()
+        self.detail_canvas.draw()
+
+    def _refresh_cluster_detail(self):
+        """엣지 threshold / 색 변경 시 현재 클러스터 재렌더링."""
+        if self._detail_cluster_id is not None and self._detail_members is not None:
+            self._draw_cluster_detail(self._detail_cluster_id, self._detail_members)
+
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _on_style_changed(self):
+        """테마 변경 시 네트워크 그래프 다시 그리기."""
+        self._draw_network_graph()
+
+    def _save_figure(self):
+        opts = self._style.export_opts()
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Figure",
+            f"go_network.{opts['fmt']}",
+            figure_export.filter_string(),
+        )
+        if not path:
+            return
+        try:
+            saved = figure_export.save_figure(self.figure, path, **opts)
+            QMessageBox.information(self, "Saved", f"Figure saved to:\n{saved}")
+        except Exception as e:
+            QMessageBox.critical(self, "Save Error", str(e))
+
     def _create_buttons(self):
         """Create bottom button layout"""
         layout = QHBoxLayout()
         layout.addStretch()
+        save_figure_btn = QPushButton("Save Figure")
+        save_figure_btn.clicked.connect(self._save_figure)
+        layout.addWidget(save_figure_btn)
         self.export_button = QPushButton("Export Clusters")
         self.export_button.setEnabled(False)
         self.export_button.clicked.connect(self._export_clusters)
@@ -621,7 +883,7 @@ class GOClusteringDialog(QDialog):
         """Update all result displays"""
         if self.clustered_df is None:
             return
-        self._update_network_graph()
+        self._draw_network_graph()
         self._update_summary()
         self._update_cluster_table()
         self._update_representative_table()
@@ -631,6 +893,11 @@ class GOClusteringDialog(QDialog):
         return self.clustered_df
 
     def _update_network_graph(self):
+        theme = self._style.theme_name() if hasattr(self, '_style') else 'Journal (sans-serif)'
+        with figure_theme.theme_context(theme):
+            self._draw_network_graph()
+
+    def _draw_network_graph(self):
         """Update the network visualization with current settings"""
         if self.clustered_df is None or self.clusters is None:
             return
@@ -652,8 +919,8 @@ class GOClusteringDialog(QDialog):
         # 뷰포트 가로 픽셀 → 인치 (스크롤바 너비 약 20px 제외)
         viewport_w  = self.canvas_scroll.viewport().width() - 20
         fig_w_in    = max(8.0, viewport_w / dpi)
-        # 행 하나당 약 2.8인치 (헤더 + 노드 영역), 최소 6인치
-        fig_h_in    = max(6.0, grid_rows * 2.8)
+        # 행 하나당 약 3.5인치 (2줄 헤더 + 노드 영역), 최소 6인치
+        fig_h_in    = max(6.0, grid_rows * 3.5)
 
         self.figure.set_size_inches(fig_w_in, fig_h_in)
         # 캔버스 고정 높이 업데이트 (QScrollArea가 세로 스크롤 담당)
@@ -739,13 +1006,16 @@ class GOClusteringDialog(QDialog):
         GRID_COLS   = 4          # 고정 열 수 (클러스터가 많으면 행만 추가)
         CELL_W      = 1.0        # 셀 너비 (정규화 단위)
         CELL_H      = 1.0        # 셀 높이
-        HEADER_FRAC = 0.18       # 셀 높이 중 헤더가 차지하는 비율
-        PAD         = 0.06       # 셀 내부 padding (비율)
+        HEADER_FRAC = 0.28       # 셀 높이 중 헤더가 차지하는 비율 (2줄 텍스트용)
+        PAD         = 0.05       # 셀 내부 padding (비율)
 
         if valid_clusters:
             valid_clusters_sorted = sorted(valid_clusters, key=lambda x: len(x[1]), reverse=True)
+            # Store for click-to-detail navigation
+            self._grid_valid_clusters = valid_clusters_sorted
             n_clusters  = len(valid_clusters_sorted)
             grid_cols   = min(GRID_COLS, n_clusters)
+            self._grid_cols = grid_cols
             grid_rows   = ceil(n_clusters / grid_cols)
 
             for cluster_idx, (cluster_id, members) in enumerate(valid_clusters_sorted):
@@ -813,28 +1083,29 @@ class GOClusteringDialog(QDialog):
             )
             ax.add_patch(header_rect)
 
-            # 헤더 텍스트: 대표 term 이름
+            # 헤더 텍스트: 2줄 — 1행: ID+크기, 2행: 대표 term 이름
             desc_col = None
             for dcol in ['description', 'Description', 'Term', 'term', 'GO Term', 'KEGG Pathway']:
                 if dcol in self.clustered_df.columns:
                     desc_col = dcol
                     break
-            rep_label = f"C{cluster_id}  (n={len(members)})"
+            id_line = f"C{cluster_id:03d}  (n={len(members)})"
+            name_line = ""
             if desc_col:
                 for m in members:
                     if self.clustered_df.loc[m, 'is_representative']:
                         full = str(self.clustered_df.loc[m, desc_col])
-                        # 헤더 너비에 맞게 truncate (약 35자)
-                        rep_label = (full[:33] + '…') if len(full) > 35 else full
-                        rep_label = f"{rep_label}  (n={len(members)})"
+                        name_line = (full[:38] + '…') if len(full) > 40 else full
                         break
+            rep_label = f"{id_line}\n{name_line}" if name_line else id_line
             ax.text(ox + CELL_W * 0.5,
                     oy + CELL_H - header_h * 0.5,
                     rep_label,
-                    fontsize=max(6, self.label_size - 0.5),
+                    fontsize=max(5, self.label_size - 1),
                     ha='center', va='center',
                     color='#222222', weight='bold',
-                    clip_on=True, zorder=3)
+                    clip_on=True, zorder=3,
+                    linespacing=1.4)
 
         # ── Convex hull (옵션) ────────────────────────────────────────────
         if self.show_hulls:
@@ -912,9 +1183,9 @@ class GOClusteringDialog(QDialog):
                     break
 
             if rep_term:
-                label = f"C{cluster_id} ({len(members)}): {rep_term if len(rep_term) <= 80 else rep_term[:77] + '...'}"
+                label = f"C{cluster_id:03d} ({len(members)}): {rep_term if len(rep_term) <= 80 else rep_term[:77] + '...'}"
             else:
-                label = f"C{cluster_id} ({len(members)})"
+                label = f"C{cluster_id:03d} ({len(members)})"
 
             try:
                 item = QListWidgetItem(label)
@@ -1095,9 +1366,9 @@ class GOClusteringDialog(QDialog):
         </table>
         
         <div class="filter-info">
-            <b>ℹ️ Cluster Details:</b> All cluster information including IDs, 
-            sizes, and representative terms are shown in the <b>Network Visualization legend</b> 
-            on the right side of the network chart. Use the legend to identify clusters by color.
+            <b>ℹ️ Cluster Details:</b> All cluster information including IDs,
+            sizes, and representative terms are shown in the <b>Cluster Dot Plot</b>
+            (Visualization → Cluster Dot Plot). Use the Y-axis labels to identify each cluster.
         </div>
         
         </body></html>
@@ -1153,13 +1424,11 @@ class GOClusteringDialog(QDialog):
             elif cluster_id_raw in self.clusters:
                 cluster_size = len(self.clusters[cluster_id_raw])
                 if cluster_size >= self.min_cluster_size:
-                    # Valid cluster - use cluster number
-                    cluster_id_display = str(cluster_id_raw)
+                    cluster_id_display = f"{int(cluster_id_raw):03d}"
                 else:
-                    # Small cluster (shouldn't happen often)
                     cluster_id_display = 'Small'
             else:
-                cluster_id_display = str(cluster_id_raw)
+                cluster_id_display = f"{int(cluster_id_raw):03d}" if cluster_id_raw != -1 else str(cluster_id_raw)
             
             # Debug: log first few rows
             if i < 3:
@@ -1326,8 +1595,8 @@ class GOClusteringDialog(QDialog):
                     # Singleton
                     cluster_value = 'Singleton'
                 elif cluster_id_raw in self.clusters:
-                    # Valid cluster (already filtered by size)
-                    cluster_value = str(cluster_id_raw)
+                    # Valid cluster — zero-padded 3자리로 저장 (정렬 일관성)
+                    cluster_value = f"{int(cluster_id_raw):03d}"
                 else:
                     # Not in clusters dict means it was filtered out (too small)
                     cluster_value = 'Small'
@@ -1342,15 +1611,18 @@ class GOClusteringDialog(QDialog):
             self.clustered_data_ready.emit(result_df)
             
             # Show confirmation
-            # Count valid clusters by checking if value is numeric string
-            n_valid = len([c for c in result_df[StandardColumns.CLUSTER_ID] 
-                          if isinstance(c, str) and c.isdigit()])
+            # Distinguish cluster groups (distinct IDs) from member terms
+            valid_ids = {c for c in result_df[StandardColumns.CLUSTER_ID]
+                         if isinstance(c, str) and c.isdigit()}
+            n_valid_groups = len(valid_ids)
+            n_valid_terms = sum(1 for c in result_df[StandardColumns.CLUSTER_ID]
+                                if isinstance(c, str) and c.isdigit())
             n_small = len(result_df[result_df[StandardColumns.CLUSTER_ID] == 'Small'])
             n_singleton = len(result_df[result_df[StandardColumns.CLUSTER_ID] == 'Singleton'])
             n_unclustered = len(result_df[result_df[StandardColumns.CLUSTER_ID] == ''])
-            
+
             msg = "Clustering applied successfully!\n\n"
-            msg += f"✓ Valid clusters: {n_valid} terms\n"
+            msg += f"✓ Valid cluster groups: {n_valid_groups}  ({n_valid_terms} terms assigned)\n"
             if n_small > 0:
                 msg += f"⚠ Small clusters: {n_small} terms\n"
             msg += f"○ Singletons: {n_singleton} terms\n"

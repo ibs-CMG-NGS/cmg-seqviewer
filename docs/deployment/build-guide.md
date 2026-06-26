@@ -248,6 +248,27 @@ sips -z 1024 1024 logo.png --out icon.iconset/icon_512x512@2x.png
 iconutil -c icns icon.iconset
 ```
 
+### Apple Silicon (M1/M2) 지원
+
+#### Universal Binary 생성
+```bash
+# Intel + Apple Silicon 모두 지원
+pyinstaller --clean --noconfirm \
+            --target-arch universal2 \
+            cmg-seqviewer-macos.spec
+```
+
+#### 별도 아키텍처 빌드
+```bash
+# Intel (x86_64)
+pyinstaller --target-arch x86_64 cmg-seqviewer-macos.spec
+
+# Apple Silicon (arm64)
+pyinstaller --target-arch arm64 cmg-seqviewer-macos.spec
+```
+
+> **주의**: macOS 앱은 macOS에서만 빌드 가능합니다. 크로스 플랫폼 빌드(Windows → macOS 등)는 불가능하며, GitHub Actions CI/CD를 통해 자동 빌드를 구성하는 것을 권장합니다.
+
 ---
 
 ## 배포 방식

@@ -1,25 +1,54 @@
-# CMG-SeqViewer - RNA-Seq Data Analysis & Visualization
+# CMG-SeqViewer - Multi-omics Data Analysis & Visualization
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![PyQt6](https://img.shields.io/badge/PyQt-6-green.svg)](https://www.riverbankcomputing.com/software/pyqt/)
-[![Release](https://img.shields.io/badge/release-v1.1.6-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
+[![Release](https://img.shields.io/badge/release-v1.2.3-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
 
 ---
 
 ## Overview
 
-**CMG-SeqViewer** is a desktop application for RNA-Seq differential expression (DE) analysis and GO/KEGG pathway enrichment visualization. Built with Python and PyQt6, it provides an Excel-like interface for biologists to explore genomic data without programming.
+**CMG-SeqViewer** is a desktop application for multi-omics data analysis and visualization. It supports RNA-seq differential expression (DE), ATAC-seq differential accessibility (DA), and GO/KEGG pathway enrichment results. Built with Python and PyQt6, it provides an Excel-like interface for biologists to explore genomic data without programming.
 
 ---
 
-## Latest Update: v1.1.6 (Apr 2026)
+## Latest Update: v1.2.3 (Jun 2026)
+
+- [NEW] **Gene Expression Bar + Scatter (Grouped)**: Per-gene grouped bar (mean) + individual replicate points for DE / Multi-Group datasets. Most useful on a *Filtered* sheet (small gene set). Features: significance stars vs a reference group (Welch t-test / Mann-Whitney U), **manual group reassignment**, **per-group colors**, sort by Original / Symbol / Mean / |log2FC|, log-scale toggle, raw counts by default. Supports **3+ groups** (incl. Multi-Group datasets). `Visualization → 📊 Gene Expression Bar+Scatter (Grouped)`
+- [NEW] **Initial group auto-detection**: Sample columns are grouped automatically from dataset metadata → dataset name (`A vs B`) → column-name prefix, so balanced 3:3 / 4:4 designs are recognized on open
+- [NEW] **Rename derived sheets**: Filtered / Comparison / Clustered sheets can now be renamed directly in the Dataset Tree (previously only root datasets)
+- [FIX] **Filtered tabs no longer overwrite across datasets**: Applying the same filter to two different datasets keeps both result tabs (overwrite is now scoped to the same parent dataset)
+- [FIX] Clicking a root dataset in the tree reliably switches to its **Whole Dataset** view
+
+### Previous: v1.2.2 (May 2026)
+
+- [NEW] **Dataset Tree Panel**: Hierarchical tree of datasets and their derived sheets (Filtered / Comparison / Clustered / Plot). Click a node to switch tabs; drag & drop files to load; rename / remove from the tree
+- [NEW] **Pin Plot to Tab**: Keep Volcano / Heatmap plots as persistent tabs registered under their parent dataset; restored when the project is reopened
+- [NEW] **Plot Settings Dock**: Right-side panel with live controls that appears automatically when a pinned plot tab is active
+
+### Previous: v1.2.1 (Apr 2026)
+
+- [NEW] **Multi-Omics Integration (RNA-seq + ATAC-seq)**: Integrate DE and DA results on shared genes — **Quadrant Plot** (log2FC RNA vs ATAC), **Integrated Volcano**, and concordance views; export integrated tables
+- [NEW] **IGV Integration**: Send peaks / genes to a running IGV session via the HTTP remote-control API (host / port configurable in IGV Settings)
+
+### Previous: v1.2.0 (Apr 2026)
+
+- [NEW] **ATAC-seq DA Support**: Load and explore ATAC-seq differential accessibility results (Excel / Parquet). Auto-detected from `peak_id` column; supports HOMER-annotated DESeq2 output format
+- [NEW] **ATAC-seq Filters**: Annotation category (Intergenic / Intron / Promoter-TSS / …), Distance to TSS (|TSS| ≤ N bp), Peak Width range — all in the Statistical filter tab
+- [NEW] **Genomic Distribution Plot**: Pie chart of peak annotation categories (broad categories, HOMER strings auto-normalized)
+- [NEW] **TSS Distance Plot**: Histogram of peak–TSS distances with ±2 kb / ±5 kb reference lines
+- [NEW] **MA Plot**: log₂(base mean) vs log₂FC scatter plot with threshold coloring, gene labels, and hover tooltips
+- [IMPROVED] **Column Display Level**: renamed to **Basic / Stat / Full** — applies uniformly to both RNA-seq and ATAC-seq datasets
+- [FIX] ATAC-seq data correctly recognized on initial load (filter panel and viz menu activate immediately)
+- [FIX] Tab index shift bug when re-applying filters to existing filtered tabs
+
+### Previous: v1.1.6 (Apr 2026)
 
 - [NEW] **GO Term List Filtering**: Paste `GO:XXXXXXX` IDs into the Filter Panel to filter any GO/KEGG dataset to a specific set of terms; results in a new *"Filtered: GO Term List"* tab
 - [NEW] **GO Term Comparison**: Compare enriched GO/KEGG terms across ≥2 datasets side by side — union of terms collected, per-dataset FDR / gene count / fold enrichment in wide-format table
 - [NEW] **GO Term Comparison Dot Plot**: Interactive dot plot for GO comparison results (X = datasets, Y = terms; dot size = Gene Count or Fold Enrichment; dot color = FDR)
 - [IMPROVED] **Dot Plot Size Legend**: 3-tier biologically meaningful reference markers with correct area→diameter formula; consistent across sessions
-- [IMPROVED] **Comparison Panel**: Dedicated left-panel UI with *GO Term Comparison* mode
 
 ### Previous: v1.1.5 (Apr 2026)
 
@@ -50,28 +79,36 @@
 ## Key Features
 
 ### Data Management
-- **Multi-dataset Support**: Load and manage multiple RNA-Seq datasets simultaneously
-- **Dual Data Types**: Differential Expression (DE) and GO/KEGG enrichment analysis results
-- **Smart Column Mapping**: Automatic detection of 30+ column name variants (including dot-separator formats such as `Gene.Set`, `Adjusted.P-value`)
+- **Multi-dataset Support**: Load and manage multiple datasets simultaneously (RNA-seq DE, ATAC-seq DA, GO/KEGG)
+- **Auto-detection**: Dataset type is detected automatically on load — no manual selection needed
+- **Smart Column Mapping**: Automatic detection of 30+ column name variants (including dot-separator formats)
 - **Drag & Drop**: Drop Excel/CSV/parquet files directly onto the application
 - **Recent Files**: Quick access to last 10 loaded datasets
-- **Dataset Renaming**: Change names anytime -- updates everywhere automatically
+- **Dataset Renaming**: Change names anytime — updates everywhere automatically
 
 ### Filtering
-- **Statistical Filter**: Filter by adj. p-value, log2FC, and regulation direction (Up/Down/Both)
+- **Statistical Filter (DE/DA)**: adj. p-value, |log2FC|, regulation direction (Up/Down/Both)
+- **ATAC-seq Filters**: Annotation category, Distance to TSS, Peak Width
 - **Gene List Filter**:
   - DE data: exact match on gene ID/symbol
-  - GO/KEGG data: finds GO terms containing any of the input genes in their `gene_symbols` column; sorted by number of matching genes
+  - ATAC-seq data: match on `nearest_gene` (gene symbol)
+  - GO/KEGG data: finds GO terms containing any of the input genes; sorted by overlap count
 - **Advanced GO Filter**: FDR, gene count range, description keyword search, ontology and direction selection
+
+### ATAC-seq Analysis
+- **Differential Accessibility (DA)**: Load DESeq2-based DA results with HOMER annotation
+- **Genomic Distribution**: Pie chart of peak categories (Intergenic, Intron, Promoter-TSS, Exon, …)
+- **TSS Distance Plot**: Histogram with ±2 kb / ±5 kb reference lines
+- **MA Plot**: log₂(base mean) vs log₂FC with threshold coloring, gene labels, hover tooltips
+- **Column levels**: Basic (coordinates) → Stat (+log2fc/padj) → Full (all annotation columns)
 
 ### GO/KEGG Analysis
 - **Clustering**: Jaccard similarity, Kappa statistic, hierarchical clustering (average/complete/single/ward)
 - **Network Visualization**: Color-coded clusters, convex hulls, hover tooltips, pan/zoom
-- **Dot Plot**: Configurable dot size (Gene Count / Gene Ratio / Fold Enrichment) and color (FDR / p-value); 3-tier size legend with consistent area→diameter scaling
+- **Dot Plot**: Configurable dot size (Gene Count / Gene Ratio / Fold Enrichment) and color (FDR / p-value)
 - **Bar Chart**: Top enriched terms
-- **Cluster Management**: Min/max size filters, singleton handling, representative term selection, export with `cluster_id`
 - **GO Term List Filtering**: Filter GO datasets to a predefined set of `GO:XXXXXXX` IDs
-- **GO Term Comparison**: Compare terms across ≥2 GO datasets with wide-format FDR / gene count / fold enrichment table and companion dot plot
+- **GO Term Comparison**: Compare terms across ≥2 GO datasets with wide-format table and companion dot plot
 
 ### Multi-dataset Comparison
 - **Gene List Comparison**: Wide-format table showing log2FC and padj across datasets
@@ -80,9 +117,16 @@
 - **Venn Diagrams**: 2-3 dataset overlap visualization
 
 ### Visualizations
-- **Volcano Plot**: log2FC vs -log10(padj) with hover tooltips and auto-scale
+- **Volcano Plot**: log2FC vs -log10(padj) — works for both RNA-seq and ATAC-seq
+- **MA Plot**: log₂(base mean) vs log₂FC — ATAC-seq and RNA-seq
 - **Heatmap**: Expression patterns with hierarchical clustering
+- **Gene Expression Bar + Scatter (Grouped)**: Per-gene grouped bar (mean) + replicate points with significance stars, manual group reassignment, and per-group colors (DE / Multi-Group)
 - **P-adj Histogram**: Distribution of significance values
+
+### Multi-Omics Integration (RNA-seq + ATAC-seq)
+- **Quadrant Plot**: log2FC (RNA) vs log2FC (ATAC) on shared genes, with concordance quadrants
+- **Integrated Volcano**: Combined RNA + ATAC significance view
+- **IGV Integration**: Send peaks / genes to a running IGV session via HTTP remote control
 
 ---
 
@@ -142,12 +186,19 @@ python src/main.py
 
 ### 1. Loading Data
 
-**Differential Expression Data**
+**RNA-seq Differential Expression**
 ```
 File -> Open Dataset  (Ctrl+O)
 ```
 Supports Excel (.xlsx, .xls), CSV, TSV, parquet.
 Requires: gene_id, log2fc, adj_pvalue columns (auto-detects variants).
+
+**ATAC-seq Differential Accessibility**
+```
+File -> Open ATAC-seq Dataset...
+```
+Supports Excel / Parquet. Auto-detected from `peak_id` column.
+Requires: peak_id, log2fc, adj_pvalue (HOMER-annotated DESeq2 output).
 
 **GO/KEGG Analysis Data**
 ```
@@ -161,12 +212,20 @@ Drop a file anywhere on the window for automatic type detection.
 
 ### 2. Filtering
 
-**Statistical Filter (DE data)**
+**Statistical Filter (DE / ATAC-seq data)**
 ```
 Left Panel -> Statistical tab
   Adj. p-value <= 0.05
   |log2FC|     >= 1.0
   Regulation:  Both / Up / Down
+```
+
+**ATAC-seq Filters** (visible only when ATAC-seq tab is active)
+```
+Left Panel -> Statistical tab -> ATAC-seq Filtering
+  Annot:   All / Intergenic / Intron / Promoter-TSS / ...
+  |TSS| <= 2000 bp
+  Peak Width: 200 – 2000 bp
 ```
 
 **Statistical Filter (GO/KEGG data)**
@@ -181,12 +240,13 @@ Left Panel -> Statistical tab
 **Gene List Filter**
 ```
 Left Panel -> Gene List tab
-  Paste gene IDs, one per line (Ctrl+V from Excel supported)
+  Paste gene IDs / symbols, one per line (Ctrl+V from Excel supported)
   Or load from .txt / .csv file
   Click "Apply Filter"
 ```
 
 - DE data: exact match on gene ID or symbol
+- ATAC-seq data: exact match on `nearest_gene` (gene symbol)
 - GO/KEGG data: returns GO terms containing any of the listed genes in `gene_symbols`; sorted by overlap count
 
 **Advanced GO Filter**
@@ -225,10 +285,18 @@ Additional controls: gene count range, description keyword search, case-sensitiv
 7. Visualization -> GO/KEGG Dot Plot  (opens comparison dot plot)
 ```
 
-### 5. Visualizations
+### 5. ATAC-seq Visualizations
 
 ```
-Visualization -> Volcano Plot          (Ctrl+V)   DE data
+Visualization -> Genomic Distribution (ATAC)   Pie chart of annotation categories
+Visualization -> TSS Distance Plot (ATAC)      Distance-to-TSS histogram
+Visualization -> MA Plot (ATAC)                log2(base mean) vs log2FC
+```
+
+### 6. RNA-seq / GO Visualizations
+
+```
+Visualization -> Volcano Plot          (Ctrl+V)   DE / ATAC data
 Visualization -> GO/KEGG Dot Plot                 GO data / Comparison: GO Terms tab
 Visualization -> GO/KEGG Network Chart            Clustered GO data
 Visualization -> Heatmap                          DE data
@@ -245,7 +313,7 @@ File -> Export Current Tab  (Ctrl+E)
 
 ## Data Format Requirements
 
-### Differential Expression Data
+### Differential Expression Data (RNA-seq)
 
 Required columns (case-insensitive, many variants supported):
 
@@ -263,6 +331,29 @@ Example:
 |---------|--------|--------|------|----------|
 | BRCA1 | 2.54 | 0.0001 | 0.0023 | 1234.5 |
 | TP53 | -1.87 | 0.0002 | 0.0045 | 987.3 |
+
+### Differential Accessibility Data (ATAC-seq)
+
+Auto-detected from `peak_id` column. Typical DESeq2 + HOMER output (14 columns):
+
+| Column | Accepted names | Notes |
+|--------|----------------|-------|
+| `peak_id` | `peak_id`, `peakid`, `peak_name`, `interval` | **Required** — triggers ATAC detection |
+| `chromosome` | `chr`, `chromosome`, `seqnames` | |
+| `peak_start` / `peak_end` | `start` / `end` | Used to compute `peak_width` |
+| `nearest_gene` | `gene_name`, `nearest_gene`, `symbol` | Gene symbol of nearest TSS |
+| `annotation` | `annotation`, `peak_annotation` | HOMER format, e.g. `intron (ENSMUSG..., intron 2 of 4)` |
+| `distance_to_tss` | `distancetotss`, `distance_to_tss` | Signed bp distance |
+| `base_mean` | `baseMean`, `base_mean` | |
+| `log2fc` | `log2FoldChange`, `log2fc` | **Required** |
+| `adj_pvalue` | `padj`, `adj_pvalue`, `FDR` | **Required** |
+
+Example:
+
+| peak_id | chr | start | end | gene_name | annotation | log2FoldChange | padj |
+|---------|-----|-------|-----|-----------|------------|---------------|------|
+| peak_1 | chr1 | 1000 | 1500 | Actb | Promoter-TSS (Actb) | 1.23 | 0.001 |
+| peak_2 | chr3 | 5000 | 5400 | Gata1 | intron (ENSMUSG..., intron 1 of 3) | -0.87 | 0.032 |
 
 ### GO/KEGG Analysis Data
 
@@ -304,26 +395,32 @@ cmg-seqviewer/
 |   |   |-- fsm.py                   # Finite State Machine (12 states)
 |   |   +-- logger.py                # Logging system
 |   |-- models/
-|   |   |-- data_models.py           # Dataset, DatasetType classes
-|   |   +-- standard_columns.py      # Column name standardization
+|   |   |-- data_models.py           # Dataset, DatasetType (DE / ATAC / GO) classes
+|   |   +-- standard_columns.py      # Column name standardization (RNA-seq + ATAC-seq)
 |   |-- gui/
-|   |   |-- main_window.py                  # Main window
-|   |   |-- filter_panel.py                 # Filter controls
-|   |   |-- comparison_panel.py             # Dataset/GO comparison panel
-|   |   |-- dataset_manager.py              # Dataset switching/renaming
-|   |   |-- go_clustering_dialog.py         # GO clustering UI
-|   |   |-- go_dot_plot_dialog.py           # GO dot plot
+|   |   |-- main_window.py                   # Main window
+|   |   |-- filter_panel.py                  # Filter controls (DE + ATAC + GO)
+|   |   |-- comparison_panel.py              # Dataset/GO comparison panel
+|   |   |-- dataset_manager.py               # Dataset switching/renaming
+|   |   |-- go_clustering_dialog.py          # GO clustering UI
+|   |   |-- go_dot_plot_dialog.py            # GO dot plot
 |   |   |-- go_comparison_dot_plot_dialog.py # GO Term Comparison dot plot
-|   |   |-- go_bar_chart_dialog.py          # GO bar chart
-|   |   |-- go_network_dialog.py            # GO network chart
-|   |   |-- go_filter_dialog.py             # Advanced GO filter
-|   |   |-- visualization_dialog.py         # Volcano, Heatmap, P-adj plots
-|   |   |-- help_dialog.py                  # F1 help system
-|   |   +-- workers.py                      # Async QThread workers
+|   |   |-- go_bar_chart_dialog.py           # GO bar chart
+|   |   |-- go_network_dialog.py             # GO network chart
+|   |   |-- go_filter_dialog.py              # Advanced GO filter
+|   |   |-- visualization_dialog.py          # Volcano, Heatmap, P-adj plots
+|   |   |-- ma_plot_dialog.py                # MA Plot (ATAC-seq / RNA-seq)
+|   |   |-- genomic_distribution_dialog.py   # ATAC-seq annotation pie chart
+|   |   |-- tss_distance_dialog.py           # ATAC-seq TSS distance histogram
+|   |   |-- igv_settings_dialog.py           # IGV integration settings
+|   |   |-- help_dialog.py                   # F1 help system
+|   |   +-- workers.py                       # Async QThread workers
 |   |-- presenters/
 |   |   +-- main_presenter.py        # Business logic (MVP pattern)
 |   +-- utils/
-|       |-- data_loader.py           # Excel/CSV/parquet loading
+|       |-- data_loader.py           # Excel/CSV/parquet loading + type detection
+|       |-- atac_seq_loader.py       # ATAC-seq DA loader (HOMER-annotated DESeq2)
+|       |-- igv_connector.py         # IGV HTTP Remote Control API client
 |       |-- go_kegg_loader.py        # GO/KEGG specific loader
 |       |-- go_clustering.py         # Clustering algorithms
 |       |-- statistics.py            # Fisher's test, GSEA
@@ -386,17 +483,23 @@ pytest test/test_data_loader.py -v
 
 ## Roadmap
 
-### v1.2 (Q2 2026)
-- [ ] Dataset Tree Panel: tree-based dataset/sheet navigation
-- [ ] Session save/load functionality
-- [ ] Batch export (multiple visualizations at once)
+### v1.2 (Q2 2026) — released
+- [x] ATAC-seq DA support (load, filter, visualize)
+- [x] MA Plot dialog
+- [x] Genomic Distribution + TSS Distance Plot
+- [x] Column Display Level unified to Basic / Stat / Full
+- [x] Multi-Omics Integration (RNA + ATAC) + IGV integration (v1.2.1)
+- [x] Dataset Tree Panel: tree-based dataset/sheet navigation (v1.2.2)
+- [x] Project save/load (.seqproj) + Pin Plot to Tab (v1.2.2)
+- [x] Gene Expression Bar + Scatter (Grouped) visualization (v1.2.3)
 
 ### v1.3 (Q3 2026)
+- [ ] Batch export (multiple visualizations at once)
 - [ ] GO enrichment analysis (run enrichment from within app)
-- [ ] KEGG pathway diagram overlay
-- [ ] Command-line interface for automation
+- [ ] Per-gene facet layout & z-score normalization for expression bar plot
 
 ### v2.0 (Future)
+- [ ] KEGG pathway diagram overlay
 - [ ] RNA-Seq count data analysis (DESeq2/edgeR integration)
 - [ ] Single-cell RNA-Seq support
 - [ ] Web version
@@ -438,7 +541,7 @@ MIT License -- see [LICENSE](LICENSE).
   title   = {CMG-SeqViewer: RNA-Seq Data Analysis and Visualization Tool},
   year    = {2026},
   url     = {https://github.com/ibs-CMG-NGS/cmg-seqviewer},
-  version = {1.1.6}
+  version = {1.2.3}
 }
 ```
 
