@@ -54,22 +54,34 @@ class DatabaseBrowserDialog(QDialog):
         search_layout = QHBoxLayout(search_group)
         
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search by alias, condition, notes...")
+        self.search_input.setPlaceholderText("Search by alias, condition, tags, researcher...")
         self.search_input.textChanged.connect(self._on_search)
         search_layout.addWidget(QLabel("Search:"))
         search_layout.addWidget(self.search_input, stretch=1)
-        
-        self.cell_type_filter = QComboBox()
-        self.cell_type_filter.addItem("All Cell Types")
-        self.cell_type_filter.currentTextChanged.connect(self._on_filter_changed)
-        search_layout.addWidget(QLabel("Cell Type:"))
-        search_layout.addWidget(self.cell_type_filter)
-        
+
+        self.type_filter = QComboBox()
+        self.type_filter.addItem("All Types")
+        self.type_filter.currentTextChanged.connect(self._on_filter_changed)
+        search_layout.addWidget(QLabel("Type:"))
+        search_layout.addWidget(self.type_filter)
+
         self.organism_filter = QComboBox()
         self.organism_filter.addItem("All Organisms")
         self.organism_filter.currentTextChanged.connect(self._on_filter_changed)
         search_layout.addWidget(QLabel("Organism:"))
         search_layout.addWidget(self.organism_filter)
+
+        self.researcher_filter = QComboBox()
+        self.researcher_filter.addItem("All Researchers")
+        self.researcher_filter.currentTextChanged.connect(self._on_filter_changed)
+        search_layout.addWidget(QLabel("Researcher:"))
+        search_layout.addWidget(self.researcher_filter)
+
+        self.cell_type_filter = QComboBox()
+        self.cell_type_filter.addItem("All Cell Types")
+        self.cell_type_filter.currentTextChanged.connect(self._on_filter_changed)
+        search_layout.addWidget(QLabel("Cell Type:"))
+        search_layout.addWidget(self.cell_type_filter)
         
         # Refresh 버튼
         refresh_btn = QPushButton("🔄 Refresh")
@@ -121,8 +133,8 @@ class DatabaseBrowserDialog(QDialog):
         """)
         
         # 컬럼 설정
-        columns = ["Alias", "Type", "Condition", "Cell Type", "Organism", 
-                  "Rows", "Genes", "Sig. Genes", "Import Date", "Tags"]
+        columns = ["Alias", "Type", "Researcher", "Condition", "Organism",
+                   "Sig. Genes", "Analysis Date", "Import Date", "Tags"]
         self.table.setColumnCount(len(columns))
         self.table.setHorizontalHeaderLabels(columns)
 
@@ -137,14 +149,13 @@ class DatabaseBrowserDialog(QDialog):
         initial_widths = {
             0: 200,   # Alias
             1:  90,   # Type
-            2: 180,   # Condition
-            3: 110,   # Cell Type
-            4: 120,   # Organism
-            5:  60,   # Rows
-            6:  60,   # Genes
-            7:  70,   # Sig. Genes
-            8: 130,   # Import Date
-            9: 120,   # Tags
+            2:  80,   # Researcher
+            3: 180,   # Condition
+            4: 100,   # Organism
+            5:  70,   # Sig. Genes
+            6: 100,   # Analysis Date
+            7: 130,   # Import Date
+            8: 140,   # Tags
         }
         for col, width in initial_widths.items():
             self.table.setColumnWidth(col, width)
@@ -281,23 +292,26 @@ class DatabaseBrowserDialog(QDialog):
             self.table.setItem(row, 0, alias_item)
 
             self.table.setItem(row, 1, QTableWidgetItem(meta.dataset_type.value))
-            self.table.setItem(row, 2, QTableWidgetItem(meta.experiment_condition))
-            self.table.setItem(row, 3, QTableWidgetItem(meta.cell_type))
+            researcher_str = ", ".join(meta.researcher) if meta.researcher else "-"
+            self.table.setItem(row, 2, QTableWidgetItem(researcher_str))
+            self.table.setItem(row, 3, QTableWidgetItem(meta.experiment_condition))
             self.table.setItem(row, 4, QTableWidgetItem(meta.organism))
 
-            # 숫자 컬럼: 표시는 문자열, 정렬은 숫자(Qt.DisplayRole 대신 UserRole 사용)
-            for col, val in [(5, meta.row_count), (6, meta.gene_count), (7, meta.significant_genes)]:
-                item = QTableWidgetItem()
-                item.setData(Qt.ItemDataRole.DisplayRole, val)   # 숫자로 저장 → 숫자 정렬
-                self.table.setItem(row, col, item)
+            # Sig. Genes (숫자 정렬)
+            sig_item = QTableWidgetItem()
+            sig_item.setData(Qt.ItemDataRole.DisplayRole, meta.significant_genes)
+            self.table.setItem(row, 5, sig_item)
 
-            # 날짜 포맷
+            # Analysis Date (파이프라인 분석일)
+            self.table.setItem(row, 6, QTableWidgetItem(meta.analysis_date or "-"))
+
+            # Import Date
             import_date = meta.import_date.split('T')[0] if meta.import_date else "-"
-            self.table.setItem(row, 8, QTableWidgetItem(import_date))
+            self.table.setItem(row, 7, QTableWidgetItem(import_date))
 
-            # 태그
+            # Tags
             tags_str = ", ".join(meta.tags) if meta.tags else "-"
-            self.table.setItem(row, 9, QTableWidgetItem(tags_str))
+            self.table.setItem(row, 8, QTableWidgetItem(tags_str))
 
         # 데이터를 다 채운 뒤 정렬 복원
         self.table.setSortingEnabled(True)
@@ -305,24 +319,32 @@ class DatabaseBrowserDialog(QDialog):
     def _update_filters(self):
         """필터 콤보박스 업데이트"""
         metadata_list = self.db_manager.get_all_metadata()
-        
-        # Cell Type
-        cell_types = sorted(set(m.cell_type for m in metadata_list if m.cell_type))
-        current_cell = self.cell_type_filter.currentText()
-        self.cell_type_filter.clear()
-        self.cell_type_filter.addItem("All Cell Types")
-        self.cell_type_filter.addItems(cell_types)
-        if current_cell in cell_types:
-            self.cell_type_filter.setCurrentText(current_cell)
-        
+
+        def _refresh_combo(combo, all_label, values):
+            current = combo.currentText()
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItem(all_label)
+            combo.addItems(sorted(values))
+            if current in values:
+                combo.setCurrentText(current)
+            combo.blockSignals(False)
+
+        # Dataset Type
+        types = set(m.dataset_type.value for m in metadata_list)
+        _refresh_combo(self.type_filter, "All Types", types)
+
         # Organism
-        organisms = sorted(set(m.organism for m in metadata_list if m.organism))
-        current_org = self.organism_filter.currentText()
-        self.organism_filter.clear()
-        self.organism_filter.addItem("All Organisms")
-        self.organism_filter.addItems(organisms)
-        if current_org in organisms:
-            self.organism_filter.setCurrentText(current_org)
+        organisms = set(m.organism for m in metadata_list if m.organism)
+        _refresh_combo(self.organism_filter, "All Organisms", organisms)
+
+        # Researcher
+        researchers = set(r for m in metadata_list for r in m.researcher if r)
+        _refresh_combo(self.researcher_filter, "All Researchers", researchers)
+
+        # Cell Type
+        cell_types = set(m.cell_type for m in metadata_list if m.cell_type)
+        _refresh_combo(self.cell_type_filter, "All Cell Types", cell_types)
     
     def _on_search(self):
         """검색 텍스트 변경 시"""
@@ -334,23 +356,24 @@ class DatabaseBrowserDialog(QDialog):
     
     def _apply_filters(self):
         """검색 및 필터 적용"""
-        query = self.search_input.text()
-        cell_type = self.cell_type_filter.currentText()
-        organism = self.organism_filter.currentText()
-        
-        # "All ..." 선택 시 빈 문자열로 변환
-        if cell_type == "All Cell Types":
-            cell_type = ""
-        if organism == "All Organisms":
-            organism = ""
-        
-        # 검색 실행
+        query      = self.search_input.text()
+        dtype      = self.type_filter.currentText()
+        organism   = self.organism_filter.currentText()
+        researcher = self.researcher_filter.currentText()
+        cell_type  = self.cell_type_filter.currentText()
+
+        dtype      = "" if dtype      == "All Types"       else dtype
+        organism   = "" if organism   == "All Organisms"   else organism
+        researcher = "" if researcher == "All Researchers" else researcher
+        cell_type  = "" if cell_type  == "All Cell Types"  else cell_type
+
         results = self.db_manager.search_datasets(
             query=query,
             cell_type=cell_type,
-            organism=organism
+            organism=organism,
+            dataset_type=dtype,
+            researcher=researcher,
         )
-        
         self._populate_table(results)
     
     def _on_selection_changed(self):

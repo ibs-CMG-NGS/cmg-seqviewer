@@ -344,6 +344,15 @@ class ComparisonResult:
         }
 
 
+def _coerce_list(value) -> list:
+    """str or list → list 변환 (researcher 필드용)."""
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str) and value:
+        return [value]
+    return []
+
+
 @dataclass
 class PreloadedDatasetMetadata:
     """Pre-loaded 데이터셋 메타데이터"""
@@ -370,6 +379,11 @@ class PreloadedDatasetMetadata:
     notes: str = ""                      # 사용자 메모
     tags: List[str] = field(default_factory=list)  # 태그 (검색용)
 
+    # 연구자·프로젝트 정보
+    researcher: List[str] = field(default_factory=list)  # 분석 담당자 이니셜 (예: ["ljh", "hiy"])
+    project_name: str = ""               # 연구 묶음 식별자 (예: "2026-human-atac")
+    analysis_date: str = ""              # 분석 실행일 (YYYY-MM-DD)
+
     # ATAC-seq 전용 메타데이터
     genome_build: str = ""               # 참조 게놈 (예: mm10, hg38)
     peak_caller: str = ""                # Peak caller (예: MACS2, HOMER)
@@ -393,6 +407,9 @@ class PreloadedDatasetMetadata:
             'file_path': self.file_path,
             'notes': self.notes,
             'tags': self.tags,
+            'researcher': self.researcher,
+            'project_name': self.project_name,
+            'analysis_date': self.analysis_date,
             'genome_build': self.genome_build,
             'peak_caller': self.peak_caller,
         }
@@ -417,6 +434,9 @@ class PreloadedDatasetMetadata:
             file_path=data.get('file_path', ''),
             notes=data.get('notes', ''),
             tags=data.get('tags', []),
+            researcher=_coerce_list(data.get('researcher', [])),
+            project_name=data.get('project_name', ''),
+            analysis_date=data.get('analysis_date', ''),
             genome_build=data.get('genome_build', ''),
             peak_caller=data.get('peak_caller', ''),
         )

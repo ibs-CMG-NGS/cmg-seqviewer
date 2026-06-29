@@ -41,7 +41,34 @@ def _normalize_manifest_item(item: Dict[str, Any]) -> Dict[str, Any]:
     for target, source in _MANIFEST_FIELD_FALLBACK.items():
         if not norm.get(target) and norm.get(source):
             norm[target] = norm[source]
+    # researcher: str → list 통일
+    r = norm.get('researcher')
+    if isinstance(r, str) and r:
+        norm['researcher'] = [r]
+    # tags에 researcher 자동 포함 (없으면 추가)
+    if norm.get('researcher'):
+        tags = list(norm.get('tags', []))
+        for initials in norm['researcher']:
+            if initials and initials not in tags:
+                tags.append(initials)
+        norm['tags'] = tags
     return norm
+
+
+def _parse_researcher_from_path(source_dir) -> tuple:
+    """경로명 /YYYY-이니셜-organism-type/ 에서 researcher 목록과 연도를 추론.
+    Returns (researcher: list[str], analysis_date: str)."""
+    import re
+    name = Path(source_dir).name
+    parts = name.split('-')
+    if not (parts and parts[0].isdigit() and len(parts[0]) == 4 and len(parts) >= 3):
+        return [], ''
+    year = parts[0]
+    # 마지막 2개(organism, type) 제외, 중간 segments 중 짧은 것(≤4자, 알파벳)이 이니셜
+    middle = parts[1:-2] if len(parts) > 3 else parts[1:-1]
+    researchers = [p for p in middle if p.isalpha() and len(p) <= 4]
+    analysis_date = f"{year}-01-01"
+    return researchers, analysis_date
 
 
 class DatabaseManager:
@@ -688,8 +715,22 @@ class DatabaseManager:
                 # auto-import 스캔이 새 파일을 감지하도록 datasets_dir 를 다시 스캔
                 # (직접 등록하지 않고 _scan_and_auto_import 에 맡김)
 
+            # 경로명에서 researcher / analysis_date 추론 (fallback)
+            path_researchers, path_date = _parse_researcher_from_path(source_dir)
+
             # 복사 후 자동 스캔 실행 → 새로 복사된 파일 등록
             imported = self._scan_and_auto_import(self.datasets_dir)
+
+            # 방금 스캔으로 추가된 항목에 path 추론 메타데이터 채우기
+            if path_researchers or path_date:
+                for meta in self.metadata_list:
+                    if not meta.researcher and path_researchers:
+                        meta.researcher = path_researchers
+                        for initials in path_researchers:
+                            if initials not in meta.tags:
+                                meta.tags.append(initials)
+                    if not meta.analysis_date and path_date:
+                        meta.analysis_date = path_date
 
         if imported > 0:
             self._save_metadata()
@@ -1040,10 +1081,12 @@ class DatabaseManager:
         """모든 데이터셋 메타데이터 반환"""
         return self.metadata_list.copy()
     
-    def search_datasets(self, 
+    def search_datasets(self,
                        query: str = "",
                        cell_type: str = "",
                        organism: str = "",
+                       dataset_type: str = "",
+                       researcher: str = "",
                        tags: List[str] = None) -> List[PreloadedDatasetMetadata]:
         """
         데이터셋 검색
@@ -1059,14 +1102,16 @@ class DatabaseManager:
         """
         results = self.metadata_list.copy()
         
-        # 쿼리 검색
+        # 쿼리 검색 (alias, condition, notes, tags, researcher 통합)
         if query:
             query_lower = query.lower()
             results = [
                 meta for meta in results
-                if query_lower in meta.alias.lower() or
-                   query_lower in meta.notes.lower() or
-                   query_lower in meta.experiment_condition.lower()
+                if query_lower in meta.alias.lower()
+                or query_lower in meta.notes.lower()
+                or query_lower in meta.experiment_condition.lower()
+                or any(query_lower in t.lower() for t in meta.tags)
+                or any(query_lower in r.lower() for r in meta.researcher)
             ]
         
         # 세포 타입 필터
@@ -1083,9 +1128,24 @@ class DatabaseManager:
                 meta for meta in results
                 if any(tag in meta.tags for tag in tags)
             ]
-        
+
+        # 데이터셋 타입 필터
+        if dataset_type:
+            results = [
+                meta for meta in results
+                if meta.dataset_type.lower() == dataset_type.lower()
+            ]
+
+        # 연구자 필터
+        if researcher:
+            researcher_lower = researcher.lower()
+            results = [
+                meta for meta in results
+                if any(researcher_lower == r.lower() for r in meta.researcher)
+            ]
+
         return results
-    
+
     def get_statistics(self) -> Dict[str, Any]:
         """데이터베이스 통계 정보 반환"""
         total_size = 0
