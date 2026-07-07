@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![PyQt6](https://img.shields.io/badge/PyQt-6-green.svg)](https://www.riverbankcomputing.com/software/pyqt/)
-[![Release](https://img.shields.io/badge/release-v1.2.3-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
+[![Release](https://img.shields.io/badge/release-v1.2.6-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
 
 ---
 
@@ -11,9 +11,46 @@
 
 **CMG-SeqViewer** is a desktop application for multi-omics data analysis and visualization. It supports RNA-seq differential expression (DE), ATAC-seq differential accessibility (DA), and GO/KEGG pathway enrichment results. Built with Python and PyQt6, it provides an Excel-like interface for biologists to explore genomic data without programming.
 
+![CMG-SeqViewer main window](docs/images/main-window.png)
+
+*Main window — dataset tree, filter/compare panel, and the Excel-like data view.*
+
 ---
 
-## Latest Update: v1.2.3 (Jun 2026)
+## Screenshots
+
+| Volcano plot | Venn diagram |
+|---|---|
+| ![Volcano plot](docs/images/volcano-plot.png) | ![Venn diagram](docs/images/venn-diagram.png) |
+| Interactive DE/DA visualization with adjustable thresholds | Gene / peak overlap across multiple datasets |
+
+> Screenshots live in [`docs/images/`](docs/images/). To refresh them, capture the
+> relevant window (PNG) and overwrite the file of the same name.
+
+---
+
+## Latest Update: v1.2.6 (Jul 2026)
+
+- [NEW] **Cross-Dataset Comparison menu**: A new `Visualization → 🧩 Cross-Dataset Comparison` submenu groups every plot that combines multiple datasets. Pick datasets in a selection popup — no need to pre-build filtered tabs
+- [NEW] **DE/DA Count Summary**: Stacked up/down significant-count bars across datasets, with in-dialog **FDR** / **|log2FC|** thresholds (3-decimal) and a % toggle. `Visualization → 🧩 Cross-Dataset Comparison → 📊 DE/DA Count Summary`
+- [NEW] **Genomic Annotation Comparison (ATAC-seq)**: Per-dataset peak annotation composition as **Counts / Proportion** stacked bars, plus an **Enrichment (log2 significant/background)** mode that shows which genomic features the changes concentrate in
+- [NEW] **"outside right" legend option** in the shared plot labels panel — places the legend beside the plot so it never covers the data
+- [IMPROVED] **Visualization menu reorganized** into submenus: 🧬 GO/KEGG Enrichment, 🔓 ATAC-seq, 🧩 Cross-Dataset Comparison, and 🔗 RNA-ATAC Integration (formerly "Multi-Omics")
+- [PERF] **Large table virtualization**: the central data view now uses a `QTableView` + model, so loading and switching 100k–180k-row ATAC datasets is instant instead of laggy (no more per-cell widget allocation)
+- [DOCS] README screenshots added
+
+### Previous: v1.2.5 (Jul 2026)
+
+- [NEW] **Researcher / Type / Analysis-date metadata** in the Database Browser: new columns and filters; text search now also matches tags and researcher; researcher & date are inferred from the `/YYYY-initials-organism-type/` folder name when a manifest is absent
+- [IMPROVED] **GO clustering**: "Network Chart" renamed to **Cluster Dot Plot**, added a Cluster Detail tab, zero-padded cluster IDs, full dot-plot customization; help text updated
+- [FIX] Dot plot figure width now matches the canvas; cross-organism import no longer blocked by a filename collision
+
+### Previous: v1.2.4 (Jun 2026)
+
+- [NEW] **chromVAR** results and **`seqviewer_manifest.json`** recognized during database import
+- [FIX] Numeric table sort: correct NaN ordering and header-click sort direction
+
+### Previous: v1.2.3 (Jun 2026)
 
 - [NEW] **Gene Expression Bar + Scatter (Grouped)**: Per-gene grouped bar (mean) + individual replicate points for DE / Multi-Group datasets. Most useful on a *Filtered* sheet (small gene set). Features: significance stars vs a reference group (Welch t-test / Mann-Whitney U), **manual group reassignment**, **per-group colors**, sort by Original / Symbol / Mean / |log2FC|, log-scale toggle, raw counts by default. Supports **3+ groups** (incl. Multi-Group datasets). `Visualization → 📊 Gene Expression Bar+Scatter (Grouped)`
 - [NEW] **Initial group auto-detection**: Sample columns are grouped automatically from dataset metadata → dataset name (`A vs B`) → column-name prefix, so balanced 3:3 / 4:4 designs are recognized on open

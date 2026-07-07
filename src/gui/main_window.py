@@ -5,7 +5,7 @@ Excel 스타일의 메인 윈도우를 구현합니다.
 """
 
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-                            QSplitter, QTabWidget, QTableWidget, QTableWidgetItem,
+                            QSplitter, QTabWidget, QTableView,
                             QTextEdit, QMenuBar, QMenu, QToolBar, QStatusBar,
                             QLabel, QPushButton, QFileDialog, QMessageBox,
                             QProgressBar, QInputDialog, QLineEdit, QHeaderView,
@@ -14,7 +14,6 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 from PyQt6.QtGui import QAction, QIcon, QFont, QActionGroup, QPixmap
 import logging
-import math
 from pathlib import Path
 from typing import Optional, List, Dict
 import pandas as pd
@@ -31,33 +30,9 @@ from gui.venn_dialog_comparison import VennDiagramFromComparisonDialog
 from gui.upset_plot_dialog import UpsetPlotDialog
 from gui.help_dialog import HelpDialog
 from gui.multi_omics_panel import MultiOmicsPanel
+from gui.pandas_table_model import DataFrameTableModel
 from models.data_models import FilterMode, DatasetType
 from presenters.main_presenter import MainPresenter
-
-
-class NumericTableWidgetItem(QTableWidgetItem):
-    """숫자 정렬을 지원하는 QTableWidgetItem"""
-
-    def __init__(self, value, display_text):
-        super().__init__(display_text)
-        self.numeric_value = value
-
-    def __lt__(self, other):
-        """정렬을 위한 비교 연산자.
-
-        NaN은 IEEE754 규칙상 모든 비교(<, >)가 항상 False라서, 정렬 알고리즘이
-        요구하는 전순서(total order)가 깨진다. NaN을 항상 "가장 큰 값"으로
-        취급해 일관되게 비교해야 NaN과 무관한 다른 행들의 순서도 깨지지 않는다
-        (pandas의 na_position='last'와 동일한 관례).
-        """
-        if isinstance(other, NumericTableWidgetItem):
-            a, b = self.numeric_value, other.numeric_value
-            a_nan = isinstance(a, float) and math.isnan(a)
-            b_nan = isinstance(b, float) and math.isnan(b)
-            if a_nan or b_nan:
-                return False if a_nan else True
-            return a < b
-        return super().__lt__(other)
 
 
 class MainWindow(QMainWindow):
@@ -589,101 +564,115 @@ class MainWindow(QMainWindow):
         viz_menu.addAction(self.expr_bar_action)
 
         viz_menu.addSeparator()
-        
-        # 비교 데이터 시각화
-        self.dotplot_action = QAction("⚫ Dot Plot (Comparison)", self)
-        self.dotplot_action.triggered.connect(self._on_dotplot_requested)
-        # 항상 활성화
-        viz_menu.addAction(self.dotplot_action)
-        
-        self.venn_action = QAction("⭕ Venn Diagram (Comparison)", self)
-        self.venn_action.triggered.connect(self._on_venn_diagram)
-        # 항상 활성화
-        viz_menu.addAction(self.venn_action)
-        
-        viz_menu.addSeparator()
-        
-        # GO/KEGG 시각화 메뉴 (서브메뉴 없이 직접 추가)
-        self.go_dotplot_action = QAction("🧬 Dot Plot (GO/KEGG)", self)
+
+        # GO/KEGG 시각화 서브메뉴
+        go_menu = viz_menu.addMenu("🧬 GO/KEGG Enrichment")
+
+        self.go_dotplot_action = QAction("⚫ Dot Plot", self)
         self.go_dotplot_action.triggered.connect(lambda: self._on_go_visualization("dotplot"))
-        viz_menu.addAction(self.go_dotplot_action)
-        
-        self.go_barplot_action = QAction("🧬 Bar Chart (GO/KEGG)", self)
+        go_menu.addAction(self.go_dotplot_action)
+
+        self.go_barplot_action = QAction("📊 Bar Chart", self)
         self.go_barplot_action.triggered.connect(lambda: self._on_go_visualization("barplot"))
-        viz_menu.addAction(self.go_barplot_action)
-        
-        self.go_network_action = QAction("🧬 Cluster Dot Plot (GO/KEGG)", self)
+        go_menu.addAction(self.go_barplot_action)
+
+        self.go_network_action = QAction("🔵 Cluster Dot Plot", self)
         self.go_network_action.triggered.connect(lambda: self._on_go_visualization("network"))
-        viz_menu.addAction(self.go_network_action)
+        go_menu.addAction(self.go_network_action)
 
-        viz_menu.addSeparator()
+        # ATAC-seq 전용 시각화 서브메뉴 (각 항목은 ATAC/모티프 등 탭 활성 시에만 활성화)
+        atac_menu = viz_menu.addMenu("🔓 ATAC-seq")
 
-        # ATAC-seq 전용 시각화 (ATAC 탭 활성 시에만 활성화)
-        self.genomic_dist_action = QAction("🧬 Genomic Distribution Plot (ATAC-seq)", self)
+        self.genomic_dist_action = QAction("🧬 Genomic Distribution Plot", self)
         self.genomic_dist_action.triggered.connect(lambda: self._on_atac_visualization("genomic_distribution"))
         self.genomic_dist_action.setEnabled(False)
-        viz_menu.addAction(self.genomic_dist_action)
+        atac_menu.addAction(self.genomic_dist_action)
 
-        self.tss_distance_action = QAction("📏 TSS Distance Plot (ATAC-seq)", self)
+        self.tss_distance_action = QAction("📏 TSS Distance Plot", self)
         self.tss_distance_action.triggered.connect(lambda: self._on_atac_visualization("tss_distance"))
         self.tss_distance_action.setEnabled(False)
-        viz_menu.addAction(self.tss_distance_action)
+        atac_menu.addAction(self.tss_distance_action)
 
-        self.ma_plot_action = QAction("📈 MA Plot (ATAC-seq)", self)
+        self.ma_plot_action = QAction("📈 MA Plot", self)
         self.ma_plot_action.triggered.connect(lambda: self._on_atac_visualization("ma_plot"))
         self.ma_plot_action.setEnabled(False)
-        viz_menu.addAction(self.ma_plot_action)
+        atac_menu.addAction(self.ma_plot_action)
 
         self.motif_enrichment_action = QAction("🔡 TF Motif Enrichment Plot", self)
         self.motif_enrichment_action.triggered.connect(self._on_motif_enrichment_requested)
         self.motif_enrichment_action.setEnabled(False)
-        viz_menu.addAction(self.motif_enrichment_action)
+        atac_menu.addAction(self.motif_enrichment_action)
 
         self.tf_footprint_action = QAction("👣 TF Activity Plot (Footprint)", self)
         self.tf_footprint_action.triggered.connect(self._on_tf_footprint_requested)
         self.tf_footprint_action.setEnabled(False)
-        viz_menu.addAction(self.tf_footprint_action)
+        atac_menu.addAction(self.tf_footprint_action)
 
         self.chromvar_action = QAction("🧬 chromVAR TF Activity Plot", self)
         self.chromvar_action.triggered.connect(self._on_chromvar_requested)
         self.chromvar_action.setEnabled(False)
-        viz_menu.addAction(self.chromvar_action)
-
-        self.da_peak_overlap_action = QAction("🔗 DA Peak Overlap (ATAC-seq)...", self)
-        self.da_peak_overlap_action.triggered.connect(self._on_da_peak_overlap)
-        # 항상 활성화 — 로드된 ATAC_SEQ 데이터셋 개수는 핸들러 내부에서 확인
-        viz_menu.addAction(self.da_peak_overlap_action)
+        atac_menu.addAction(self.chromvar_action)
 
         viz_menu.addSeparator()
 
-        # Multi-Omics 전용 시각화 (MULTI_OMICS 탭 활성 시에만 활성화)
-        self.quadrant_plot_action = QAction("◈ Quadrant Plot (Multi-Omics)", self)
+        # Cross-Dataset Comparison 서브메뉴 — 여러 데이터셋을 모아 비교/집계하는 그림.
+        # 모두 항상 활성화 — 대상 데이터셋 수·타입은 각 핸들러에서 선택·검증.
+        cross_menu = viz_menu.addMenu("🧩 Cross-Dataset Comparison")
+
+        self.dotplot_action = QAction("⚫ Dot Plot (Comparison sheet)", self)
+        self.dotplot_action.triggered.connect(self._on_dotplot_requested)
+        cross_menu.addAction(self.dotplot_action)
+
+        self.venn_action = QAction("⭕ Venn Diagram (Comparison sheet)", self)
+        self.venn_action.triggered.connect(self._on_venn_diagram)
+        cross_menu.addAction(self.venn_action)
+
+        cross_menu.addSeparator()
+
+        self.da_peak_overlap_action = QAction("🔗 DA Peak Overlap (ATAC-seq)...", self)
+        self.da_peak_overlap_action.triggered.connect(self._on_da_peak_overlap)
+        cross_menu.addAction(self.da_peak_overlap_action)
+
+        self.count_summary_action = QAction("📊 DE/DA Count Summary (stacked)...", self)
+        self.count_summary_action.triggered.connect(self._on_count_summary_requested)
+        cross_menu.addAction(self.count_summary_action)
+
+        self.annotation_compare_action = QAction("🧬 Genomic Annotation Comparison (ATAC-seq)...", self)
+        self.annotation_compare_action.triggered.connect(self._on_annotation_comparison_requested)
+        cross_menu.addAction(self.annotation_compare_action)
+
+        viz_menu.addSeparator()
+
+        # RNA-ATAC Integration 서브메뉴 (구 Multi-Omics; MULTI_OMICS 탭 활성 시에만 활성화)
+        integ_menu = viz_menu.addMenu("🔗 RNA-ATAC Integration")
+
+        self.quadrant_plot_action = QAction("◈ Quadrant Plot", self)
         self.quadrant_plot_action.triggered.connect(
             lambda: self._on_multi_omics_visualization("quadrant")
         )
         self.quadrant_plot_action.setEnabled(False)
-        viz_menu.addAction(self.quadrant_plot_action)
+        integ_menu.addAction(self.quadrant_plot_action)
 
-        self.concordance_heatmap_action = QAction("🔥 Concordance Heatmap (Multi-Omics)", self)
+        self.concordance_heatmap_action = QAction("🔥 Concordance Heatmap", self)
         self.concordance_heatmap_action.triggered.connect(
             lambda: self._on_multi_omics_visualization("heatmap")
         )
         self.concordance_heatmap_action.setEnabled(False)
-        viz_menu.addAction(self.concordance_heatmap_action)
+        integ_menu.addAction(self.concordance_heatmap_action)
 
-        self.concordance_summary_action = QAction("📊 Concordance Bar Chart (Multi-Omics)", self)
+        self.concordance_summary_action = QAction("📊 Concordance Bar Chart", self)
         self.concordance_summary_action.triggered.connect(
             lambda: self._on_multi_omics_visualization("summary")
         )
         self.concordance_summary_action.setEnabled(False)
-        viz_menu.addAction(self.concordance_summary_action)
+        integ_menu.addAction(self.concordance_summary_action)
 
-        self.integrated_volcano_action = QAction("🌋 Integrated Volcano Plot (Multi-Omics)", self)
+        self.integrated_volcano_action = QAction("🌋 Integrated Volcano Plot", self)
         self.integrated_volcano_action.triggered.connect(
             lambda: self._on_multi_omics_visualization("integrated_volcano")
         )
         self.integrated_volcano_action.setEnabled(False)
-        viz_menu.addAction(self.integrated_volcano_action)
+        integ_menu.addAction(self.integrated_volcano_action)
 
         # Help 메뉴
         help_menu = menubar.addMenu("&Help")
@@ -758,19 +747,21 @@ class MainWindow(QMainWindow):
         root_logger.addHandler(self.qt_log_handler)
     
     def _create_data_tab(self, tab_name: str, sheet_type: str = 'whole',
-                         parent_dataset: str = None) -> QTableWidget:
+                         parent_dataset: str = None) -> QTableView:
         """새 데이터 탭 생성"""
-        table = QTableWidget()
+        table = QTableView()
         table.setAlternatingRowColors(True)
         # 셀 단위 선택으로 변경 (기존: SelectRows)
-        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectItems)
-        table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)  # 다중 선택 가능
-        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)  # 편집 불가 (read-only)
-        table.setSortingEnabled(False)  # 데이터 채우기 전까지 비활성 (populate_table에서 활성화)
-        
+        table.setSelectionBehavior(QTableView.SelectionBehavior.SelectItems)
+        table.setSelectionMode(QTableView.SelectionMode.ExtendedSelection)  # 다중 선택 가능
+        table.setEditTriggers(QTableView.EditTrigger.NoEditTriggers)  # 편집 불가 (read-only)
+        # setSortingEnabled(True)를 쓰지 않음: 모델 세팅 시 Qt가 자동으로 0열 정렬을
+        # 유발해 원본 행 순서가 깨진다. sectionClicked → model.sort()로 수동 정렬한다.
+        table.setSortingEnabled(False)
+
         # 선택 색상을 연한 파란색으로 설정
         table.setStyleSheet("""
-            QTableWidget::item:selected {
+            QTableView::item:selected {
                 background-color: #ADD8E6;  /* 연한 파란색 */
                 color: black;
             }
@@ -820,12 +811,12 @@ class MainWindow(QMainWindow):
 
         return table
 
-    def populate_table(self, table: QTableWidget, dataframe: pd.DataFrame, dataset=None):
+    def populate_table(self, table: QTableView, dataframe: pd.DataFrame, dataset=None):
         """
         테이블에 데이터 채우기 (컬럼 레벨 및 정밀도 적용)
-        
+
         Args:
-            table: QTableWidget
+            table: QTableView
             dataframe: 표시할 DataFrame
             dataset: Dataset 객체 (컬럼 매핑 정보 포함, optional)
         """
@@ -864,88 +855,48 @@ class MainWindow(QMainWindow):
             columns = dataframe.columns.tolist()
             filtered_df = dataframe
         
-        # 테이블 설정
-        table.setRowCount(len(filtered_df))
-        table.setColumnCount(len(columns))
-        table.setHorizontalHeaderLabels(columns)
-        
-        # 정렬 기능 활성화
-        table.setSortingEnabled(False)  # 데이터 입력 중에는 비활성화
-        
-        # FDR, adj-pvalue 등 scientific notation 필요한 컬럼 인덱스 확인
+        # FDR, adj-pvalue 등 scientific notation 필요한 컬럼명 확인
         from models.standard_columns import StandardColumns
         scientific_columns = {
-            StandardColumns.FDR, StandardColumns.ADJ_PVALUE, 
+            StandardColumns.FDR, StandardColumns.ADJ_PVALUE,
             StandardColumns.PVALUE, StandardColumns.PVALUE_GO,
             StandardColumns.QVALUE
         }
-        scientific_col_indices = {i for i, col in enumerate(columns) if col in scientific_columns}
-        
-        # 데이터 채우기
-        for i, row in enumerate(filtered_df.values):
-            for j, value in enumerate(row):
-                # Scientific notation이 필요한 컬럼인지 확인
-                needs_scientific = j in scientific_col_indices
-                
-                # 유효숫자 적용
-                if isinstance(value, float):
-                    if needs_scientific:
-                        # Scientific notation 적용
-                        abs_value = abs(value)
-                        if abs_value == 0:
-                            formatted_value = "0"
-                        elif abs_value >= 1.0:
-                            formatted_value = f"{value:.2f}"
-                        elif abs_value >= 0.01:
-                            formatted_value = f"{value:.3f}"
-                        elif abs_value >= 0.0001:
-                            formatted_value = f"{value:.4f}"
-                        else:
-                            formatted_value = f"{value:.2e}"
-                    else:
-                        formatted_value = f"{value:.{self.decimal_precision}f}"
-                    # 숫자형 아이템 사용 (정렬 지원)
-                    item = NumericTableWidgetItem(value, formatted_value)
-                elif isinstance(value, int):
-                    formatted_value = str(value)
-                    item = NumericTableWidgetItem(value, formatted_value)
-                else:
-                    formatted_value = str(value)
-                    item = QTableWidgetItem(formatted_value)
-                
-                item.setData(Qt.ItemDataRole.UserRole, i)
-                table.setItem(i, j, item)
+        scientific_col_names = {col for col in columns if col in scientific_columns}
 
-        # setSortingEnabled(True)를 사용하지 않음:
-        # Qt가 활성화 시 자동으로 sortItems(0, Asc)를 호출하여 입력 순서를 깨뜨림.
-        # 대신 sectionClicked 시그널에 _sort_table_by_column을 연결하여 수동 정렬.
-        
+        # 모델 세팅 — 셀 객체를 만들지 않고 DataFrame을 직접 백엔드로 사용 (가상화)
+        model = DataFrameTableModel(filtered_df, self.decimal_precision, scientific_col_names)
+        table.setModel(model)
+
         # 정렬 인디케이터 초기화 (화살표 없음)
         table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
 
         # 저장된 컬럼 너비 복원
         self._restore_table_column_widths(table)
-        
-        # 컬럼 크기 자동 조정
+
+        # 컬럼 크기 자동 조정 — 전체 행 스캔은 비용이 크므로 앞쪽 표본만 사용
+        table.horizontalHeader().setResizeContentsPrecision(200)
         table.resizeColumnsToContents()
-        
+
         # gene_symbols 열 너비 제한 (너무 넓지 않게)
         for i, col in enumerate(columns):
             if col == StandardColumns.GENE_SYMBOLS or col.lower() == 'gene_symbols':
                 table.setColumnWidth(i, 150)  # 초기 너비를 150px로 제한
                 break
     
-    def _sort_table_by_column(self, table: QTableWidget, col: int):
+    def _sort_table_by_column(self, table: QTableView, col: int):
         """헤더 클릭 시 수동 정렬 (setSortingEnabled 미사용)
 
         QHeaderView.setSectionsClickable(True)를 켜면 setSortingEnabled 여부와
         무관하게 Qt가 sectionClicked를 emit하기 *전에* 내부적으로 sort indicator를
-        이미 올바른 방향으로 토글해 둔다(Qt 자체 동작). 여기서 또 토글하면 클릭마다
-        두 번 토글되어 항상 같은 방향(Descending)에 고정되는 문제가 있었다.
-        Qt가 이미 정해 둔 현재 indicator 값을 그대로 사용해 실제 행 정렬만 적용한다.
+        이미 올바른 방향으로 토글해 둔다(Qt 자체 동작). Qt가 정해 둔 현재 indicator
+        값을 그대로 사용해 모델에 정렬을 위임한다 (DataFrame dtype 기준 수치 정렬).
         """
+        model = table.model()
+        if model is None:
+            return
         header = table.horizontalHeader()
-        table.sortItems(header.sortIndicatorSection(), header.sortIndicatorOrder())
+        model.sort(header.sortIndicatorSection(), header.sortIndicatorOrder())
     
     def _filter_columns(self, all_columns: List[str], dataset=None) -> List[str]:
         """
@@ -1391,7 +1342,8 @@ class MainWindow(QMainWindow):
     def _filter_current_tab(self, criteria, tab_name, table):
         """현재 탭의 데이터를 필터링"""
         try:
-            row_count = table.rowCount()
+            model = table.model()
+            row_count = model.rowCount() if model else 0
             if row_count == 0:
                 QMessageBox.warning(self, "No Data", "Current tab is empty.")
                 return
@@ -1405,29 +1357,8 @@ class MainWindow(QMainWindow):
             if stored_df is not None and not stored_df.empty:
                 df = stored_df.copy()
             else:
-                # fallback: 테이블 위젯에서 읽기
-                col_count = table.columnCount()
-                headers = []
-                for col in range(col_count):
-                    header_item = table.horizontalHeaderItem(col)
-                    if header_item:
-                        headers.append(header_item.text())
-                data = []
-                for row in range(row_count):
-                    row_data = {}
-                    for col in range(col_count):
-                        item = table.item(row, col)
-                        if item:
-                            value = item.text()
-                            try:
-                                value = float(value)
-                            except:
-                                pass
-                            row_data[headers[col]] = value
-                        else:
-                            row_data[headers[col]] = None
-                    data.append(row_data)
-                df = pd.DataFrame(data)
+                # fallback: 모델의 표시용 DataFrame 사용 (dtype 보존)
+                df = model.dataframe().copy() if isinstance(model, DataFrameTableModel) else pd.DataFrame()
                 tab_dataset = None
             
             # 필터 적용
@@ -2341,7 +2272,7 @@ class MainWindow(QMainWindow):
         
         if file_path:
             current_tab = self.data_tabs.currentWidget()
-            if isinstance(current_tab, QTableWidget):
+            if isinstance(current_tab, QTableView):
                 self.presenter.export_data(Path(file_path), current_tab)
     
     def _remove_tab_safely(self, index: int):
@@ -2694,7 +2625,7 @@ class MainWindow(QMainWindow):
                 dataframe = self.tab_data[tab_index]['dataframe']
                 dataset = self.tab_data[tab_index]['dataset']
                 table = self.data_tabs.widget(tab_index)
-                if isinstance(table, QTableWidget):
+                if isinstance(table, QTableView):
                     # 테이블 재구성
                     self._refresh_table(table, dataframe, dataset)
         
@@ -2711,48 +2642,48 @@ class MainWindow(QMainWindow):
                 dataframe = self.tab_data[tab_index]['dataframe']
                 dataset = self.tab_data[tab_index]['dataset']
                 table = self.data_tabs.widget(tab_index)
-                if isinstance(table, QTableWidget):
+                if isinstance(table, QTableView):
                     # 테이블 재구성
                     self._refresh_table(table, dataframe, dataset)
         
         self.status_label.setText(f"Precision: {precision} decimals")
     
-    def _refresh_table(self, table: QTableWidget, dataframe: pd.DataFrame, dataset=None):
+    def _refresh_table(self, table: QTableView, dataframe: pd.DataFrame, dataset=None):
         """
         테이블 새로고침 (컬럼 레벨 및 정밀도 재적용)
-        
+
         Args:
-            table: QTableWidget
+            table: QTableView
             dataframe: 원본 DataFrame
             dataset: Dataset 객체
         """
         if dataframe is None or dataframe.empty:
             return
-        
+
         # 컬럼 필터링
         columns = self._filter_columns(dataframe.columns.tolist(), dataset)
         filtered_df = dataframe[columns]
-        
-        # 테이블 설정
-        table.clearContents()
-        table.setRowCount(len(filtered_df))
-        table.setColumnCount(len(columns))
-        table.setHorizontalHeaderLabels(columns)
-        
-        # 데이터 채우기
-        for i, row in enumerate(filtered_df.values):
-            for j, value in enumerate(row):
-                # 유효숫자 적용
-                if isinstance(value, float):
-                    formatted_value = f"{value:.{self.decimal_precision}f}"
-                else:
-                    formatted_value = str(value)
-                
-                item = QTableWidgetItem(formatted_value)
-                table.setItem(i, j, item)
-        
-        # 컬럼 크기 자동 조정
-        table.resizeColumnsToContents()
+
+        from models.standard_columns import StandardColumns
+        scientific_columns = {
+            StandardColumns.FDR, StandardColumns.ADJ_PVALUE,
+            StandardColumns.PVALUE, StandardColumns.PVALUE_GO,
+            StandardColumns.QVALUE
+        }
+        scientific_col_names = {col for col in columns if col in scientific_columns}
+
+        model = table.model()
+        # 컬럼 세트가 동일하면 포맷만 갱신(정밀도 변경), 다르면 모델 교체(컬럼레벨 변경)
+        if (isinstance(model, DataFrameTableModel)
+                and list(model.dataframe().columns) == list(columns)):
+            model.set_params(self.decimal_precision, scientific_col_names)
+        else:
+            new_model = DataFrameTableModel(filtered_df, self.decimal_precision,
+                                            scientific_col_names)
+            table.setModel(new_model)
+            table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
+            table.horizontalHeader().setResizeContentsPrecision(200)
+            table.resizeColumnsToContents()
     
     def _on_about(self):
         """About 다이얼로그"""
@@ -3030,43 +2961,13 @@ class MainWindow(QMainWindow):
         # 현재 탭에서 DataFrame 가져오기
         try:
             current_table = self.data_tabs.widget(current_index)
-            if not isinstance(current_table, QTableWidget):
+            model = current_table.model() if isinstance(current_table, QTableView) else None
+            if not isinstance(model, DataFrameTableModel):
                 return
-            
-            # QTableWidget에서 DataFrame으로 변환
-            row_count = current_table.rowCount()
-            col_count = current_table.columnCount()
-            
-            # 헤더 가져오기
-            headers = []
-            for col in range(col_count):
-                header_item = current_table.horizontalHeaderItem(col)
-                if header_item:
-                    headers.append(header_item.text())
-            
-            # 데이터 가져오기
-            data = []
-            for row in range(row_count):
-                row_data = []
-                for col in range(col_count):
-                    item = current_table.item(row, col)
-                    if item:
-                        text = item.text()
-                        # 숫자 변환 시도
-                        try:
-                            if text.lower() == 'nan' or text == '':
-                                row_data.append(None)
-                            else:
-                                row_data.append(float(text))
-                        except ValueError:
-                            row_data.append(text)
-                    else:
-                        row_data.append(None)
-                data.append(row_data)
-            
-            # DataFrame 생성
-            comparison_df = pd.DataFrame(data, columns=headers)
-            
+
+            # 모델의 표시용 DataFrame 사용 (dtype 보존)
+            comparison_df = model.dataframe().copy()
+
             # Dot Plot dialog 생성
             dialog = DotPlotDialog(comparison_df, self)
             dialog.exec()
@@ -3138,6 +3039,49 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Venn Diagram Error",
                                f"Failed to create Venn diagram:\n{str(e)}")
 
+    def _prompt_dataset_selection(self, datasets, title, prompt, min_count=2):
+        """다중 데이터셋 선택 팝업. 선택된 Dataset 리스트 반환, 취소/미달 시 None.
+
+        Args:
+            datasets: 선택 후보 Dataset 리스트
+            title: 다이얼로그 제목
+            prompt: 안내 문구
+            min_count: 최소 선택 개수
+        """
+        from PyQt6.QtWidgets import QDialog, QListWidget, QDialogButtonBox
+
+        select_dialog = QDialog(self)
+        select_dialog.setWindowTitle(title)
+        select_dialog.setMinimumWidth(420)
+
+        layout = QVBoxLayout(select_dialog)
+        layout.addWidget(QLabel(prompt))
+
+        list_widget = QListWidget()
+        list_widget.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        for ds in datasets:
+            list_widget.addItem(ds.name)
+        for i in range(list_widget.count()):
+            list_widget.item(i).setSelected(True)
+        layout.addWidget(list_widget)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(select_dialog.accept)
+        buttons.rejected.connect(select_dialog.reject)
+        layout.addWidget(buttons)
+
+        if select_dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+
+        selected_indices = [list_widget.row(item) for item in list_widget.selectedItems()]
+        if len(selected_indices) < min_count:
+            QMessageBox.warning(self, "Invalid Selection",
+                                f"{min_count}개 이상의 데이터셋을 선택하세요.")
+            return None
+
+        return [datasets[i] for i in selected_indices]
+
     def _on_da_peak_overlap(self):
         """ATAC-seq DA 데이터셋 간 peak_id(좌표) 기반 overlap 분석.
 
@@ -3158,40 +3102,14 @@ class MainWindow(QMainWindow):
             )
             return
 
-        from PyQt6.QtWidgets import QDialog, QListWidget, QDialogButtonBox
-
-        select_dialog = QDialog(self)
-        select_dialog.setWindowTitle("Select ATAC-seq Datasets for Peak Overlap")
-        select_dialog.setMinimumWidth(420)
-
-        layout = QVBoxLayout(select_dialog)
-        layout.addWidget(QLabel(
+        selected_datasets = self._prompt_dataset_selection(
+            atac_datasets,
+            "Select ATAC-seq Datasets for Peak Overlap",
             "비교할 ATAC-seq 데이터셋을 2개 이상 선택하세요.\n"
-            "(같은 peak set/consensus peak에서 나온 결과여야 비교가 유효합니다)"
-        ))
-
-        list_widget = QListWidget()
-        list_widget.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
-        for ds in atac_datasets:
-            list_widget.addItem(ds.name)
-        for i in range(list_widget.count()):
-            list_widget.item(i).setSelected(True)
-        layout.addWidget(list_widget)
-
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        buttons.accepted.connect(select_dialog.accept)
-        buttons.rejected.connect(select_dialog.reject)
-        layout.addWidget(buttons)
-
-        if select_dialog.exec() != QDialog.DialogCode.Accepted:
+            "(같은 peak set/consensus peak에서 나온 결과여야 비교가 유효합니다)",
+        )
+        if selected_datasets is None:
             return
-
-        selected_indices = [list_widget.row(item) for item in list_widget.selectedItems()]
-        if len(selected_indices) < 2:
-            QMessageBox.warning(self, "Invalid Selection", "2개 이상의 데이터셋을 선택하세요.")
-            return
-
-        selected_datasets = [atac_datasets[i] for i in selected_indices]
 
         try:
             if len(selected_datasets) <= 3:
@@ -3204,56 +3122,91 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "DA Peak Overlap Error",
                                f"Failed to create overlap plot:\n{str(e)}")
 
+    def _on_count_summary_requested(self):
+        """여러 DE/DA 데이터셋의 유의 up/down 개수를 누적 막대로 집계."""
+        from models.standard_columns import StandardColumns
+        candidates = [
+            ds for ds in self.presenter.datasets.values()
+            if ds.dataset_type in (DatasetType.DIFFERENTIAL_EXPRESSION, DatasetType.ATAC_SEQ)
+            and ds.dataframe is not None
+            and StandardColumns.LOG2FC in ds.dataframe.columns
+            and StandardColumns.ADJ_PVALUE in ds.dataframe.columns
+        ]
+        if len(candidates) < 2:
+            QMessageBox.warning(
+                self, "Insufficient Datasets",
+                "Count Summary에는 log2FC·adj_pvalue를 가진 DE/DA 데이터셋이 "
+                f"2개 이상 필요합니다. (현재: {len(candidates)}개)"
+            )
+            return
+
+        selected = self._prompt_dataset_selection(
+            candidates,
+            "Select DE/DA Datasets for Count Summary",
+            "집계할 DE/DA 데이터셋을 2개 이상 선택하세요.",
+        )
+        if selected is None:
+            return
+
+        try:
+            from gui.count_summary_dialog import CountSummaryDialog
+            CountSummaryDialog(selected, self).exec()
+        except Exception as e:
+            self.logger.error(f"Failed to create count summary plot: {e}", exc_info=True)
+            QMessageBox.critical(self, "Count Summary Error",
+                               f"Failed to create count summary:\n{str(e)}")
+
+    def _on_annotation_comparison_requested(self):
+        """여러 ATAC 데이터셋의 annotation 분포를 누적 막대로 비교."""
+        from models.standard_columns import StandardColumns
+        candidates = [
+            ds for ds in self.presenter.datasets.values()
+            if ds.dataset_type == DatasetType.ATAC_SEQ
+            and ds.dataframe is not None
+            and StandardColumns.ANNOTATION in ds.dataframe.columns
+            and not ds.dataframe[StandardColumns.ANNOTATION].isna().all()
+        ]
+        if len(candidates) < 2:
+            QMessageBox.warning(
+                self, "Insufficient Datasets",
+                "Annotation Comparison에는 'annotation' 컬럼을 가진 ATAC-seq 데이터셋이 "
+                f"2개 이상 필요합니다. (현재: {len(candidates)}개)"
+            )
+            return
+
+        selected = self._prompt_dataset_selection(
+            candidates,
+            "Select ATAC-seq Datasets for Annotation Comparison",
+            "비교할 ATAC-seq 데이터셋을 2개 이상 선택하세요.",
+        )
+        if selected is None:
+            return
+
+        try:
+            from gui.annotation_comparison_dialog import AnnotationComparisonDialog
+            AnnotationComparisonDialog(selected, self).exec()
+        except Exception as e:
+            self.logger.error(f"Failed to create annotation comparison plot: {e}", exc_info=True)
+            QMessageBox.critical(self, "Annotation Comparison Error",
+                               f"Failed to create annotation comparison:\n{str(e)}")
+
     def _create_venn_from_comparison_sheet(self):
         """Comparison sheet에서 Venn diagram 생성"""
         try:
             # 현재 테이블에서 데이터 가져오기
             current_table = self.data_tabs.currentWidget()
-            if not current_table:
+            model = current_table.model() if isinstance(current_table, QTableView) else None
+            if not isinstance(model, DataFrameTableModel):
                 QMessageBox.warning(self, "No Data", "No comparison data available.")
                 return
-            
-            # 테이블 데이터를 DataFrame으로 변환
-            row_count = current_table.rowCount()
-            col_count = current_table.columnCount()
-            
-            if row_count == 0:
+
+            if model.rowCount() == 0:
                 QMessageBox.warning(self, "No Data", "Comparison sheet is empty.")
                 return
-            
-            # 헤더 읽기
-            headers = []
-            for col in range(col_count):
-                header_item = current_table.horizontalHeaderItem(col)
-                if header_item:
-                    headers.append(header_item.text())
-                else:
-                    headers.append(f"Column_{col}")
-            
-            # 데이터 읽기
-            data = []
-            for row in range(row_count):
-                row_data = []
-                for col in range(col_count):
-                    item = current_table.item(row, col)
-                    if item:
-                        text = item.text()
-                        # 숫자 변환 시도
-                        try:
-                            # nan 체크
-                            if text.lower() == 'nan' or text == '':
-                                row_data.append(None)
-                            else:
-                                row_data.append(float(text))
-                        except ValueError:
-                            row_data.append(text)
-                    else:
-                        row_data.append(None)
-                data.append(row_data)
-            
-            # DataFrame 생성
-            comparison_df = pd.DataFrame(data, columns=headers)
-            
+
+            # 모델의 표시용 DataFrame 사용 (dtype 보존)
+            comparison_df = model.dataframe().copy()
+
             # Venn dialog 생성
             dialog = VennDiagramFromComparisonDialog(comparison_df, self)
             dialog.exec()
@@ -3276,29 +3229,35 @@ class MainWindow(QMainWindow):
             self._paste_selection(table)
         else:
             # 기본 동작 수행
-            QTableWidget.keyPressEvent(table, event)
-    
+            QTableView.keyPressEvent(table, event)
+
     def _copy_selection(self, table):
         """선택된 셀들을 클립보드에 복사 (Excel 형식)"""
-        selection = table.selectedRanges()
-        if not selection:
+        model = table.model()
+        sel_model = table.selectionModel()
+        if model is None or sel_model is None:
             return
-        
-        # 선택된 영역의 모든 셀 데이터 수집
+        indexes = sel_model.selectedIndexes()
+        if not indexes:
+            return
+
+        # 선택된 셀을 (행, 열)로 그룹핑 — selectedIndexes()는 순서를 보장하지 않음
+        cells = {}
+        for idx in indexes:
+            cells.setdefault(idx.row(), {})[idx.column()] = \
+                model.data(idx, Qt.ItemDataRole.DisplayRole) or ""
+
         copied_data = []
-        for sel_range in selection:
-            for row in range(sel_range.topRow(), sel_range.bottomRow() + 1):
-                row_data = []
-                for col in range(sel_range.leftColumn(), sel_range.rightColumn() + 1):
-                    item = table.item(row, col)
-                    row_data.append(item.text() if item else "")
-                copied_data.append("\t".join(row_data))
-        
+        for row in sorted(cells):
+            row_cells = cells[row]
+            row_data = [str(row_cells[col]) for col in sorted(row_cells)]
+            copied_data.append("\t".join(row_data))
+
         # 클립보드에 복사 (탭으로 열 구분, 줄바꿈으로 행 구분)
         clipboard_text = "\n".join(copied_data)
         from PyQt6.QtWidgets import QApplication
         QApplication.clipboard().setText(clipboard_text)
-        
+
         self.logger.info(f"Copied {len(copied_data)} rows to clipboard")
     
     def _paste_selection(self, table):
@@ -4638,8 +4597,8 @@ class MainWindow(QMainWindow):
             current_index = self.data_tabs.currentIndex()
             if current_index >= 0:
                 current_table = self.data_tabs.widget(current_index)
-                if isinstance(current_table, QTableWidget):
-                    col_count = current_table.columnCount()
+                if isinstance(current_table, QTableView) and current_table.model() is not None:
+                    col_count = current_table.model().columnCount()
                     col_widths = []
                     for col in range(col_count):
                         col_widths.append(current_table.columnWidth(col))
@@ -4670,12 +4629,15 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.logger.error(f"Failed to restore UI settings: {e}")
     
-    def _restore_table_column_widths(self, table: QTableWidget):
+    def _restore_table_column_widths(self, table: QTableView):
         """테이블 컬럼 너비 복원"""
         try:
+            model = table.model()
+            if model is None:
+                return
             col_widths = self.settings.value("tableColumnWidths")
             if col_widths and isinstance(col_widths, list):
-                col_count = min(table.columnCount(), len(col_widths))
+                col_count = min(model.columnCount(), len(col_widths))
                 for col in range(col_count):
                     if col < len(col_widths):
                         # QSettings가 str로 저장할 수 있으므로 int로 변환
@@ -4684,7 +4646,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.logger.error(f"Failed to restore column widths: {e}")
     
-    def _show_table_context_menu(self, table: QTableWidget, pos):
+    def _show_table_context_menu(self, table: QTableView, pos):
         """
         테이블 셀 우클릭 시 컨텍스트 메뉴 표시
         Gene symbol/ID, GO term, KEGG pathway에 대한 외부 데이터베이스 링크 제공
@@ -4694,27 +4656,30 @@ class MainWindow(QMainWindow):
         from PyQt6.QtCore import QUrl
 
         # 클릭된 셀 찾기
-        item = table.itemAt(pos)
-        if not item:
+        index = table.indexAt(pos)
+        if not index.isValid():
             return
 
-        row = item.row()
-        col = item.column()
+        model = table.model()
+        if not isinstance(model, DataFrameTableModel):
+            return
 
-        # 정렬 후에도 올바른 DataFrame 행을 찾기 위해 원본 인덱스를 UserRole에서 가져옴
-        original_row = item.data(Qt.ItemDataRole.UserRole)
-        if original_row is None:
-            original_row = row  # populate_table이 호출되기 전 행일 경우 fallback
+        row = index.row()
+        col = index.column()
+
+        # 정렬 후에도 올바른 DataFrame 행을 찾기 위해 원본 위치 인덱스를 모델에서 가져옴
+        original_row = model.source_row(row)
 
         # 컬럼 헤더 이름 가져오기
-        header_item = table.horizontalHeaderItem(col)
-        if not header_item:
+        header = model.headerData(col, Qt.Orientation.Horizontal,
+                                  Qt.ItemDataRole.DisplayRole)
+        if header is None:
             return
 
-        column_name = header_item.text().lower()
+        column_name = str(header).lower()
 
         # 셀 값 가져오기
-        cell_text = item.text().strip()
+        cell_text = str(model.data(index, Qt.ItemDataRole.DisplayRole) or "").strip()
 
         # 컬럼 타입 감지
         is_gene_column = any(keyword in column_name for keyword in

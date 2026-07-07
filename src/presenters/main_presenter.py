@@ -964,24 +964,11 @@ class MainPresenter(QObject):
         self.view.data_tabs.setCurrentWidget(table)
     
     def _table_to_dataframe(self, table_widget) -> pd.DataFrame:
-        """QTableWidget를 DataFrame으로 변환"""
-        rows = table_widget.rowCount()
-        cols = table_widget.columnCount()
-        
-        # 헤더
-        headers = [table_widget.horizontalHeaderItem(i).text() 
-                  for i in range(cols)]
-        
-        # 데이터
-        data = []
-        for i in range(rows):
-            row_data = []
-            for j in range(cols):
-                item = table_widget.item(i, j)
-                row_data.append(item.text() if item else "")
-            data.append(row_data)
-        
-        return pd.DataFrame(data, columns=headers)
+        """QTableView의 모델 DataFrame을 반환 (표시 컬럼·정렬 순서 반영, dtype 보존)"""
+        model = table_widget.model()
+        if model is not None and hasattr(model, 'dataframe'):
+            return model.dataframe().copy()
+        return pd.DataFrame()
     
     def _save_analysis_log(self, analysis_type: str, gene_list: List[str], 
                           result: dict, adj_pvalue_cutoff: float, log2fc_cutoff: float):

@@ -11,12 +11,7 @@ from PyQt6.QtCore import Qt
 
 from models.data_models import Dataset
 from gui.base_plot_dialog import BasePlotDialog
-
-_ANNOTATION_COLORS = [
-    '#4e79a7', '#f28e2b', '#e15759', '#76b7b2',
-    '#59a14f', '#edc948', '#b07aa1', '#ff9da7',
-    '#9c755f', '#bab0ac',
-]
+from utils.annotation_categories import normalize_annotation, color_for_category
 
 
 class GenomicDistributionDialog(BasePlotDialog):
@@ -42,19 +37,6 @@ class GenomicDistributionDialog(BasePlotDialog):
 
     # ── Plot ──────────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _normalize_annotation(raw: str) -> str:
-        """
-        HOMER/ChIPseeker 형식의 세부 annotation 문자열을 대분류로 정규화.
-        예) "intron (ENSMUSG00000092329, intron 1 of 15)" → "Intron"
-            "Promoter-TSS (Gata1)" → "Promoter-TSS"
-            "Intergenic" → "Intergenic"
-        """
-        if not isinstance(raw, str):
-            return "Unknown"
-        category = raw.split('(')[0].strip()
-        return category[0].upper() + category[1:] if category else "Unknown"
-
     def _do_plot(self):
         self.figure.clear()
         ax = self.figure.add_subplot(111)
@@ -73,7 +55,7 @@ class GenomicDistributionDialog(BasePlotDialog):
             return
 
         df = self.dataset.dataframe
-        normalized = df['annotation'].dropna().map(self._normalize_annotation)
+        normalized = df['annotation'].dropna().map(normalize_annotation)
         counts = normalized.value_counts()
 
         if len(counts) > 9:
@@ -83,7 +65,7 @@ class GenomicDistributionDialog(BasePlotDialog):
 
         labels = counts.index.tolist()
         sizes = counts.values.tolist()
-        colors = (_ANNOTATION_COLORS * ((len(labels) // len(_ANNOTATION_COLORS)) + 1))[:len(labels)]
+        colors = [color_for_category(lbl, i) for i, lbl in enumerate(labels)]
 
         wedges, texts, autotexts = ax.pie(
             sizes,

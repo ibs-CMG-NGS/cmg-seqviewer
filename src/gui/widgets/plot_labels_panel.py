@@ -25,6 +25,7 @@ class PlotLabelsPanel(QWidget):
 
     LEGEND_POSITIONS = [
         'best',
+        'outside right',
         'upper right', 'upper left',
         'lower right', 'lower left',
         'center left', 'center right',
@@ -151,7 +152,15 @@ class PlotLabelsPanel(QWidget):
         handles, _ = ax.get_legend_handles_labels()
         if self.legend_check.isChecked():
             if handles:
-                ax.legend(loc=self.legend_pos_combo.currentText())
+                pos = self.legend_pos_combo.currentText()
+                if pos == 'outside right':
+                    # 플롯 영역 밖 우측에 배치 → 막대/데이터를 가리지 않음.
+                    # 범례 공간 확보를 위해 축 우측 여백을 줄인다.
+                    ax.legend(loc='center left', bbox_to_anchor=(1.02, 0.5),
+                              fontsize='small')
+                    ax.figure.subplots_adjust(right=0.78)
+                else:
+                    ax.legend(loc=pos)
         else:
             legend = ax.get_legend()
             if legend is not None:
