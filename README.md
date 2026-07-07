@@ -11,6 +11,22 @@
 
 **CMG-SeqViewer** is a desktop application for multi-omics data analysis and visualization. It supports RNA-seq differential expression (DE), ATAC-seq differential accessibility (DA), and GO/KEGG pathway enrichment results. Built with Python and PyQt6, it provides an Excel-like interface for biologists to explore genomic data without programming.
 
+![CMG-SeqViewer main window](docs/images/main-window.png)
+
+*Main window — dataset tree, filter/compare panel, and the Excel-like data view.*
+
+---
+
+## Screenshots
+
+| Volcano plot | Venn diagram |
+|---|---|
+| ![Volcano plot](docs/images/volcano-plot.png) | ![Venn diagram](docs/images/venn-diagram.png) |
+| Interactive DE/DA visualization with adjustable thresholds | Gene / peak overlap across multiple datasets |
+
+> Screenshots live in [`docs/images/`](docs/images/). To refresh them, capture the
+> relevant window (PNG) and overwrite the file of the same name.
+
 ---
 
 ## Latest Update: v1.2.3 (Jun 2026)
