@@ -673,7 +673,8 @@ pipeline_run_2026-03-12/
 
         <h2>Visualizations (Multi-Omics only)</h2>
         <p>When a Multi-Omics integrated tab is active, the following are available
-        under <b>Visualization</b>:</p>
+        under the <b>Visualization &rarr; 🔗 RNA-ATAC Integration</b> submenu
+        (formerly labeled &ldquo;Multi-Omics&rdquo;):</p>
         <ul>
             <li><b>◈ Quadrant Plot</b> — RNA log2FC (Y) vs ATAC log2FC (X), colored by concordance</li>
             <li><b>🔥 Concordance Heatmap</b> — genes × [RNA_log2FC, ATAC_log2FC] with concordance sidebar</li>
@@ -752,7 +753,20 @@ pipeline_run_2026-03-12/
         """Visualization section"""
         return """
         <h1>7. Visualization</h1>
-        
+
+        <p>The <b>Visualization</b> menu is organized into groups. General single-dataset
+        plots (Volcano, P-adj Histogram, Heatmap, PCA, Gene Expression Bar) sit at the top;
+        the rest are grouped into submenus:</p>
+        <ul>
+            <li><b>🧬 GO/KEGG Enrichment</b> &mdash; Dot Plot, Bar Chart, Cluster Dot Plot</li>
+            <li><b>🔓 ATAC-seq</b> &mdash; Genomic Distribution, TSS Distance, MA Plot,
+                TF Motif, TF Footprint, chromVAR (enabled when an ATAC tab is active)</li>
+            <li><b>🧩 Cross-Dataset Comparison</b> &mdash; plots that combine
+                <i>multiple</i> datasets (see below)</li>
+            <li><b>🔗 RNA-ATAC Integration</b> &mdash; the former &ldquo;Multi-Omics&rdquo; plots
+                (Quadrant, Concordance Heatmap/Bar, Integrated Volcano)</li>
+        </ul>
+
         <h2>Volcano Plot</h2>
         <p>Visualize differential expression with log2FC vs. -log10(padj):</p>
         <ul>
@@ -845,10 +859,60 @@ pipeline_run_2026-03-12/
                 mean / SD / SEM / n + p-value table (CSV / Excel)</li>
         </ul>
 
+        <h2>Cross-Dataset Comparison (Multiple Datasets)</h2>
+        <p>The <b>Visualization &rarr; 🧩 Cross-Dataset Comparison</b> submenu groups every
+        plot that aggregates <i>several</i> loaded datasets at once. You do <b>not</b> need to
+        pre-build filtered tabs &mdash; when you pick one of these, a <b>selection popup</b>
+        lists the eligible datasets; check the ones to include (2 or more) and the chart
+        computes directly from the raw data.</p>
+        <ul>
+            <li><b>⚫ Dot Plot / ⭕ Venn Diagram (Comparison sheet)</b> &mdash; driven by a
+                <em>Comparison</em> result sheet (see section 10)</li>
+            <li><b>🔗 DA Peak Overlap (ATAC-seq)</b> &mdash; peak-ID overlap across ATAC
+                datasets: Venn (2&ndash;3) or UpSet (4+)</li>
+            <li><b>📊 DE/DA Count Summary (stacked)</b> &mdash; see below</li>
+            <li><b>🧬 Genomic Annotation Comparison (ATAC-seq)</b> &mdash; see below</li>
+        </ul>
+
+        <h3>DE/DA Count Summary</h3>
+        <p>Stacked bar of significant <b>up</b> vs <b>down</b> counts per dataset &mdash; a
+        quick "how many DEGs / DA-peaks in each condition" summary across experiments.</p>
+        <ul>
+            <li>Works for DE and ATAC (DA) datasets (both use <code>log2fc</code> +
+                <code>adj_pvalue</code>)</li>
+            <li>Up-regulated bars rise above 0 (red), down-regulated fall below 0 (blue)</li>
+            <li><b>In-dialog thresholds:</b> <code>FDR &le;</code> and <code>|log2FC| &ge;</code>
+                (down to 3 decimals, e.g. 0.585) &mdash; change them to re-aggregate instantly,
+                using the same rule as the statistical filter</li>
+            <li><b>Show as % of total</b> toggle; <b>Export Data</b> writes the
+                up/down/total table (CSV / TSV / Excel)</li>
+        </ul>
+
+        <h3>Genomic Annotation Comparison (ATAC-seq)</h3>
+        <p>Compares the genomic-feature composition of peaks (Promoter, Exon, Intron, UTR,
+        Intergenic, &hellip;) across multiple ATAC datasets. Three display modes:</p>
+        <ul>
+            <li><b>Counts</b> / <b>Proportion (%)</b> &mdash; one stacked bar per dataset</li>
+            <li><b>Enrichment (log2 sig/all)</b> &mdash; grouped bars of
+                log&#8322;(significant proportion &divide; all-peaks proportion) per feature.
+                <b>0</b> = same as background, <b>positive</b> = significant peaks are
+                <i>enriched</i> in that feature, <b>negative</b> = depleted. This is the
+                clearest view of <i>which genomic features the changes concentrate in</i>.</li>
+            <li><b>Peak set:</b> <b>Significant only</b> (default) or <b>All peaks</b>. Note:
+                if datasets share one consensus peak set, the <i>All peaks</i> distribution is
+                nearly identical across them (it only serves as the background reference) &mdash;
+                use <i>Significant only</i> or <i>Enrichment</i> to compare conditions.</li>
+            <li>In-dialog <code>FDR</code> / <code>|log2FC|</code> thresholds define
+                "significant"; <b>Export Data</b> saves the category&times;dataset matrix</li>
+        </ul>
+
         <h2>Common Features (All Plots)</h2>
         <ul>
             <li><b>High z-order:</b> Tooltips always appear above plot elements and colorbars</li>
             <li><b>Matplotlib toolbar:</b> Pan, zoom, home, back, forward, save image</li>
+            <li><b>Legend position:</b> the Plot Labels panel includes an
+                <b>outside right</b> option that places the legend beside the plot so it never
+                covers the data (useful for stacked bars with many categories)</li>
         </ul>
 
         <h2>📌 Pin to Tab</h2>
