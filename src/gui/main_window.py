@@ -16,6 +16,7 @@ from PyQt6.QtGui import QAction, QIcon, QFont, QActionGroup, QPixmap
 import logging
 from pathlib import Path
 from typing import Optional, List, Dict
+import numpy as np
 import pandas as pd
 
 from core.fsm import FSM, State, Event
@@ -862,7 +863,14 @@ class MainWindow(QMainWindow):
             StandardColumns.PVALUE, StandardColumns.PVALUE_GO,
             StandardColumns.QVALUE
         }
-        scientific_col_names = {col for col in columns if col in scientific_columns}
+        # p-value 계열은 매우 작은 값이 많아 scientific notation으로 표시.
+        # Comparison 시트의 {DS}_padj / meta_pvalue_* 컬럼도 포함.
+        scientific_col_names = {
+            col for col in columns
+            if col in scientific_columns
+            or col.startswith('meta_pvalue')
+            or col.endswith('_padj') or col.endswith('_pvalue')
+        }
 
         # 모델 세팅 — 셀 객체를 만들지 않고 DataFrame을 직접 백엔드로 사용 (가상화)
         model = DataFrameTableModel(filtered_df, self.decimal_precision, scientific_col_names)
@@ -1998,12 +2006,43 @@ class MainWindow(QMainWindow):
             f"GO term comparison: {len(result_df)} terms across {len(datasets)} datasets"
         )
 
+    def _full_gene_stats(self, df) -> dict:
+        """필터 이전 전체 df에서 유전자 식별자 → (log2fc, padj) 조회표.
+
+        메타 분석은 '유의한 데이터셋'만이 아니라 유전자가 검정된 모든 데이터셋의
+        통계를 결합해야 편향이 없으므로, 필터링 이전 전체 데이터를 사용한다.
+        symbol과 gene_id 양쪽을 키로 등록(첫 등장 우선)해 데이터셋 간 식별자
+        표기가 달라도 매칭되도록 한다.
+        """
+        if df is None or df.empty:
+            return {}
+        lfc_col = next((c for c in ('log2FC', 'log2fc', 'log2FoldChange', 'Log2FoldChange')
+                        if c in df.columns), None)
+        padj_col = next((c for c in ('padj', 'adj_pvalue', 'Padj') if c in df.columns), None)
+        if lfc_col is None or padj_col is None:
+            return {}
+        lfc = pd.to_numeric(df[lfc_col], errors='coerce').to_numpy()
+        padj = pd.to_numeric(df[padj_col], errors='coerce').to_numpy()
+        n = len(df)
+        sym = df['symbol'].astype(str).to_numpy() if 'symbol' in df.columns else np.full(n, '')
+        gid = df['gene_id'].astype(str).to_numpy() if 'gene_id' in df.columns else np.full(n, '')
+        out = {}
+        for s, g, a, b in zip(sym, gid, lfc, padj):
+            for key in (s, g):
+                if key and key != 'nan' and key not in out:
+                    out[key] = (a, b)
+        return out
+
     def _compare_statistics(self, datasets):
         """Statistics 필터링 비교 - Common/Unique 표시"""
+        from utils.meta_stats import combine_pvalues
         criteria = self.filter_panel.get_filter_criteria()
-        
+
         self.logger.info(f"Statistics comparison: log2FC >= {criteria.log2fc_min}, padj <= {criteria.adj_pvalue_max}")
-        
+
+        # 메타 통계용: 필터 이전 전체 데이터셋의 유전자별 (log2fc, padj) 조회표
+        full_lookup = {ds.name: self._full_gene_stats(ds.dataframe) for ds in datasets}
+
         # 각 데이터셋에 통계 필터 적용
         dataset_dfs = {}
         dataset_genes = {}
@@ -2192,13 +2231,33 @@ class MainWindow(QMainWindow):
                 else:
                     row[f'{dataset_name}_log2FC'] = None
                     row[f'{dataset_name}_padj'] = None
-            
+
+            # 메타 통계: 유전자가 검정된 모든 데이터셋의 (log2fc, padj)를 결합
+            gm = gene_mapping[identifier]
+            m_pvals, m_lfcs = [], []
+            for ds in datasets:
+                stats = full_lookup.get(ds.name, {})
+                v = stats.get(gm['symbol']) or stats.get(gm['gene_id'])
+                if v is not None:
+                    lfc_v, padj_v = v
+                    m_pvals.append(padj_v)
+                    m_lfcs.append(lfc_v)
+            meta = combine_pvalues(m_pvals, m_lfcs)
+            if meta:
+                row['meta_pvalue_fisher'] = meta['meta_pvalue_fisher']
+                row['meta_pvalue_stouffer'] = meta['meta_pvalue_stouffer']
+                row['meta_log2fc_mean'] = meta['meta_log2fc_mean']
+                row['meta_direction'] = meta['meta_direction']
+                row['meta_found_in'] = f"{meta['meta_found_in']}/{len(datasets)}"
+
             result_rows.append(row)
-        
+
         result_df = pd.DataFrame(result_rows)
-        
-        # 컬럼 순서 정렬: gene_id, symbol, Status, Found_in, D1_log2FC, D1_padj, ...
-        ordered_columns = ['gene_id', 'symbol', 'Status', 'Found_in']
+
+        # 컬럼 순서 정렬: gene_id, symbol, Status, Found_in, 메타 통계, D1_log2FC, D1_padj, ...
+        ordered_columns = ['gene_id', 'symbol', 'Status', 'Found_in',
+                           'meta_pvalue_fisher', 'meta_pvalue_stouffer',
+                           'meta_log2fc_mean', 'meta_direction', 'meta_found_in']
         dataset_names = list(dataset_dfs.keys())
         for dataset_name in dataset_names:
             ordered_columns.append(f'{dataset_name}_log2FC')
