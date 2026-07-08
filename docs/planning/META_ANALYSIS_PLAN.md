@@ -9,8 +9,8 @@
 |---|---|---|
 | **M1** Fisher/Stouffer 메타 통계 컬럼 (유전자 수준) | ✅ **완료** | `08585b1`, `a591977` |
 | **M3** 메타 Volcano Plot | ✅ **완료** | `8602121` |
+| **M4a** GO/pathway term 수준 메타 (late aggregation) | ✅ **완료** | `<this>` |
 | **M2** Cross-species ortholog 매핑 | ⬜ 미착수 | — |
-| **M4a** GO/pathway term 수준 메타 (late aggregation) | ⬜ 미착수 (엔진 무관, 저비용) | — |
 | **M4b** meta-signature → enrichment (early aggregation) | ⬜ 미착수 (online enrichment 엔진 의존) | — |
 
 **구현된 것 (M1+M3):**
@@ -166,8 +166,14 @@ M1/M3은 **유전자 수준** 결합이다. 실무에서 가장 흔한 모듈은
    상당 부분 가능. 반면 A는 종이 다르면 **M2로 공통 유전자 공간 매핑 후** meta-signature → enrichment
    (사슬: **M2 → M4b**).
 
-### M4a — GO/pathway term 수준 late aggregation (B)  ⬜ 엔진 무관, 저비용
+### M4a — GO/pathway term 수준 late aggregation (B)  ✅ 완료
 **우선순위: 중간 | 난이도: 낮음**
+
+> **구현 노트:** `_compare_go_terms`가 term별 raw `pvalue` + log2(fold enrichment)를 수집해
+> `combine_pvalues`로 결합 → `meta_pvalue_fisher / meta_fdr_fisher / meta_pvalue_stouffer /
+> meta_log2fe_mean / meta_direction / meta_found_in` 추가(BH는 `benjamini_hochberg`). effect를
+> log2(FE)로 주어 방향(enriched/depleted)이 자연스럽게 반영됨. **Meta Volcano가 term 수준을
+> 자동 인식**(x=meta_log2fe_mean)해 유전자/term 겸용. 헤드리스 검증: 신경 관련 term이 일관 상위.
 
 - 대상: `Comparison: GO Terms` 시트(또는 GO Term Comparison 와이드 테이블). GO parquet엔 term별
   raw `pvalue`가 이미 있다(fdr/qvalue와 별도) → 그 값을 결합.
@@ -202,8 +208,8 @@ M1/M3은 **유전자 수준** 결합이다. 실무에서 가장 흔한 모듈은
 |---|---|---|---|---|---|
 | M1 | Fisher/Stouffer 메타 통계 (유전자) | ★☆☆ | scipy(기존) | 1 | ✅ 완료 |
 | M3 | 메타 Volcano Plot | ★☆☆ | M1 | 2 | ✅ 완료 |
-| M4a | GO term 수준 메타 (late) | ★☆☆ | meta_stats 재사용 | 3 | ⬜ |
-| M2 | Cross-species ortholog | ★★☆ | 번들 CSV | 4 | ⬜ |
+| M4a | GO term 수준 메타 (late) | ★☆☆ | meta_stats 재사용 | 3 | ✅ 완료 |
+| M2 | Cross-species ortholog | ★★☆ | 번들 CSV | 4 | ⬜ 다음 |
 | M4b | meta-signature → enrichment (early) | ★☆☆ | **online enrichment 엔진** | 엔진과 동시 | ⬜ |
 
 ## 검증
@@ -212,7 +218,8 @@ M1/M3은 **유전자 수준** 결합이다. 실무에서 가장 흔한 모듈은
    일관 신호 유전자가 상위에 오는지. (헤드리스 검증 완료: 673행 비교 테이블에 메타 5컬럼, 방향성 로직 정확)
 2. **M3** ✅: 비교 시트에서 Meta Volcano → `meta_found_in ≥ K` 필터 → Export 동작.
    (헤드리스 검증 완료: 589점 렌더, Fisher↔Stouffer 전환, 임계값 필터 정상)
-3. **M4a** ⬜: GO 데이터셋 2–3개로 GO Term Comparison → term별 `meta_pvalue_fisher`/`meta_fdr_fisher`
-   확인 → 일관 enriched term이 상위에 오는지.
+3. **M4a** ✅: GO 데이터셋 2–3개로 GO Term Comparison → term별 `meta_pvalue_fisher`/`meta_fdr_fisher`
+   확인 → 일관 enriched term이 상위에 오는지. (헤드리스 검증 완료: 40 term 결합, FDR≥raw p, 신경 term 상위,
+   Meta Volcano term 모드 자동 전환)
 4. **M2** ⬜: human DE + mouse DE 혼합 → Cross-species 체크 → 인간 심볼로 통합, 매핑 실패 경고
 5. **M4b** ⬜: Comparison: Statistics 시트에서 meta-DEG를 enrichment 입력으로 → 보존 시그니처 패스웨이 도출

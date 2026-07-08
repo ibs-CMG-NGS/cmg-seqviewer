@@ -98,13 +98,21 @@ class MetaVolcanoDialog(BasePlotDialog):
         except (ValueError, TypeError):
             return 0
 
+    def _xcol(self) -> str:
+        """유전자 수준(meta_log2fc_mean) 또는 term 수준(meta_log2fe_mean) X축."""
+        if 'meta_log2fc_mean' in self.df.columns:
+            return 'meta_log2fc_mean'
+        if 'meta_log2fe_mean' in self.df.columns:
+            return 'meta_log2fe_mean'
+        return ''
+
     def _prepare(self) -> pd.DataFrame:
         pcol = _P_SOURCES[self._psrc_combo.currentText()]
-        need = {pcol, 'meta_log2fc_mean'}
-        if not need.issubset(self.df.columns):
+        xcol = self._xcol()
+        if not xcol or pcol not in self.df.columns:
             return pd.DataFrame()
         d = self.df.copy()
-        d['_x'] = pd.to_numeric(d['meta_log2fc_mean'], errors='coerce')
+        d['_x'] = pd.to_numeric(d[xcol], errors='coerce')
         d['_p'] = pd.to_numeric(d[pcol], errors='coerce')
         d = d[d['_x'].notna() & d['_p'].notna()].copy()
         if 'meta_found_in' in d.columns:
@@ -159,7 +167,8 @@ class MetaVolcanoDialog(BasePlotDialog):
         # 상위 N개 라벨 (유의 유전자 중 p-value 작은 순)
         topn = self._topn_spin.value()
         if topn > 0:
-            label_col = 'symbol' if 'symbol' in d.columns else ('gene_id' if 'gene_id' in d.columns else None)
+            label_col = next((c for c in ('symbol', 'gene_id', 'description', 'term_id')
+                              if c in d.columns), None)
             if label_col:
                 top = d[sig].nsmallest(topn, '_p')
                 for _, r in top.iterrows():
@@ -169,9 +178,11 @@ class MetaVolcanoDialog(BasePlotDialog):
                                     xytext=(3, 3), textcoords='offset points')
 
         src = self._psrc_combo.currentText()
-        ax.set_xlabel("Mean log2 fold change")
+        is_term = self._xcol() == 'meta_log2fe_mean'
+        ax.set_xlabel("Mean log2 fold enrichment" if is_term else "Mean log2 fold change")
         ax.set_ylabel(f"-log10(meta p-value, {src})")
-        ax.set_title("Meta Volcano — cross-dataset consistency",
+        unit = "term" if is_term else "gene"
+        ax.set_title(f"Meta Volcano — cross-dataset {unit} consistency",
                      fontsize=12, fontweight='bold')
         ax.legend(fontsize=7, loc='upper right', framealpha=0.9)
 
@@ -191,7 +202,8 @@ class MetaVolcanoDialog(BasePlotDialog):
         )
         if not path:
             return
-        keep = [c for c in ('gene_id', 'symbol', 'mean_log2fc', 'meta_p', 'neg_log10_p',
+        keep = [c for c in ('gene_id', 'symbol', 'term_id', 'description',
+                            'mean_log2fc', 'meta_p', 'neg_log10_p',
                             'meta_direction', 'meta_found_in') if c in self._plot_df.columns]
         out = self._plot_df[keep] if keep else self._plot_df
         try:

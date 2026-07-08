@@ -873,7 +873,7 @@ class MainWindow(QMainWindow):
             col for col in columns
             if col in scientific_columns
             or col.startswith('meta_pvalue') or col.startswith('meta_fdr')
-            or col.endswith('_padj') or col.endswith('_pvalue')
+            or col.endswith('_padj') or col.endswith('_pvalue') or col.endswith('_fdr')
         }
 
         # 모델 세팅 — 셀 객체를 만들지 않고 DataFrame을 직접 백엔드로 사용 (가상화)
@@ -1950,11 +1950,16 @@ class MainWindow(QMainWindow):
                                     "No GO/KEGG terms found in selected datasets.")
             return
 
+        # 메타 결합엔 raw enrichment p-value 사용, 방향(부호)은 log2(fold enrichment)
+        pval_col = StandardColumns.PVALUE
+        from utils.meta_stats import combine_pvalues, benjamini_hochberg
+
         # Wide-format DataFrame 조립
         rows = []
         for tid, meta in term_meta.items():
             row = {'term_id': tid, 'description': meta['description'],
                    'ontology': meta['ontology']}
+            m_pvals, m_effects = [], []   # term 수준 late aggregation 입력
             for ds, safe in zip(datasets, safe_names):
                 df = ds.dataframe
                 if df is None or tid_col not in df.columns:
@@ -1969,19 +1974,42 @@ class MainWindow(QMainWindow):
                     row[f"{safe}_gene_count"] = None
                 else:
                     first = match.iloc[0]
-                    row[f"{safe}_fe"]         = first[fe_col]  if fe_col  in df.columns else None
+                    fe_v = first[fe_col] if fe_col in df.columns else None
+                    row[f"{safe}_fe"]         = fe_v
                     row[f"{safe}_fdr"]        = first[fdr_col] if fdr_col in df.columns else None
                     row[f"{safe}_gene_count"] = first[gc_col]  if gc_col  in df.columns else None
+                    # 이 term이 검정된 데이터셋의 raw p + log2(FE) 수집
+                    if pval_col in df.columns:
+                        p_v = pd.to_numeric(first[pval_col], errors='coerce')
+                        fe_num = pd.to_numeric(fe_v, errors='coerce')
+                        eff = float(np.log2(fe_num)) if (np.isfinite(fe_num) and fe_num > 0) else np.nan
+                        m_pvals.append(p_v)
+                        m_effects.append(eff)
+
+            meta_res = combine_pvalues(m_pvals, m_effects)
+            if meta_res:
+                row['meta_pvalue_fisher']   = meta_res['meta_pvalue_fisher']
+                row['meta_pvalue_stouffer'] = meta_res['meta_pvalue_stouffer']
+                row['meta_log2fe_mean']     = meta_res['meta_log2fc_mean']
+                row['meta_direction']       = meta_res['meta_direction']
+                row['meta_found_in']        = f"{meta_res['meta_found_in']}/{len(datasets)}"
             rows.append(row)
 
         result_df = pd.DataFrame(rows)
 
-        # 컬럼 순서 정렬
+        # 메타 FDR: Fisher 결합 p를 term 전체에 대해 BH 보정
+        if 'meta_pvalue_fisher' in result_df.columns:
+            result_df['meta_fdr_fisher'] = benjamini_hochberg(
+                pd.to_numeric(result_df['meta_pvalue_fisher'], errors='coerce').to_numpy())
+
+        # 컬럼 순서 정렬: term 정보 → 메타 통계 → 데이터셋별 지표
         base_cols = ['term_id', 'description', 'ontology']
+        meta_cols = ['meta_pvalue_fisher', 'meta_fdr_fisher', 'meta_pvalue_stouffer',
+                     'meta_log2fe_mean', 'meta_direction', 'meta_found_in']
         ds_cols   = []
         for safe in safe_names:
             ds_cols += [f"{safe}_fe", f"{safe}_fdr", f"{safe}_gene_count"]
-        result_df = result_df[[c for c in base_cols + ds_cols if c in result_df.columns]]
+        result_df = result_df[[c for c in base_cols + meta_cols + ds_cols if c in result_df.columns]]
 
         # Dataset 객체 생성 (is_go_comparison 플래그)
         tab_name = f"Comparison: GO Terms ({len(datasets)} datasets)"
