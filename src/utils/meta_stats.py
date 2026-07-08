@@ -13,13 +13,37 @@ import numpy as np
 from scipy import stats as st
 
 
+def benjamini_hochberg(pvals: Sequence[float]) -> np.ndarray:
+    """Benjamini-Hochberg FDR 보정. NaN은 그대로 통과.
+
+    메타 p-value(예: Fisher 결합값)를 유전자 전체에 대해 다중검정 보정해
+    메타 FDR을 산출할 때 사용한다.
+    """
+    p = np.asarray(pvals, dtype=float)
+    out = np.full(p.shape, np.nan)
+    finite = np.isfinite(p)
+    q = p[finite]
+    n = q.size
+    if n == 0:
+        return out
+    order = np.argsort(q)
+    ranked = q[order] * n / (np.arange(n) + 1)
+    # 뒤에서부터 누적 최소로 단조성 보장
+    ranked = np.minimum.accumulate(ranked[::-1])[::-1]
+    adj = np.empty(n)
+    adj[order] = np.clip(ranked, 0.0, 1.0)
+    out[finite] = adj
+    return out
+
+
 def combine_pvalues(pvals: Sequence[float],
                     lfcs: Sequence[float]) -> Optional[Dict[str, float]]:
     """데이터셋 간 p-value / log2FC 를 메타 결합.
 
     Args:
-        pvals: 데이터셋별 (adjusted) p-value. 유전자가 검정되지 않은 데이터셋은
-               NaN 으로 두면 자동 제외된다.
+        pvals: 데이터셋별 raw p-value (권장). 유전자가 검정되지 않은 데이터셋은
+               NaN 으로 두면 자동 제외된다. 결합 후 메타 FDR은 호출부에서
+               benjamini_hochberg() 로 별도 산출한다.
         lfcs:  pvals 와 정렬된 데이터셋별 log2 fold change.
 
     Returns:

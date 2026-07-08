@@ -27,6 +27,7 @@ _C_NS = '#c8c8c8'
 
 _P_SOURCES = {
     "Fisher": "meta_pvalue_fisher",
+    "Fisher FDR": "meta_fdr_fisher",
     "Stouffer": "meta_pvalue_stouffer",
 }
 
@@ -48,7 +49,9 @@ class MetaVolcanoDialog(BasePlotDialog):
         form = QFormLayout()
 
         self._psrc_combo = QComboBox()
-        self._psrc_combo.addItems(list(_P_SOURCES.keys()))
+        # 시트에 실제로 존재하는 컬럼만 선택지로
+        avail = [name for name, col in _P_SOURCES.items() if col in self.df.columns]
+        self._psrc_combo.addItems(avail or list(_P_SOURCES.keys()))
         self._psrc_combo.currentTextChanged.connect(self._update_plot)
         form.addRow("Meta p-value", self._psrc_combo)
 

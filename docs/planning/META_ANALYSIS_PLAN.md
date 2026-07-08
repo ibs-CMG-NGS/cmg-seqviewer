@@ -53,8 +53,13 @@ CMG-SeqViewer 철학: **외부 파이프라인 결과(DE/GO parquet)를 받아 �
 **우선순위: 높음 | 난이도: 낮음 | 예상 1–2일**
 
 > **구현 노트:** 계획대로 구현. 핵심 결정 — 와이드 테이블의 유의 hit만 결합하면 편향되므로,
-> `_full_gene_stats()`로 **필터 이전 전체 데이터셋**에서 유전자별 (log2fc, padj)를 조회해
+> `_full_gene_stats()`로 **필터 이전 전체 데이터셋**에서 유전자별 (log2fc, p)를 조회해
 > 검정된 모든 데이터셋을 결합한다. Fisher는 극유의 유전자에서 0으로 underflow → Stouffer 컬럼으로 순위 구분.
+>
+> **정합성 보강(`후속`):** 교과서적 Fisher/Stouffer에 맞춰 study 내 보정된 padj가 아니라 **raw `pvalue`로 결합**
+> (없으면 padj 폴백), 결합 후 유전자 전체에 **BH 보정한 `meta_fdr_fisher` 컬럼 추가**
+> (`meta_stats.benjamini_hochberg`). Fisher=크기 / Stouffer=방향 역할 분리는 유지(단측 Fisher는
+> Stouffer와 중복이라 미채택). Meta Volcano p-source에 Fisher/Fisher FDR/Stouffer 선택 추가.
 
 **목적:** Compare > Statistics Filtering 결과 와이드 테이블에 각 유전자의 메타 p-value와
 결합 effect size 컬럼을 추가. DB에 쌓인 여러 연구(같은 종, 다른 시점/조건)에서 공통 신호를

@@ -872,7 +872,7 @@ class MainWindow(QMainWindow):
         scientific_col_names = {
             col for col in columns
             if col in scientific_columns
-            or col.startswith('meta_pvalue')
+            or col.startswith('meta_pvalue') or col.startswith('meta_fdr')
             or col.endswith('_padj') or col.endswith('_pvalue')
         }
 
@@ -2011,10 +2011,12 @@ class MainWindow(QMainWindow):
         )
 
     def _full_gene_stats(self, df) -> dict:
-        """필터 이전 전체 df에서 유전자 식별자 → (log2fc, padj) 조회표.
+        """필터 이전 전체 df에서 유전자 식별자 → (log2fc, pvalue) 조회표.
 
         메타 분석은 '유의한 데이터셋'만이 아니라 유전자가 검정된 모든 데이터셋의
         통계를 결합해야 편향이 없으므로, 필터링 이전 전체 데이터를 사용한다.
+        Fisher/Stouffer 결합은 study 내에서 보정된 padj가 아니라 raw p-value로 하는
+        것이 정석이므로 raw pvalue를 우선 사용(없으면 padj로 폴백)한다.
         symbol과 gene_id 양쪽을 키로 등록(첫 등장 우선)해 데이터셋 간 식별자
         표기가 달라도 매칭되도록 한다.
         """
@@ -2022,11 +2024,13 @@ class MainWindow(QMainWindow):
             return {}
         lfc_col = next((c for c in ('log2FC', 'log2fc', 'log2FoldChange', 'Log2FoldChange')
                         if c in df.columns), None)
-        padj_col = next((c for c in ('padj', 'adj_pvalue', 'Padj') if c in df.columns), None)
-        if lfc_col is None or padj_col is None:
+        # raw p-value 우선, 없으면 adjusted p-value 폴백
+        p_col = next((c for c in ('pvalue', 'p_value', 'pval', 'PValue', 'P.Value',
+                                  'padj', 'adj_pvalue', 'Padj') if c in df.columns), None)
+        if lfc_col is None or p_col is None:
             return {}
         lfc = pd.to_numeric(df[lfc_col], errors='coerce').to_numpy()
-        padj = pd.to_numeric(df[padj_col], errors='coerce').to_numpy()
+        padj = pd.to_numeric(df[p_col], errors='coerce').to_numpy()
         n = len(df)
         sym = df['symbol'].astype(str).to_numpy() if 'symbol' in df.columns else np.full(n, '')
         gid = df['gene_id'].astype(str).to_numpy() if 'gene_id' in df.columns else np.full(n, '')
@@ -2039,7 +2043,7 @@ class MainWindow(QMainWindow):
 
     def _compare_statistics(self, datasets):
         """Statistics 필터링 비교 - Common/Unique 표시"""
-        from utils.meta_stats import combine_pvalues
+        from utils.meta_stats import combine_pvalues, benjamini_hochberg
         criteria = self.filter_panel.get_filter_criteria()
 
         self.logger.info(f"Statistics comparison: log2FC >= {criteria.log2fc_min}, padj <= {criteria.adj_pvalue_max}")
@@ -2258,9 +2262,14 @@ class MainWindow(QMainWindow):
 
         result_df = pd.DataFrame(result_rows)
 
+        # 메타 FDR: Fisher 결합 p-value를 유전자 전체에 대해 BH 보정
+        if 'meta_pvalue_fisher' in result_df.columns:
+            result_df['meta_fdr_fisher'] = benjamini_hochberg(
+                pd.to_numeric(result_df['meta_pvalue_fisher'], errors='coerce').to_numpy())
+
         # 컬럼 순서 정렬: gene_id, symbol, Status, Found_in, 메타 통계, D1_log2FC, D1_padj, ...
         ordered_columns = ['gene_id', 'symbol', 'Status', 'Found_in',
-                           'meta_pvalue_fisher', 'meta_pvalue_stouffer',
+                           'meta_pvalue_fisher', 'meta_fdr_fisher', 'meta_pvalue_stouffer',
                            'meta_log2fc_mean', 'meta_direction', 'meta_found_in']
         dataset_names = list(dataset_dfs.keys())
         for dataset_name in dataset_names:
