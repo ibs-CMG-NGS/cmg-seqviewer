@@ -642,6 +642,10 @@ class MainWindow(QMainWindow):
         self.annotation_compare_action.triggered.connect(self._on_annotation_comparison_requested)
         cross_menu.addAction(self.annotation_compare_action)
 
+        self.meta_volcano_action = QAction("🌋 Meta Volcano Plot (Comparison sheet)", self)
+        self.meta_volcano_action.triggered.connect(self._on_meta_volcano_requested)
+        cross_menu.addAction(self.meta_volcano_action)
+
         viz_menu.addSeparator()
 
         # RNA-ATAC Integration 서브메뉴 (구 Multi-Omics; MULTI_OMICS 탭 활성 시에만 활성화)
@@ -3248,6 +3252,26 @@ class MainWindow(QMainWindow):
             self.logger.error(f"Failed to create annotation comparison plot: {e}", exc_info=True)
             QMessageBox.critical(self, "Annotation Comparison Error",
                                f"Failed to create annotation comparison:\n{str(e)}")
+
+    def _on_meta_volcano_requested(self):
+        """현재 Comparison: Statistics 시트의 메타 통계로 Meta Volcano 생성."""
+        current = self.data_tabs.currentWidget()
+        model = current.model() if isinstance(current, QTableView) else None
+        df = model.dataframe() if isinstance(model, DataFrameTableModel) else None
+        if df is None or 'meta_pvalue_fisher' not in df.columns:
+            QMessageBox.warning(
+                self, "No Meta-Analysis Data",
+                "Meta Volcano는 메타 통계 컬럼이 있는 'Comparison: Statistics' 시트에서 실행합니다.\n"
+                "먼저 Compare → Statistics Filtering으로 2개 이상 데이터셋을 비교하세요."
+            )
+            return
+        try:
+            from gui.meta_volcano_dialog import MetaVolcanoDialog
+            MetaVolcanoDialog(df, self).exec()
+        except Exception as e:
+            self.logger.error(f"Failed to create meta volcano plot: {e}", exc_info=True)
+            QMessageBox.critical(self, "Meta Volcano Error",
+                               f"Failed to create meta volcano:\n{str(e)}")
 
     def _create_venn_from_comparison_sheet(self):
         """Comparison sheet에서 Venn diagram 생성"""
