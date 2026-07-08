@@ -7,9 +7,11 @@
 
 | Phase | 상태 | 커밋 |
 |---|---|---|
-| **M1** Fisher/Stouffer 메타 통계 컬럼 | ✅ **완료** | `08585b1` |
+| **M1** Fisher/Stouffer 메타 통계 컬럼 (유전자 수준) | ✅ **완료** | `08585b1`, `a591977` |
 | **M3** 메타 Volcano Plot | ✅ **완료** | `8602121` |
 | **M2** Cross-species ortholog 매핑 | ⬜ 미착수 | — |
+| **M4a** GO/pathway term 수준 메타 (late aggregation) | ⬜ 미착수 (엔진 무관, 저비용) | — |
+| **M4b** meta-signature → enrichment (early aggregation) | ⬜ 미착수 (online enrichment 엔진 의존) | — |
 
 **구현된 것 (M1+M3):**
 - `src/utils/meta_stats.py` — `combine_pvalues(pvals, lfcs)` (Fisher + 방향성 Stouffer + 평균 log2FC + concordant/discordant + found_in)
@@ -138,6 +140,56 @@ meta_found_in    = len(pvals)   # K개 중 유효 데이터셋 수
 
 ---
 
+## Phase M4: 모듈(패스웨이/GO) 수준 메타 분석  ⬜ 미착수
+**우선순위: 중간 | 배경: 유전자 수준(M1)의 상위 층위**
+
+M1/M3은 **유전자 수준** 결합이다. 실무에서 가장 흔한 모듈은 GO/KEGG인데, 모듈 수준 메타에는
+정석 두 갈래가 있고 **의존성이 달라 M4a/M4b로 분리**한다.
+
+### 배경: 두 가지 정석 (반드시 구분)
+
+- **A. Early aggregation** — 유전자 수준에서 먼저 결합(meta-signature) → 그 **통합 결과 하나**에
+  enrichment를 **한 번만** 수행 (meta-DEG → ORA, 또는 meta 랭킹 → GSEA prerank).
+  통계적으로 더 강력(threshold-free, 단일 background). 첨부 문서 9장이 택한 방식.
+  **단, enrichment 엔진이 있어야 가능** → ONLINE_ENRICHMENT_ANALYSIS_PLAN 의존.
+- **B. Late aggregation** — 각 연구가 독립적으로 enrichment한 결과의 **패스웨이별 p-value를 결합**
+  (M1을 term 단위로 재사용). CMG의 GO Term Comparison 와이드 테이블에 그대로 얹힌다.
+  **enrichment 엔진 불필요, 지금 가능.**
+
+### 모듈 수준에서 반드시 조심 (계획에 박아둘 값)
+
+1. **온톨로지 버전 일치** — 연구 간 GO/KEGG term_id가 같은 릴리스여야 결합 유효.
+2. **Background 이질성 / ORA 임계값 민감도** — 연구별 검정 유전자 집합·DEG 컷오프 차이가 term p를
+   흔든다. A(early, 단일 background·GSEA)가 이 문제를 우회.
+3. **방향성** — 패스웨이도 up/down이 갈린다. GSEA면 sign(NES)로 Stouffer, ORA면 up/down 리스트 분리.
+4. **GO는 종-불문(species-agnostic)** — 모듈 수준(B)은 **M2(ortholog) 없이도** cross-species 비교가
+   상당 부분 가능. 반면 A는 종이 다르면 **M2로 공통 유전자 공간 매핑 후** meta-signature → enrichment
+   (사슬: **M2 → M4b**).
+
+### M4a — GO/pathway term 수준 late aggregation (B)  ⬜ 엔진 무관, 저비용
+**우선순위: 중간 | 난이도: 낮음**
+
+- 대상: `Comparison: GO Terms` 시트(또는 GO Term Comparison 와이드 테이블). GO parquet엔 term별
+  raw `pvalue`가 이미 있다(fdr/qvalue와 별도) → 그 값을 결합.
+- 구현: 유전자 수준 M1의 term 버전. `meta_stats.combine_pvalues` / `benjamini_hochberg` **그대로 재사용**.
+  term별로 연구 간 enrichment p 결합 → `meta_pvalue_fisher/stouffer`, `meta_fdr_fisher`, `meta_found_in`.
+  방향성은 GO 데이터에 `direction`이 있으면 Stouffer, 없으면 Fisher만.
+- 결과: "여러 실험에서 **일관되게 enriched된 term**" 컬럼. Meta Volcano의 term 버전 또는 기존
+  GO Dot Plot에 메타 지표 강조.
+- 구현 위치: `_compare_go_terms`(GO 비교 와이드 테이블 생성부)에 메타 컬럼 추가.
+
+### M4b — meta-signature → enrichment (early aggregation, A)  ⬜ 엔진 의존
+**우선순위: 중간 | 난이도: 낮음(엔진 위에서) | 의존: ONLINE_ENRICHMENT_ANALYSIS_PLAN**
+
+- online enrichment 엔진이 착지하면 **거의 공짜**로 얻어진다 — 엔진의 DEG 입력 소스에
+  **"Comparison: Statistics 시트의 meta-DEG / meta 랭킹"** 을 추가하기만 하면 된다.
+- ORA 경로: meta FDR 임계 → meta-DEG → Enrichr/GOATOOLS ORA.
+- GSEA 경로(더 엄밀): meta 랭킹(meta_z 또는 −log10 meta p × sign) → gseapy `prerank`.
+- cross-species는 **M2 → meta-signature → enrichment** 순.
+- **연동 지점은 ONLINE_ENRICHMENT_ANALYSIS_PLAN에 명시**(입력 소스 + GSEA prerank 검토).
+
+---
+
 ## 철학 정합성
 
 - **반복 탐색:** DB에 모은 여러 연구를 포함/제외해가며 메타 신호를 확인 — 핵심 사용 패턴과 일치
@@ -148,9 +200,11 @@ meta_found_in    = len(pvals)   # K개 중 유효 데이터셋 수
 
 | Phase | 내용 | 난이도 | 의존성 | 순서 | 상태 |
 |---|---|---|---|---|---|
-| M1 | Fisher/Stouffer 메타 통계 | ★☆☆ | scipy(기존) | 1 | ✅ 완료 |
+| M1 | Fisher/Stouffer 메타 통계 (유전자) | ★☆☆ | scipy(기존) | 1 | ✅ 완료 |
 | M3 | 메타 Volcano Plot | ★☆☆ | M1 | 2 | ✅ 완료 |
-| M2 | Cross-species ortholog | ★★☆ | 번들 CSV | 3 | ⬜ 다음 |
+| M4a | GO term 수준 메타 (late) | ★☆☆ | meta_stats 재사용 | 3 | ⬜ |
+| M2 | Cross-species ortholog | ★★☆ | 번들 CSV | 4 | ⬜ |
+| M4b | meta-signature → enrichment (early) | ★☆☆ | **online enrichment 엔진** | 엔진과 동시 | ⬜ |
 
 ## 검증
 
@@ -158,4 +212,7 @@ meta_found_in    = len(pvals)   # K개 중 유효 데이터셋 수
    일관 신호 유전자가 상위에 오는지. (헤드리스 검증 완료: 673행 비교 테이블에 메타 5컬럼, 방향성 로직 정확)
 2. **M3** ✅: 비교 시트에서 Meta Volcano → `meta_found_in ≥ K` 필터 → Export 동작.
    (헤드리스 검증 완료: 589점 렌더, Fisher↔Stouffer 전환, 임계값 필터 정상)
-3. **M2** ⬜: human DE + mouse DE 혼합 → Cross-species 체크 → 인간 심볼로 통합, 매핑 실패 경고
+3. **M4a** ⬜: GO 데이터셋 2–3개로 GO Term Comparison → term별 `meta_pvalue_fisher`/`meta_fdr_fisher`
+   확인 → 일관 enriched term이 상위에 오는지.
+4. **M2** ⬜: human DE + mouse DE 혼합 → Cross-species 체크 → 인간 심볼로 통합, 매핑 실패 경고
+5. **M4b** ⬜: Comparison: Statistics 시트에서 meta-DEG를 enrichment 입력으로 → 보존 시그니처 패스웨이 도출
