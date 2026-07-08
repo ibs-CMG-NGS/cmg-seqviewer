@@ -3,6 +3,21 @@
 > 이 문서는 세션 중 plan 파일에 작성했다가 이후 다른 계획으로 덮어써진 메타 분석 계획을
 > 영구 보존용으로 복원한 것이다. (plan 파일은 계획마다 덮어써지므로 durable 위치에 저장)
 
+## 진행 상태 (2026-07-08)
+
+| Phase | 상태 | 커밋 |
+|---|---|---|
+| **M1** Fisher/Stouffer 메타 통계 컬럼 | ✅ **완료** | `08585b1` |
+| **M3** 메타 Volcano Plot | ✅ **완료** | `8602121` |
+| **M2** Cross-species ortholog 매핑 | ⬜ 미착수 | — |
+
+**구현된 것 (M1+M3):**
+- `src/utils/meta_stats.py` — `combine_pvalues(pvals, lfcs)` (Fisher + 방향성 Stouffer + 평균 log2FC + concordant/discordant + found_in)
+- `main_window.py` `_compare_statistics` — 필터 이전 전체 데이터에서 유전자별 (log2fc, padj)를 조회(`_full_gene_stats`)해 편향 없이 결합. `Comparison: Statistics` 시트에 `meta_pvalue_fisher / meta_pvalue_stouffer / meta_log2fc_mean / meta_direction / meta_found_in` 컬럼 자동 추가. p-value 계열 컬럼은 scientific notation 표시.
+- `src/gui/meta_volcano_dialog.py` — Visualization → 🧩 Cross-Dataset Comparison → 🌋 Meta Volcano Plot. Fisher/Stouffer 선택, 임계값·found-in·top-N 라벨, up/down/discordant 색 구분, Export.
+
+**남은 것:** M2 (아래) — human/mouse/rat 1:1 ortholog 번들 CSV 확보 + 매핑.
+
 ## Context
 
 `NGS 메타 분석 파이프라인 구축 전략` 문서가 다루는 종간(cross-species) 전사체 메타 분석의
@@ -34,8 +49,12 @@ CMG-SeqViewer 철학: **외부 파이프라인 결과(DE/GO parquet)를 받아 �
 
 ---
 
-## Phase M1: 메타 통계 — Fisher/Stouffer 결합 컬럼
+## Phase M1: 메타 통계 — Fisher/Stouffer 결합 컬럼  ✅ 완료 (`08585b1`)
 **우선순위: 높음 | 난이도: 낮음 | 예상 1–2일**
+
+> **구현 노트:** 계획대로 구현. 핵심 결정 — 와이드 테이블의 유의 hit만 결합하면 편향되므로,
+> `_full_gene_stats()`로 **필터 이전 전체 데이터셋**에서 유전자별 (log2fc, padj)를 조회해
+> 검정된 모든 데이터셋을 결합한다. Fisher는 극유의 유전자에서 0으로 underflow → Stouffer 컬럼으로 순위 구분.
 
 **목적:** Compare > Statistics Filtering 결과 와이드 테이블에 각 유전자의 메타 p-value와
 결합 effect size 컬럼을 추가. DB에 쌓인 여러 연구(같은 종, 다른 시점/조건)에서 공통 신호를
@@ -71,7 +90,7 @@ meta_found_in    = len(pvals)   # K개 중 유효 데이터셋 수
 
 ---
 
-## Phase M2: Cross-Species 상동 유전자 매핑
+## Phase M2: Cross-Species 상동 유전자 매핑  ⬜ 다음 차례
 **우선순위: 중간 | 난이도: 중간 | 예상 2–3일**
 
 **목적:** 서로 다른 종의 DE 데이터셋(mouse Trp53 / human TP53 / rat Tp53)을 하나의
@@ -94,8 +113,11 @@ meta_found_in    = len(pvals)   # K개 중 유효 데이터셋 수
 
 ---
 
-## Phase M3: 메타 Volcano Plot
+## Phase M3: 메타 Volcano Plot  ✅ 완료 (`8602121`)
 **우선순위: 중간 | 난이도: 낮음 | 예상 1일**
+
+> **구현 노트:** `Comparison: Statistics` 시트가 활성일 때 실행. Fisher/Stouffer p-source 토글,
+> meta-p·|mean log2FC| 임계값, found-in 필터, top-N 라벨. Fisher underflow(=0) 대비 p를 1e-300으로 clip.
 
 **목적:** Fisher 메타 p-value + 평균 log2FC 로 재현성 높은 공통 신호를 한눈에.
 
@@ -119,15 +141,16 @@ meta_found_in    = len(pvals)   # K개 중 유효 데이터셋 수
 
 ## 권장 순서
 
-| Phase | 내용 | 난이도 | 의존성 | 순서 |
-|---|---|---|---|---|
-| M1 | Fisher/Stouffer 메타 통계 | ★☆☆ | scipy(기존) | 1 |
-| M3 | 메타 Volcano Plot | ★☆☆ | M1 | 2 |
-| M2 | Cross-species ortholog | ★★☆ | 번들 CSV | 3 |
+| Phase | 내용 | 난이도 | 의존성 | 순서 | 상태 |
+|---|---|---|---|---|---|
+| M1 | Fisher/Stouffer 메타 통계 | ★☆☆ | scipy(기존) | 1 | ✅ 완료 |
+| M3 | 메타 Volcano Plot | ★☆☆ | M1 | 2 | ✅ 완료 |
+| M2 | Cross-species ortholog | ★★☆ | 번들 CSV | 3 | ⬜ 다음 |
 
 ## 검증
 
-1. **M1:** mouse DE 2–3개로 Statistics Filtering → `meta_pvalue_fisher` 컬럼 확인 →
-   알려진 일관 신호 유전자가 상위에 오는지
-2. **M2:** human DE + mouse DE 혼합 → Cross-species 체크 → 인간 심볼로 통합, 매핑 실패 경고
-3. **M3:** M1 후 Meta Volcano → `meta_found_in ≥ K` 필터 → Export 동작
+1. **M1** ✅: mouse DE 2–3개로 Statistics Filtering → `meta_pvalue_fisher` 컬럼 확인 →
+   일관 신호 유전자가 상위에 오는지. (헤드리스 검증 완료: 673행 비교 테이블에 메타 5컬럼, 방향성 로직 정확)
+2. **M3** ✅: 비교 시트에서 Meta Volcano → `meta_found_in ≥ K` 필터 → Export 동작.
+   (헤드리스 검증 완료: 589점 렌더, Fisher↔Stouffer 전환, 임계값 필터 정상)
+3. **M2** ⬜: human DE + mouse DE 혼합 → Cross-species 체크 → 인간 심볼로 통합, 매핑 실패 경고
