@@ -21,6 +21,7 @@ a = Analysis(
         ('data/.gitkeep', 'data'),
         ('data/datasets/.gitkeep', 'data/datasets'),
         ('data/README.txt', 'data'),  # 사용 안내 파일
+        ('data/orthologs/ortholog_map.csv.gz', 'data/orthologs'),  # cross-species 메타(M2)
         # Include entire src package
         ('src', 'src'),
         # Logo image for About dialog

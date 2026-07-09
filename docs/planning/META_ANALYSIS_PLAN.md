@@ -10,8 +10,8 @@
 | **M1** Fisher/Stouffer 메타 통계 컬럼 (유전자 수준) | ✅ **완료** | `08585b1`, `a591977` |
 | **M3** 메타 Volcano Plot | ✅ **완료** | `8602121` |
 | **M4a** GO/pathway term 수준 메타 (late aggregation) | ✅ **완료** | `1e6f221` |
-| **M5** 효과크기 random-effects 메타 (log2FC+SE) | ✅ **완료** | `<this>` |
-| **M2** Cross-species ortholog 매핑 | ⬜ 다음 | — |
+| **M5** 효과크기 random-effects 메타 (log2FC+SE) | ✅ **완료** | `bb016bd` |
+| **M2** Cross-species ortholog 매핑 (다종 long-format) | ✅ **완료** | `<this>` |
 | **M4b** meta-signature → enrichment (early aggregation) | ⬜ 미착수 (online enrichment 엔진 의존) | — |
 
 **구현된 것 (M1+M3):**
@@ -98,8 +98,16 @@ meta_found_in    = len(pvals)   # K개 중 유효 데이터셋 수
 
 ---
 
-## Phase M2: Cross-Species 상동 유전자 매핑  ⬜ 다음 차례
+## Phase M2: Cross-Species 상동 유전자 매핑  ✅ 완료
 **우선순위: 중간(종간 비교 필요 시) | 난이도: 코드 낮음~중간 / 데이터 확보가 관문 | 예상: 코드 ~1일 + 데이터 준비**
+
+> **구현 노트:** 데이터 `data/orthologs/ortholog_map.csv.gz`(71,614 1:1 ortholog / 4종, gzip 0.9MB)를
+> `scripts/build_ortholog_table.py`(pybiomart)로 생성·번들. `src/utils/ortholog_mapper.py`
+> `OrthologMapper`(long CSV 로드, gene_id 접두사로 organism 감지, Ensembl ID 1순위·symbol 폴백
+> `map_to_human`). `_compare_statistics`가 ComparisonPanel의 "Cross-species harmonization" 체크 시
+> `_harmonize_cross_species`로 비인간 데이터셋을 human으로 remap한 뒤 기존 결합 실행(late mapping).
+> 3개 spec `datas`에 CSV 번들. 헤드리스 검증: Trp53→TP53, remap 후 종간 데이터가 human 심볼로 결합,
+> 매핑 실패 개수 안내.
 
 **목적:** 서로 다른 종의 DE 데이터셋(mouse Trp53 / human TP53 / rat Tp53 / **macaque·marmoset 등**)을
 하나의 인간 유전자 심볼 공간으로 통일해 비교. 통일 후에는 **M1·M4a·M5 메타 통계가 그대로 재사용**된다
@@ -387,7 +395,7 @@ DE 2–3개로 Statistics Filtering → `meta_effect_log2fc`/`meta_i2` 확인 �
 | M3 | 메타 Volcano Plot | ★☆☆ | M1 | 2 | ✅ 완료 |
 | M4a | GO term 수준 메타 (late) | ★☆☆ | meta_stats 재사용 | 3 | ✅ 완료 |
 | M5 | 효과크기 random-effects (log2FC+SE) | ★☆☆ | lfcSE(기존) | 4 | ✅ 완료 |
-| M2 | Cross-species ortholog (다종 long-format) | ★★☆ | 번들 CSV(BioMart 생성) | 5 | ⬜ 다음 |
+| M2 | Cross-species ortholog (다종 long-format) | ★★☆ | 번들 CSV(BioMart 생성) | 5 | ✅ 완료 |
 | M4b | meta-signature → enrichment (early) | ★☆☆ | **online enrichment 엔진** | 엔진과 동시 | ⬜ |
 
 ## 검증
@@ -402,5 +410,6 @@ DE 2–3개로 Statistics Filtering → `meta_effect_log2fc`/`meta_i2` 확인 �
 4. **M5** ✅: DE 2–3개로 Statistics Filtering → `meta_effect_log2fc`/`meta_i2` 확인 →
    정밀도 가중 통합·방향 엇갈릴 때 I² 상승·`meta_pvalue_re`가 M1과 상관되나 별개인지.
    (헤드리스 검증 완료: 673행, 세포주기 유전자 일관 down, I² 0~44%, 방향 상쇄 시 pooled≈0)
-5. **M2** ⬜: human DE + mouse DE 혼합 → Cross-species 체크 → 인간 심볼로 통합, 매핑 실패 경고
+5. **M2** ✅: human DE + mouse DE 혼합 → Cross-species 체크 → 인간 심볼로 통합, 매핑 실패 경고.
+   (헤드리스 검증: Trp53→TP53, remap 후 종간 데이터가 human 심볼로 결합, 매핑 15,475/37,782 안내)
 6. **M4b** ⬜: Comparison: Statistics 시트에서 meta-DEG를 enrichment 입력으로 → 보존 시그니처 패스웨이 도출

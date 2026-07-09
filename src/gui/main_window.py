@@ -2074,12 +2074,71 @@ class MainWindow(QMainWindow):
                     out[key] = (a, b, c)
         return out
 
+    def _harmonize_cross_species(self, datasets):
+        """비인간 데이터셋을 human ortholog 심볼로 통일 (M2). 실패 시 None/원본 반환.
+
+        각 데이터셋의 종을 감지해 비인간이면 gene_id/symbol을 human으로 remap한 사본으로
+        교체한다. 매핑 결과 요약(실패 개수 포함)을 안내 다이얼로그로 보여준다.
+        """
+        import dataclasses
+        from utils.ortholog_mapper import OrthologMapper
+
+        mapper = OrthologMapper()
+        if not mapper.available():
+            QMessageBox.warning(
+                self, "Ortholog Map Missing",
+                "Cross-species 통일에 필요한 ortholog 테이블이 없습니다:\n"
+                f"{mapper._path}\n\n"
+                "scripts/build_ortholog_table.py 로 생성하거나 이 옵션을 끄세요.")
+            return None
+
+        eff, lines, any_mapped = [], [], False
+        for ds in datasets:
+            org = OrthologMapper.detect_organism(ds.dataframe, ds.metadata)
+            if org and org != 'human':
+                try:
+                    mdf, stat = mapper.map_to_human(ds.dataframe, org)
+                except Exception as e:
+                    self.logger.error(f"Ortholog mapping failed for {ds.name}: {e}")
+                    QMessageBox.critical(self, "Ortholog Mapping Error",
+                                         f"{ds.name} 매핑 실패:\n{e}")
+                    return None
+                eff.append(dataclasses.replace(ds, dataframe=mdf,
+                                               metadata=dict(ds.metadata)))
+                lines.append(f"• {ds.name}: {org} → human  "
+                             f"{stat['mapped']:,}/{stat['n_in']:,} mapped "
+                             f"({stat['unmapped']:,} dropped)")
+                any_mapped = True
+            else:
+                eff.append(ds)
+                lines.append(f"• {ds.name}: {org or 'unknown'} (no remap)")
+
+        self.logger.info("Cross-species harmonization:\n  " + "\n  ".join(lines))
+        if any_mapped:
+            QMessageBox.information(
+                self, "Cross-species Harmonization",
+                "비인간 데이터셋을 human ortholog로 통일했습니다:\n\n" + "\n".join(lines))
+        else:
+            QMessageBox.warning(
+                self, "Cross-species Harmonization",
+                "human 이외의 종이 감지되지 않아 remap이 일어나지 않았습니다.\n"
+                "(gene_id가 Ensembl ID(ENSMUSG 등)인지 확인)\n\n" + "\n".join(lines))
+        return eff
+
     def _compare_statistics(self, datasets):
         """Statistics 필터링 비교 - Common/Unique 표시"""
         from utils.meta_stats import combine_pvalues, benjamini_hochberg, random_effects
         criteria = self.filter_panel.get_filter_criteria()
 
         self.logger.info(f"Statistics comparison: log2FC >= {criteria.log2fc_min}, padj <= {criteria.adj_pvalue_max}")
+
+        # ── M2: Cross-species 상동 유전자 통일 (합치기 직전 선행 정렬) ──────────
+        # 비인간 데이터셋을 human 심볼 공간으로 remap → 이후 결합 로직은 그대로.
+        if getattr(self.comparison_panel, 'cross_species_check', None) is not None \
+                and self.comparison_panel.cross_species_check.isChecked():
+            datasets = self._harmonize_cross_species(datasets)
+            if not datasets:
+                return
 
         # 메타 통계용: 필터 이전 전체 데이터셋의 유전자별 (log2fc, padj) 조회표
         full_lookup = {ds.name: self._full_gene_stats(ds.dataframe) for ds in datasets}

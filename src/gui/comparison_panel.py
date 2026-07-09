@@ -88,7 +88,15 @@ class ComparisonPanel(QWidget):
         self.include_unique.setToolTip("Include genes found in any dataset")
         self.include_unique.toggled.connect(self._on_include_unique_toggled)
         options_layout.addWidget(self.include_unique)
-        
+
+        # Cross-species 상동 유전자 통일 (Statistics 비교 시)
+        self.cross_species_check = QCheckBox("Cross-species harmonization (→ human)")
+        self.cross_species_check.setChecked(False)
+        self.cross_species_check.setToolTip(
+            "Statistics 비교 전, 비인간 데이터셋(mouse/rat/macaque/marmoset)을\n"
+            "human ortholog 심볼로 통일해 종을 가로질러 결합합니다.")
+        options_layout.addWidget(self.cross_species_check)
+
         options_group.setLayout(options_layout)
         layout.addWidget(options_group)
         
