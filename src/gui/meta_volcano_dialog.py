@@ -29,6 +29,19 @@ _P_SOURCES = {
     "Fisher": "meta_pvalue_fisher",
     "Fisher FDR": "meta_fdr_fisher",
     "Stouffer": "meta_pvalue_stouffer",
+    "Random-effects": "meta_pvalue_re",
+}
+
+# X축 소스 (있는 것만 노출). 통합 추정치(RE)를 우선.
+_X_SOURCES = {
+    "Pooled log2FC (RE)": "meta_effect_log2fc",
+    "Mean log2FC": "meta_log2fc_mean",
+    "Mean log2FE": "meta_log2fe_mean",
+}
+_X_LABELS = {
+    "meta_effect_log2fc": "Pooled log2 fold change (random-effects)",
+    "meta_log2fc_mean": "Mean log2 fold change",
+    "meta_log2fe_mean": "Mean log2 fold enrichment",
 }
 
 
@@ -58,6 +71,12 @@ class MetaVolcanoDialog(BasePlotDialog):
         self._psrc_combo.addItems(avail or list(_P_SOURCES.keys()))
         self._psrc_combo.currentTextChanged.connect(self._update_plot)
         form.addRow("Meta p-value", self._psrc_combo)
+
+        self._xsrc_combo = QComboBox()
+        xavail = [name for name, col in _X_SOURCES.items() if col in self.df.columns]
+        self._xsrc_combo.addItems(xavail or list(_X_SOURCES.keys()))
+        self._xsrc_combo.currentTextChanged.connect(self._update_plot)
+        form.addRow("X axis", self._xsrc_combo)
 
         self._p_spin = QDoubleSpinBox()
         self._p_spin.setDecimals(4)
@@ -109,11 +128,14 @@ class MetaVolcanoDialog(BasePlotDialog):
             return 0
 
     def _xcol(self) -> str:
-        """유전자 수준(meta_log2fc_mean) 또는 term 수준(meta_log2fe_mean) X축."""
-        if 'meta_log2fc_mean' in self.df.columns:
-            return 'meta_log2fc_mean'
-        if 'meta_log2fe_mean' in self.df.columns:
-            return 'meta_log2fe_mean'
+        """선택된 X축 컬럼 (통합 log2FC / 단순 평균 / term FE)."""
+        if getattr(self, '_xsrc_combo', None) is not None and self._xsrc_combo.count():
+            col = _X_SOURCES.get(self._xsrc_combo.currentText(), '')
+            if col in self.df.columns:
+                return col
+        for c in ('meta_effect_log2fc', 'meta_log2fc_mean', 'meta_log2fe_mean'):
+            if c in self.df.columns:
+                return c
         return ''
 
     def _prepare(self) -> pd.DataFrame:
@@ -190,8 +212,9 @@ class MetaVolcanoDialog(BasePlotDialog):
                                 xytext=(3, 3), textcoords='offset points')
 
         src = self._psrc_combo.currentText()
-        is_term = self._xcol() == 'meta_log2fe_mean'
-        ax.set_xlabel("Mean log2 fold enrichment" if is_term else "Mean log2 fold change")
+        xcol = self._xcol()
+        is_term = xcol == 'meta_log2fe_mean'
+        ax.set_xlabel(_X_LABELS.get(xcol, "Mean log2 fold change"))
         ax.set_ylabel(f"-log10(meta p-value, {src})")
         unit = "term" if is_term else "gene"
         ax.set_title(f"Meta Volcano — cross-dataset {unit} consistency",

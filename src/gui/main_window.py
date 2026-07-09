@@ -2039,12 +2039,13 @@ class MainWindow(QMainWindow):
         )
 
     def _full_gene_stats(self, df) -> dict:
-        """필터 이전 전체 df에서 유전자 식별자 → (log2fc, pvalue) 조회표.
+        """필터 이전 전체 df에서 유전자 식별자 → (log2fc, pvalue, lfcSE) 조회표.
 
         메타 분석은 '유의한 데이터셋'만이 아니라 유전자가 검정된 모든 데이터셋의
         통계를 결합해야 편향이 없으므로, 필터링 이전 전체 데이터를 사용한다.
         Fisher/Stouffer 결합은 study 내에서 보정된 padj가 아니라 raw p-value로 하는
         것이 정석이므로 raw pvalue를 우선 사용(없으면 padj로 폴백)한다.
+        SE(lfcSE)는 random-effects 효과크기 결합(M5)용이며, 없으면 NaN(해당 연구 제외).
         symbol과 gene_id 양쪽을 키로 등록(첫 등장 우선)해 데이터셋 간 식별자
         표기가 달라도 매칭되도록 한다.
         """
@@ -2057,21 +2058,25 @@ class MainWindow(QMainWindow):
                                   'padj', 'adj_pvalue', 'Padj') if c in df.columns), None)
         if lfc_col is None or p_col is None:
             return {}
+        se_col = next((c for c in ('lfcse', 'lfcSE', 'lfc_se', 'stderr', 'se', 'SE')
+                       if c in df.columns), None)
         lfc = pd.to_numeric(df[lfc_col], errors='coerce').to_numpy()
         padj = pd.to_numeric(df[p_col], errors='coerce').to_numpy()
         n = len(df)
+        se = (pd.to_numeric(df[se_col], errors='coerce').to_numpy()
+              if se_col else np.full(n, np.nan))
         sym = df['symbol'].astype(str).to_numpy() if 'symbol' in df.columns else np.full(n, '')
         gid = df['gene_id'].astype(str).to_numpy() if 'gene_id' in df.columns else np.full(n, '')
         out = {}
-        for s, g, a, b in zip(sym, gid, lfc, padj):
+        for s, g, a, b, c in zip(sym, gid, lfc, padj, se):
             for key in (s, g):
                 if key and key != 'nan' and key not in out:
-                    out[key] = (a, b)
+                    out[key] = (a, b, c)
         return out
 
     def _compare_statistics(self, datasets):
         """Statistics 필터링 비교 - Common/Unique 표시"""
-        from utils.meta_stats import combine_pvalues, benjamini_hochberg
+        from utils.meta_stats import combine_pvalues, benjamini_hochberg, random_effects
         criteria = self.filter_panel.get_filter_criteria()
 
         self.logger.info(f"Statistics comparison: log2FC >= {criteria.log2fc_min}, padj <= {criteria.adj_pvalue_max}")
@@ -2268,16 +2273,18 @@ class MainWindow(QMainWindow):
                     row[f'{dataset_name}_log2FC'] = None
                     row[f'{dataset_name}_padj'] = None
 
-            # 메타 통계: 유전자가 검정된 모든 데이터셋의 (log2fc, padj)를 결합
+            # 메타 통계: 유전자가 검정된 모든 데이터셋의 (log2fc, pvalue, SE)를 결합
             gm = gene_mapping[identifier]
-            m_pvals, m_lfcs = [], []
+            m_pvals, m_lfcs, m_ses = [], [], []
             for ds in datasets:
                 stats = full_lookup.get(ds.name, {})
                 v = stats.get(gm['symbol']) or stats.get(gm['gene_id'])
                 if v is not None:
-                    lfc_v, padj_v = v
+                    lfc_v, padj_v, se_v = v
                     m_pvals.append(padj_v)
                     m_lfcs.append(lfc_v)
+                    m_ses.append(se_v)
+            # ① p-value 결합 (Fisher/Stouffer)
             meta = combine_pvalues(m_pvals, m_lfcs)
             if meta:
                 row['meta_pvalue_fisher'] = meta['meta_pvalue_fisher']
@@ -2285,6 +2292,15 @@ class MainWindow(QMainWindow):
                 row['meta_log2fc_mean'] = meta['meta_log2fc_mean']
                 row['meta_direction'] = meta['meta_direction']
                 row['meta_found_in'] = f"{meta['meta_found_in']}/{len(datasets)}"
+            # ② 효과크기 결합 (random-effects, lfcSE 있을 때만)
+            re_res = random_effects(m_lfcs, m_ses)
+            if re_res:
+                row['meta_effect_log2fc'] = re_res['meta_effect_log2fc']
+                row['meta_effect_se']     = re_res['meta_effect_se']
+                row['meta_ci_low']        = re_res['meta_ci_low']
+                row['meta_ci_high']       = re_res['meta_ci_high']
+                row['meta_pvalue_re']     = re_res['meta_pvalue_re']
+                row['meta_i2']            = re_res['meta_i2']
 
             result_rows.append(row)
 
@@ -2298,7 +2314,9 @@ class MainWindow(QMainWindow):
         # 컬럼 순서 정렬: gene_id, symbol, Status, Found_in, 메타 통계, D1_log2FC, D1_padj, ...
         ordered_columns = ['gene_id', 'symbol', 'Status', 'Found_in',
                            'meta_pvalue_fisher', 'meta_fdr_fisher', 'meta_pvalue_stouffer',
-                           'meta_log2fc_mean', 'meta_direction', 'meta_found_in']
+                           'meta_log2fc_mean', 'meta_direction', 'meta_found_in',
+                           'meta_effect_log2fc', 'meta_effect_se', 'meta_ci_low', 'meta_ci_high',
+                           'meta_pvalue_re', 'meta_i2']
         dataset_names = list(dataset_dfs.keys())
         for dataset_name in dataset_names:
             ordered_columns.append(f'{dataset_name}_log2FC')

@@ -9,8 +9,9 @@
 |---|---|---|
 | **M1** Fisher/Stouffer 메타 통계 컬럼 (유전자 수준) | ✅ **완료** | `08585b1`, `a591977` |
 | **M3** 메타 Volcano Plot | ✅ **완료** | `8602121` |
-| **M4a** GO/pathway term 수준 메타 (late aggregation) | ✅ **완료** | `<this>` |
-| **M2** Cross-species ortholog 매핑 | ⬜ 미착수 | — |
+| **M4a** GO/pathway term 수준 메타 (late aggregation) | ✅ **완료** | `1e6f221` |
+| **M5** 효과크기 random-effects 메타 (log2FC+SE) | ✅ **완료** | `<this>` |
+| **M2** Cross-species ortholog 매핑 | ⬜ 다음 | — |
 | **M4b** meta-signature → enrichment (early aggregation) | ⬜ 미착수 (online enrichment 엔진 의존) | — |
 
 **구현된 것 (M1+M3):**
@@ -196,6 +197,78 @@ M1/M3은 **유전자 수준** 결합이다. 실무에서 가장 흔한 모듈은
 
 ---
 
+## Phase M5: 효과크기 random-effects 메타 (log2FC + SE)  ✅ 완료
+**우선순위: 높음 | 난이도: 낮음(numpy만) | 대상: DE/DA (유전자/peak)**
+
+> **구현 노트:** `meta_stats.random_effects(effects, ses)` (DerSimonian-Laird) 추가. `_full_gene_stats`가
+> (log2fc, pvalue, **lfcSE**) 3-튜플로 확장(SE 컬럼: `lfcse/lfcSE/lfc_se/stderr/se`). `_compare_statistics`가
+> 유전자별로 `random_effects` 호출 → `meta_effect_log2fc / meta_effect_se / meta_ci_low / meta_ci_high /
+> meta_pvalue_re / meta_i2` 추가. Meta Volcano에 **X축 소스 콤보(Pooled log2FC(RE) 기본 / Mean log2FC)**,
+> P소스에 Random-effects 추가. lfcSE 없는 데이터셋은 M5에서만 제외(M1은 유지). 헤드리스 검증: 세포주기
+> 유전자 일관 down, I²로 이질성 구분(0~44%), 방향 상쇄 시 pooled≈0·p=1.
+
+M1(Fisher/Stouffer)은 **p-value 결합(증거 aggregation)** 이다. M5는 **효과크기 결합(추정)** —
+서로 다른 통계 계열이며 **상보적**이다. 우리 DE parquet엔 `lfcse`(=log2FC의 SE)가 이미 있으므로
+바로 적용 가능하다. (GO term 수준(M4a)엔 효과크기 SE가 없어 적용 불가 — p 결합만.)
+
+### 두 계열 구분 (문서에 박아둘 값)
+
+| | M1 Fisher/Stouffer | **M5 random-effects** |
+|---|---|---|
+| 성격 | 증거(p) 결합 | **효과크기 추정** |
+| 결과 | 결합 p-value | **통합 log2FC + CI + p** |
+| 연구 가중 | 동등 | **역분산 가중(1/SE²)** |
+| 이질성 | 없음 | **I²/τ²/Q 모델링** |
+| 입력 | p(+부호) | **log2FC + SE(lfcSE)** |
+
+랩처럼 **비슷하지만 다른 조건**(시점·농도·연구자)을 합칠 때, I²로 "신호가 조건 전반에서 견고한가
+vs 특정 조건 특이적인가"를 정량화 → 매우 유용. 현재 `meta_log2fc_mean`(단순 평균)을
+**역분산 가중 통합 추정치로 승격**하는 셈.
+
+### 방법: DerSimonian-Laird random-effects
+
+각 유전자 g에 대해 검정된 K개 데이터셋의 (yᵢ=log2FC, sᵢ=SE):
+
+```
+# Fixed-effect 가중과 통합
+wᵢ = 1/sᵢ²
+ȳ_fixed = Σwᵢyᵢ / Σwᵢ
+Q  = Σwᵢ(yᵢ − ȳ_fixed)²                 # 이질성 통계량
+τ² = max(0, (Q − (K−1)) / (Σwᵢ − Σwᵢ²/Σwᵢ))   # DL 추정
+I² = max(0, (Q − (K−1))/Q) * 100        # % 이질성
+
+# Random-effects: 가중에 τ² 추가
+wᵢ* = 1/(sᵢ² + τ²)
+meta_effect = Σwᵢ*yᵢ / Σwᵢ*
+meta_effect_se = sqrt(1/Σwᵢ*)
+z = meta_effect / meta_effect_se
+meta_pvalue_re = 2·norm.sf(|z|)
+CI95 = meta_effect ± 1.96·meta_effect_se
+```
+
+K=1이면 통합 불가(None). sᵢ 결측/0이면 해당 연구 제외(또는 작은 하한).
+
+### 구현
+
+- **신규** `src/utils/meta_stats.py`에 `random_effects(effects, ses)` 추가
+  (`combine_pvalues`와 병렬). 순수 numpy/scipy, 새 의존성 없음.
+- `_full_gene_stats`를 **(log2fc, pvalue, lfcSE)** 3-튜플로 확장(현재 (log2fc, pvalue)).
+  lfcSE 컬럼 변형: `lfcse`, `lfcSE`, `lfc_se`, `stderr`.
+- `_compare_statistics`: 유전자별로 `random_effects` 호출 → 컬럼 추가
+  `meta_effect_log2fc`, `meta_effect_se`, `meta_ci_low`, `meta_ci_high`,
+  `meta_pvalue_re`(scientific), `meta_i2`.
+- **Meta Volcano X축 옵션**: 단순 평균(`meta_log2fc_mean`) 대신 **통합 log2FC(`meta_effect_log2fc`)**
+  선택 가능하게(콤보 또는 자동 우선). Y축은 `meta_pvalue_re`도 소스로 추가.
+- lfcSE가 없는 데이터셋이 섞이면 그 데이터셋만 M5에서 제외(경고), M1은 그대로.
+
+### 검증
+
+DE 2–3개로 Statistics Filtering → `meta_effect_log2fc`/`meta_i2` 확인 →
+(a) 통합 log2FC가 개별값들 사이의 정밀도 가중 평균인지, (b) 방향 엇갈리는 유전자에서 I² 높은지,
+(c) `meta_pvalue_re`가 M1 결과와 상관되나 동일하진 않은지(다른 계열).
+
+---
+
 ## 철학 정합성
 
 - **반복 탐색:** DB에 모은 여러 연구를 포함/제외해가며 메타 신호를 확인 — 핵심 사용 패턴과 일치
@@ -209,7 +282,8 @@ M1/M3은 **유전자 수준** 결합이다. 실무에서 가장 흔한 모듈은
 | M1 | Fisher/Stouffer 메타 통계 (유전자) | ★☆☆ | scipy(기존) | 1 | ✅ 완료 |
 | M3 | 메타 Volcano Plot | ★☆☆ | M1 | 2 | ✅ 완료 |
 | M4a | GO term 수준 메타 (late) | ★☆☆ | meta_stats 재사용 | 3 | ✅ 완료 |
-| M2 | Cross-species ortholog | ★★☆ | 번들 CSV | 4 | ⬜ 다음 |
+| M5 | 효과크기 random-effects (log2FC+SE) | ★☆☆ | lfcSE(기존) | 4 | ✅ 완료 |
+| M2 | Cross-species ortholog | ★★☆ | 번들 CSV | 5 | ⬜ 다음 |
 | M4b | meta-signature → enrichment (early) | ★☆☆ | **online enrichment 엔진** | 엔진과 동시 | ⬜ |
 
 ## 검증
@@ -221,5 +295,8 @@ M1/M3은 **유전자 수준** 결합이다. 실무에서 가장 흔한 모듈은
 3. **M4a** ✅: GO 데이터셋 2–3개로 GO Term Comparison → term별 `meta_pvalue_fisher`/`meta_fdr_fisher`
    확인 → 일관 enriched term이 상위에 오는지. (헤드리스 검증 완료: 40 term 결합, FDR≥raw p, 신경 term 상위,
    Meta Volcano term 모드 자동 전환)
-4. **M2** ⬜: human DE + mouse DE 혼합 → Cross-species 체크 → 인간 심볼로 통합, 매핑 실패 경고
-5. **M4b** ⬜: Comparison: Statistics 시트에서 meta-DEG를 enrichment 입력으로 → 보존 시그니처 패스웨이 도출
+4. **M5** ✅: DE 2–3개로 Statistics Filtering → `meta_effect_log2fc`/`meta_i2` 확인 →
+   정밀도 가중 통합·방향 엇갈릴 때 I² 상승·`meta_pvalue_re`가 M1과 상관되나 별개인지.
+   (헤드리스 검증 완료: 673행, 세포주기 유전자 일관 down, I² 0~44%, 방향 상쇄 시 pooled≈0)
+5. **M2** ⬜: human DE + mouse DE 혼합 → Cross-species 체크 → 인간 심볼로 통합, 매핑 실패 경고
+6. **M4b** ⬜: Comparison: Statistics 시트에서 meta-DEG를 enrichment 입력으로 → 보존 시그니처 패스웨이 도출

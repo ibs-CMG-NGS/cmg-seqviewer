@@ -6,11 +6,66 @@ Late-integration meta-analysis statistics.
 
 - Fisher's method: p-value 유의성 크기를 결합
 - Stouffer's method: 발현 변화 방향성(부호)까지 반영한 z-score 결합
+- Random-effects (DerSimonian-Laird): log2FC + SE로 통합 효과크기·이질성(I²) 추정
 """
 from typing import Optional, Sequence, Dict
 
 import numpy as np
 from scipy import stats as st
+
+
+def random_effects(effects: Sequence[float],
+                   ses: Sequence[float]) -> Optional[Dict[str, float]]:
+    """DerSimonian-Laird random-effects 메타 분석 (효과크기 결합).
+
+    각 연구의 효과크기(log2FC)와 표준오차(SE)를 역분산 가중으로 통합하고,
+    연구 간 이질성(τ²)을 추가해 random-effects 통합 추정치를 낸다.
+
+    Args:
+        effects: 데이터셋별 log2FC. 검정 안 된 데이터셋은 NaN → 자동 제외.
+        ses:     effects와 정렬된 데이터셋별 표준오차(lfcSE). ≤0/NaN도 제외.
+
+    Returns:
+        dict 또는 유효 데이터셋 2개 미만이면 None.
+        키: meta_effect_log2fc, meta_effect_se, meta_ci_low, meta_ci_high,
+            meta_pvalue_re, meta_i2, meta_effect_k
+    """
+    y = np.asarray(effects, dtype=float)
+    s = np.asarray(ses, dtype=float)
+    mask = np.isfinite(y) & np.isfinite(s) & (s > 0)
+    y, s = y[mask], s[mask]
+    k = int(y.size)
+    if k < 2:
+        return None
+
+    v = s ** 2                      # 분산
+    w = 1.0 / v                     # fixed-effect 가중
+    sw = float(np.sum(w))
+    y_fixed = float(np.sum(w * y) / sw)
+    Q = float(np.sum(w * (y - y_fixed) ** 2))
+
+    # DerSimonian-Laird τ²
+    c = sw - float(np.sum(w ** 2)) / sw
+    tau2 = max(0.0, (Q - (k - 1)) / c) if c > 0 else 0.0
+    i2 = max(0.0, (Q - (k - 1)) / Q) * 100.0 if Q > 0 else 0.0
+
+    # random-effects 가중
+    w_re = 1.0 / (v + tau2)
+    sw_re = float(np.sum(w_re))
+    effect = float(np.sum(w_re * y) / sw_re)
+    se = float(np.sqrt(1.0 / sw_re))
+    z = effect / se if se > 0 else 0.0
+    p_re = float(2.0 * st.norm.sf(abs(z)))
+
+    return {
+        'meta_effect_log2fc': effect,
+        'meta_effect_se':     se,
+        'meta_ci_low':        effect - 1.96 * se,
+        'meta_ci_high':       effect + 1.96 * se,
+        'meta_pvalue_re':     p_re,
+        'meta_i2':            i2,
+        'meta_effect_k':      k,
+    }
 
 
 def benjamini_hochberg(pvals: Sequence[float]) -> np.ndarray:
