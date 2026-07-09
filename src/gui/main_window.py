@@ -25,6 +25,7 @@ from gui.filter_panel import FilterPanel
 from gui.dataset_tree_panel import DatasetTreePanel
 from gui.comparison_panel import ComparisonPanel
 from gui.visualization_dialog import VolcanoPlotWidget, VolcanoPlotDialog, HeatmapWidget, HeatmapDialog, PadjHistogramDialog, DotPlotDialog
+from utils.figure_bundle_export import export_figure_bundle
 from gui.pca_dialog import PCADialog
 from gui.venn_dialog import VennDiagramDialog
 from gui.venn_dialog_comparison import VennDiagramFromComparisonDialog
@@ -392,6 +393,10 @@ class MainWindow(QMainWindow):
         self.export_action.triggered.connect(self._on_export_data)
         # 항상 활성화
         file_menu.addAction(self.export_action)
+
+        self.export_bundle_action = QAction("Export Figure Bundle...", self)
+        self.export_bundle_action.triggered.connect(self._on_export_figure_bundle)
+        file_menu.addAction(self.export_bundle_action)
 
         self.export_multi_omics_action = QAction("Export Multi-Omics Results (Excel)...", self)
         self.export_multi_omics_action.triggered.connect(self._on_export_multi_omics)
@@ -813,6 +818,9 @@ class MainWindow(QMainWindow):
         # 비-whole 시트는 parent_dataset이 있으면 즉시 트리에 등록
         if parent_dataset and sheet_type != 'whole':
             self.dataset_manager.add_sheet(parent_dataset, new_idx, tab_name, sheet_type)
+        # 단일 부모가 없는 결과 시트(비교/클러스터)는 'Cross-Dataset Results' 그룹에 등록
+        elif not parent_dataset and sheet_type in ('comparison', 'clustered'):
+            self.dataset_manager.add_result_sheet(new_idx, tab_name, sheet_type)
 
         return table
 
@@ -2451,6 +2459,33 @@ class MainWindow(QMainWindow):
             current_tab = self.data_tabs.currentWidget()
             if isinstance(current_tab, QTableView):
                 self.presenter.export_data(Path(file_path), current_tab)
+
+    def _on_export_figure_bundle(self):
+        """현재 plot 탭을 figure-atlas bundle로 export."""
+        current_tab = self.data_tabs.currentWidget()
+        if current_tab is None:
+            QMessageBox.information(self, "No plot selected", "Open a plot tab first.")
+            return
+
+        if hasattr(current_tab, 'get_bundle_context'):
+            folder = QFileDialog.getExistingDirectory(self, "Select bundle output folder")
+            if not folder:
+                return
+            try:
+                context = current_tab.get_bundle_context()
+                bundle_dir = export_figure_bundle(
+                    context,
+                    str(Path(folder) / context.get('figure_slug', 'figure_bundle')),
+                    context.get('figure_slug', 'figure_bundle'),
+                    context.get('figure_title', 'Figure'),
+                    context.get('plot_type', 'plot'),
+                )
+                QMessageBox.information(self, "Bundle exported", f"Bundle created at:\n{bundle_dir}")
+            except Exception as exc:
+                QMessageBox.critical(self, "Bundle export failed", str(exc))
+            return
+
+        QMessageBox.information(self, "Unsupported tab", "The current tab does not expose a bundle export context.")
     
     def _remove_tab_safely(self, index: int):
         """
