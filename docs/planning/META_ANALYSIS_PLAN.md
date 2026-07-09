@@ -99,25 +99,78 @@ meta_found_in    = len(pvals)   # K개 중 유효 데이터셋 수
 ---
 
 ## Phase M2: Cross-Species 상동 유전자 매핑  ⬜ 다음 차례
-**우선순위: 중간 | 난이도: 중간 | 예상 2–3일**
+**우선순위: 중간(종간 비교 필요 시) | 난이도: 코드 낮음~중간 / 데이터 확보가 관문 | 예상: 코드 ~1일 + 데이터 준비**
 
 **목적:** 서로 다른 종의 DE 데이터셋(mouse Trp53 / human TP53 / rat Tp53)을 하나의
-인간 유전자 심볼 공간에서 비교.
+인간 유전자 심볼 공간으로 통일해 비교. 통일 후에는 **M1·M4a·M5 메타 통계가 그대로 재사용**된다
+(심볼 공간만 맞추면 됨).
 
-**데이터:** `data/orthologs/human_mouse_rat_1to1.csv` (번들, Ensembl BioMart 정적 스냅샷)
-- 컬럼: `human_symbol, mouse_symbol, rat_symbol, ensembl_human_id`
-- ~16,000 1:1 ortholog, ~400KB
+### 난이도 요약
 
-**흐름:**
-1. ComparisonPanel에 "Cross-species harmonization" 체크박스 (또는 organism 상이 시 자동 감지)
-2. 비인간 데이터셋의 gene symbol → human_symbol 치환 (1:1만, 매핑 안 되는 유전자 제외)
-3. 매핑 후 기존 Statistics Filtering 로직 그대로 실행
-4. 결과 헤더에 `(mouse→human)` 등 종 정보 표시, 매핑 실패 개수 경고
+- **코드: 쉬움~중간 (~1일).** OrthologMapper(~40줄) + `_compare_statistics` 전처리 한 단계 +
+  ComparisonPanel 체크박스. 메타 통계 로직은 **손대지 않음**.
+- **데이터: 실질적 관문 (한 번만).** human/mouse/rat 1:1 ortholog CSV를 **외부(Ensembl/MGI)에서
+  생성**해야 함 — 네트워크 필요. 오프라인 개발 셸에서는 만들 수 없으므로 생성 스크립트를 사용자가
+  한 번 실행하는 방식으로 조달.
 
-**구현 위치:**
-- 신규 `src/utils/ortholog_mapper.py`: `OrthologMapper.map_to_human(df, source_organism)`
-- `statistics.py` / `_compare_statistics` 전처리 단계에 매핑 삽입
-- `src/gui/comparison_panel.py`: 체크박스
+### 데이터 조달 (블로커)
+
+**대상 파일:** `data/orthologs/human_mouse_rat_1to1.csv` (번들, ~16k행, ~400KB)
+- 컬럼: `human_symbol, human_ensembl, mouse_symbol, mouse_ensembl, rat_symbol, rat_ensembl`
+- **1:1 orthologs만** (다대다 aggregation 회피 → 노이즈 최소, 계획 확정 사항)
+
+**출처 후보:**
+- **Ensembl BioMart** (표준) — `pybiomart` 또는 BioMart 웹. human 기준으로 mouse/rat
+  `homolog_orthology_type == 'ortholog_one2one'` 필터.
+- MGI/JAX homology (`HOM_MouseHumanSequence.rpt`) — human-mouse 위주, 무료.
+- NCBI HomoloGene / DIOPT — 대안.
+
+**조달 방식 (택1):**
+- **방법 A (권장):** 신규 `scripts/build_ortholog_table.py`(pybiomart 기반)를 제공 → 사용자가
+  인터넷 되는 환경에서 1회 실행 → CSV 생성 → 리포에 커밋.
+- **방법 B:** 사용자가 Ensembl/MGI 파일을 내려받으면 표준화 파서를 붙여 CSV 생성.
+
+### 숨은 복잡도 (난이도를 "중간"으로 올리는 요인)
+
+1. **organism 감지** — 각 데이터셋의 종을 알아야 함. 우선순위:
+   `Dataset.metadata['organism']` → 없으면 **gene_id 접두사 패턴**(`ENSG`=human, `ENSMUSG`=mouse,
+   `ENSRNOG`=rat)으로 폴백. 심볼 casing도 보조 단서.
+2. **매핑 키 — 심볼보다 Ensembl ID가 robust.** mouse `Trp53`→human `TP53`은 단순 대문자화로
+   안 됨. **가능하면 gene_id(ENSMUSG→ENSG)로 매핑** 후 human_symbol 부여; gene_id 없으면 심볼로
+   ortholog 테이블 조회.
+3. **1:1 엄격 필터** — 1:1 아닌(1:다/다:다) 유전자는 제외. 매핑 실패·모호 개수를 UI 경고로 표시.
+4. **배포(PyInstaller)** — 번들 CSV를 `rna-seq-viewer.spec` / `cmg-seqviewer-macos.spec`의
+   `datas`에 포함해야 frozen 빌드에서 로드됨 (ONLINE_ENRICHMENT_ANALYSIS_PLAN G1과 동일 이슈).
+   경로는 `data_path_config.py` 규칙에 맞춰 frozen/dev 양쪽 해석.
+
+### 구현 흐름
+
+1. **organism 감지** → 비인간 데이터셋 식별.
+2. **OrthologMapper.map_to_human(df, source_organism)** — 비인간 df의 gene_id/symbol을
+   human_symbol(+human_ensembl)로 치환, 1:1 매핑 실패 행 제외, (원본→human) 이력 보존.
+3. 매핑 후 **기존 `_compare_statistics` 그대로 실행** → M1/M5 메타 컬럼 자동 생성.
+4. 결과 헤더/메타데이터에 `(mouse→human)` 등 종 표기, **매핑 실패 개수 경고**.
+5. cross-species → **M4b(early aggregation)로 이어질 때 M2가 선행**(공통 유전자 공간 확보 후 enrichment).
+
+### 구현 위치
+
+- 신규 `src/utils/ortholog_mapper.py`: `OrthologMapper`(CSV 로드/캐시, `map_to_human`, organism 감지 헬퍼)
+- 신규 `scripts/build_ortholog_table.py`: BioMart→CSV 생성기 (사용자 1회 실행)
+- `data/orthologs/human_mouse_rat_1to1.csv`: 번들 데이터
+- `main_window.py` `_compare_statistics` 전처리 단계에 매핑 삽입
+- `src/gui/comparison_panel.py`: "Cross-species harmonization" 체크박스
+- `*.spec`: 번들 CSV `datas` 추가
+
+### 현실적 우선순위 메모
+
+현재 랩 데이터는 대부분 **mouse** → 같은 종 비교가 주력이면 M2 우선순위 낮음(M1/M4a/M5로 충분).
+"인간 질환 vs 동물 모델" 같은 **종간 메타가 실제로 필요해질 때** 착수 권장. 데이터 조달이
+선행되어야 하므로, 착수 시 **생성 스크립트 → CSV 커밋 → 코드 구현** 순서.
+
+### 검증
+
+human DE + mouse DE 혼합 선택 → Cross-species 체크 → 인간 심볼로 통합, 알려진 ortholog 쌍
+(예: mouse Trp53 ↔ human TP53)이 한 행으로 합쳐지는지, 1:1 매핑 실패 개수가 경고에 표시되는지.
 
 ---
 
