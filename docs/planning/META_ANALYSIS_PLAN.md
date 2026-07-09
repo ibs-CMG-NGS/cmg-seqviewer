@@ -101,9 +101,10 @@ meta_found_in    = len(pvals)   # K개 중 유효 데이터셋 수
 ## Phase M2: Cross-Species 상동 유전자 매핑  ⬜ 다음 차례
 **우선순위: 중간(종간 비교 필요 시) | 난이도: 코드 낮음~중간 / 데이터 확보가 관문 | 예상: 코드 ~1일 + 데이터 준비**
 
-**목적:** 서로 다른 종의 DE 데이터셋(mouse Trp53 / human TP53 / rat Tp53)을 하나의
-인간 유전자 심볼 공간으로 통일해 비교. 통일 후에는 **M1·M4a·M5 메타 통계가 그대로 재사용**된다
-(심볼 공간만 맞추면 됨).
+**목적:** 서로 다른 종의 DE 데이터셋(mouse Trp53 / human TP53 / rat Tp53 / **macaque·marmoset 등**)을
+하나의 인간 유전자 심볼 공간으로 통일해 비교. 통일 후에는 **M1·M4a·M5 메타 통계가 그대로 재사용**된다
+(심볼 공간만 맞추면 됨). 테이블·mapper를 **종-일반(long-format)**으로 설계해 임의 Ensembl 종을
+데이터만 추가하면 지원한다.
 
 ### 난이도 요약
 
@@ -113,35 +114,60 @@ meta_found_in    = len(pvals)   # K개 중 유효 데이터셋 수
   생성**해야 함 — 네트워크 필요. 오프라인 개발 셸에서는 만들 수 없으므로 생성 스크립트를 사용자가
   한 번 실행하는 방식으로 조달.
 
-### 데이터 조달 (블로커)
+### 데이터 조달 (블로커) — **다종 long-format 설계**
 
-**대상 파일:** `data/orthologs/human_mouse_rat_1to1.csv` (번들, ~16k행, ~400KB)
-- 컬럼: `human_symbol, human_ensembl, mouse_symbol, mouse_ensembl, rat_symbol, rat_ensembl`
-- **1:1 orthologs만** (다대다 aggregation 회피 → 노이즈 최소, 계획 확정 사항)
+종마다 컬럼을 고정하는 wide 포맷(`human/mouse/rat_symbol …`)은 종 추가 시 스키마가 바뀐다.
+대신 **human 중심 long 포맷**으로 설계해 **마카크·마모셋 등 임의 Ensembl 종을 데이터만 추가**하면
+되도록 한다(코드 무변경).
+
+**대상 파일:** `data/orthologs/ortholog_map.csv` (번들, human 1:1 orthologs)
+```
+species,   source_ensembl, source_symbol, human_ensembl,   human_symbol
+mouse,     ENSMUSG00000059552, Trp53,      ENSG00000141510, TP53
+rat,       ENSRNOG00000010756, Tp53,       ENSG00000141510, TP53
+macaque,   ENSMMUG00000...,    TP53,       ENSG00000141510, TP53
+marmoset,  ENSCJAG00000...,    ...,        ENSG00000141510, TP53
+```
+- **1:1 orthologs만** (다대다 aggregation 회피 → 노이즈 최소, 확정 사항)
+- OrthologMapper는 `(species, source_ensembl 또는 source_symbol) → human_symbol/human_ensembl`
+  조회만 하므로 종 개수와 무관하게 동일 코드.
+
+**우선 지원 종(예):** human(기준), mouse, rat, **macaque(Macaca mulatta)**, **marmoset(Callithrix jacchus)**.
 
 **출처 후보:**
-- **Ensembl BioMart** (표준) — `pybiomart` 또는 BioMart 웹. human 기준으로 mouse/rat
+- **Ensembl BioMart** (표준) — `pybiomart`. human 기준으로 각 종의
   `homolog_orthology_type == 'ortholog_one2one'` 필터.
-- MGI/JAX homology (`HOM_MouseHumanSequence.rpt`) — human-mouse 위주, 무료.
-- NCBI HomoloGene / DIOPT — 대안.
+  - BioMart 데이터셋명: `mmusculus_gene_ensembl`(mouse), `rnorvegicus_gene_ensembl`(rat),
+    **`mmulatta_gene_ensembl`(macaque)**, **`cjacchus_gene_ensembl`(marmoset)**.
+- MGI/JAX homology — human-mouse 보강용. NCBI HomoloGene / DIOPT — 대안.
 
 **조달 방식 (택1):**
-- **방법 A (권장):** 신규 `scripts/build_ortholog_table.py`(pybiomart 기반)를 제공 → 사용자가
-  인터넷 되는 환경에서 1회 실행 → CSV 생성 → 리포에 커밋.
-- **방법 B:** 사용자가 Ensembl/MGI 파일을 내려받으면 표준화 파서를 붙여 CSV 생성.
+- **방법 A (권장):** 신규 `scripts/build_ortholog_table.py`(pybiomart) — **종 목록을 인자로 받아**
+  long-format CSV 생성. 사용자가 인터넷 되는 환경에서 1회 실행 → 커밋. 종 추가 = 인자에 한 줄.
+- **방법 B:** 사용자가 Ensembl 파일을 내려받으면 표준화 파서로 long CSV 생성.
 
 ### 숨은 복잡도 (난이도를 "중간"으로 올리는 요인)
 
-1. **organism 감지** — 각 데이터셋의 종을 알아야 함. 우선순위:
-   `Dataset.metadata['organism']` → 없으면 **gene_id 접두사 패턴**(`ENSG`=human, `ENSMUSG`=mouse,
-   `ENSRNOG`=rat)으로 폴백. 심볼 casing도 보조 단서.
-2. **매핑 키 — 심볼보다 Ensembl ID가 robust.** mouse `Trp53`→human `TP53`은 단순 대문자화로
-   안 됨. **가능하면 gene_id(ENSMUSG→ENSG)로 매핑** 후 human_symbol 부여; gene_id 없으면 심볼로
-   ortholog 테이블 조회.
-3. **1:1 엄격 필터** — 1:1 아닌(1:다/다:다) 유전자는 제외. 매핑 실패·모호 개수를 UI 경고로 표시.
-4. **배포(PyInstaller)** — 번들 CSV를 `rna-seq-viewer.spec` / `cmg-seqviewer-macos.spec`의
-   `datas`에 포함해야 frozen 빌드에서 로드됨 (ONLINE_ENRICHMENT_ANALYSIS_PLAN G1과 동일 이슈).
-   경로는 `data_path_config.py` 규칙에 맞춰 frozen/dev 양쪽 해석.
+1. **organism 감지 — Ensembl gene_id 접두사 사전**(종 추가 = 사전에 1줄):
+   `ENSG`=human, `ENSMUSG`=mouse, `ENSRNOG`=rat, **`ENSMMUG`=macaque**, **`ENSCJAG`=marmoset`**.
+   우선순위: `Dataset.metadata['organism']` → 없으면 접두사 폴백. 심볼 casing은 영장류에서
+   신뢰도 낮음(아래 3).
+2. **매핑 키 — 심볼보다 Ensembl ID가 robust (영장류에선 특히).** `Trp53`→`TP53`은 단순 대문자화로
+   안 되고, **마카크/마모셋 심볼은 human-유사 이름·LOC/ENSEMBL ID가 많아** 심볼 매핑이 더 불안정.
+   → **gene_id(ENS*G) 기반 매핑을 1순위**, 심볼은 폴백.
+3. **마모셋 annotation 품질 주의** — novel/unnamed 유전자가 많아 **매핑 실패가 상대적으로 많다**.
+   → "매핑 실패 개수 경고" UI가 영장류(특히 마모셋)에서 더 중요.
+4. **1:1 엄격 필터** — 1:다/다:다 제외. 영장류는 human에 가까워 **1:1 커버리지는 오히려 높음**
+   (마카크 human 1:1 ~17k+). 매핑 실패·모호 개수를 UI 경고로 표시.
+5. **배포(PyInstaller)** — 번들 CSV를 `rna-seq-viewer.spec` / `cmg-seqviewer-macos.spec`의
+   `datas`에 포함(frozen 로드). 경로는 `data_path_config.py` 규칙으로 frozen/dev 양쪽 해석.
+   (ONLINE_ENRICHMENT_ANALYSIS_PLAN G1과 동일 이슈)
+
+### M5(random-effects)와의 시너지 — 종간에서 핵심
+
+human+rodent+primate를 한 메타에 섞으면 **종간 이질성이 크다**. 이때 **M5의 I²/random-effects가
+"이 신호가 종을 가로질러 견고한가 vs 특정 계통 특이적인가"를 정량화** → 종간 메타에서 가장 중요한
+지표가 된다. 즉 M2(심볼 통일) + M5(이질성 정량)가 짝을 이룬다.
 
 ### 구현 흐름
 
@@ -154,9 +180,10 @@ meta_found_in    = len(pvals)   # K개 중 유효 데이터셋 수
 
 ### 구현 위치
 
-- 신규 `src/utils/ortholog_mapper.py`: `OrthologMapper`(CSV 로드/캐시, `map_to_human`, organism 감지 헬퍼)
-- 신규 `scripts/build_ortholog_table.py`: BioMart→CSV 생성기 (사용자 1회 실행)
-- `data/orthologs/human_mouse_rat_1to1.csv`: 번들 데이터
+- 신규 `src/utils/ortholog_mapper.py`: `OrthologMapper`(long CSV 로드/캐시, `map_to_human`,
+  종-일반 organism 감지 헬퍼 — 접두사 사전 기반)
+- 신규 `scripts/build_ortholog_table.py`: BioMart→**long CSV** 생성기 (종 목록 인자, 사용자 1회 실행)
+- `data/orthologs/ortholog_map.csv`: 번들 데이터 (human 중심 long-format, N종)
 - `main_window.py` `_compare_statistics` 전처리 단계에 매핑 삽입
 - `src/gui/comparison_panel.py`: "Cross-species harmonization" 체크박스
 - `*.spec`: 번들 CSV `datas` 추가
@@ -169,8 +196,9 @@ meta_found_in    = len(pvals)   # K개 중 유효 데이터셋 수
 
 ### 검증
 
-human DE + mouse DE 혼합 선택 → Cross-species 체크 → 인간 심볼로 통합, 알려진 ortholog 쌍
-(예: mouse Trp53 ↔ human TP53)이 한 행으로 합쳐지는지, 1:1 매핑 실패 개수가 경고에 표시되는지.
+human DE + mouse DE(+선택적으로 macaque/marmoset) 혼합 선택 → Cross-species 체크 →
+인간 심볼로 통합, 알려진 ortholog 쌍(예: mouse Trp53 ↔ macaque TP53 ↔ human TP53)이 한 행으로
+합쳐지는지, 1:1 매핑 실패 개수가 경고에 표시되는지(마모셋은 실패율이 더 높을 것으로 예상).
 
 ---
 
@@ -336,7 +364,7 @@ DE 2–3개로 Statistics Filtering → `meta_effect_log2fc`/`meta_i2` 확인 �
 | M3 | 메타 Volcano Plot | ★☆☆ | M1 | 2 | ✅ 완료 |
 | M4a | GO term 수준 메타 (late) | ★☆☆ | meta_stats 재사용 | 3 | ✅ 완료 |
 | M5 | 효과크기 random-effects (log2FC+SE) | ★☆☆ | lfcSE(기존) | 4 | ✅ 완료 |
-| M2 | Cross-species ortholog | ★★☆ | 번들 CSV | 5 | ⬜ 다음 |
+| M2 | Cross-species ortholog (다종 long-format) | ★★☆ | 번들 CSV(BioMart 생성) | 5 | ⬜ 다음 |
 | M4b | meta-signature → enrichment (early) | ★☆☆ | **online enrichment 엔진** | 엔진과 동시 | ⬜ |
 
 ## 검증
