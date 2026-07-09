@@ -38,8 +38,12 @@ class MetaVolcanoDialog(BasePlotDialog):
     def __init__(self, df: pd.DataFrame, parent=None):
         self.logger = logging.getLogger(__name__)
         self.df = df.copy()
-        self._plot_df = None  # 마지막 렌더 데이터 (Export용)
+        self._plot_df = None    # 마지막 렌더 데이터 (Export용)
+        self._hover_df = None   # hover 조회용 (_x/_y/라벨/통계)
+        self._label_col = None
+        self.annot = None
         super().__init__("Meta Volcano Plot", parent, figsize=(8, 7))
+        self.canvas.mpl_connect("motion_notify_event", self._on_hover)
         self._update_plot()
 
     # ── Controls ──────────────────────────────────────────────────────────
@@ -82,6 +86,12 @@ class MetaVolcanoDialog(BasePlotDialog):
         self._topn_spin.setValue(10)
         self._topn_spin.valueChanged.connect(self._update_plot)
         form.addRow("label top N", self._topn_spin)
+
+        self._labelsize_spin = QSpinBox()
+        self._labelsize_spin.setRange(6, 24)
+        self._labelsize_spin.setValue(9)
+        self._labelsize_spin.valueChanged.connect(self._update_plot)
+        form.addRow("label font size", self._labelsize_spin)
 
         group.setLayout(form)
         layout.addWidget(group)
@@ -164,18 +174,20 @@ class MetaVolcanoDialog(BasePlotDialog):
             ax.axvline(-lfc_thr, color='#888888', ls='--', lw=0.7)
         ax.axvline(0, color='#cccccc', lw=0.6)
 
+        # 라벨/hover에 쓸 식별자 컬럼 (유전자 또는 term)
+        self._label_col = next((c for c in ('symbol', 'gene_id', 'description', 'term_id')
+                                if c in d.columns), None)
+
         # 상위 N개 라벨 (유의 유전자 중 p-value 작은 순)
         topn = self._topn_spin.value()
-        if topn > 0:
-            label_col = next((c for c in ('symbol', 'gene_id', 'description', 'term_id')
-                              if c in d.columns), None)
-            if label_col:
-                top = d[sig].nsmallest(topn, '_p')
-                for _, r in top.iterrows():
-                    name = str(r[label_col])
-                    if name and name != 'nan':
-                        ax.annotate(name, (r['_x'], r['_y']), fontsize=7,
-                                    xytext=(3, 3), textcoords='offset points')
+        lbl_size = self._labelsize_spin.value()
+        if topn > 0 and self._label_col:
+            top = d[sig].nsmallest(topn, '_p')
+            for _, r in top.iterrows():
+                name = str(r[self._label_col])
+                if name and name != 'nan':
+                    ax.annotate(name, (r['_x'], r['_y']), fontsize=lbl_size,
+                                xytext=(3, 3), textcoords='offset points')
 
         src = self._psrc_combo.currentText()
         is_term = self._xcol() == 'meta_log2fe_mean'
@@ -186,9 +198,58 @@ class MetaVolcanoDialog(BasePlotDialog):
                      fontsize=12, fontweight='bold')
         ax.legend(fontsize=7, loc='upper right', framealpha=0.9)
 
+        # hover용 주석 (숨김 상태로 생성, 최상위 레이어)
+        self.annot = ax.annotate(
+            "", xy=(0, 0), xytext=(16, 16), textcoords="offset points",
+            bbox=dict(boxstyle="round", fc="w", alpha=0.92),
+            arrowprops=dict(arrowstyle="->"), zorder=1000, fontsize=lbl_size)
+        self.annot.set_visible(False)
+        self._hover_df = d   # _x/_y/_p/라벨/meta_found_in 포함
+
         self._plot_df = d.rename(columns={'_x': 'mean_log2fc', '_p': 'meta_p', '_y': 'neg_log10_p'})
         self.figure.tight_layout()
         self.canvas.draw()
+
+    def _on_hover(self, event):
+        """마우스 오버 시 가장 가까운 점의 gene/term 정보 표시."""
+        if self.annot is None or self._hover_df is None:
+            return
+        if event.inaxes is None:
+            if self.annot.get_visible():
+                self.annot.set_visible(False)
+                self.canvas.draw_idle()
+            return
+        x, y = event.xdata, event.ydata
+        if x is None or y is None:
+            return
+        d = self._hover_df
+        ax = event.inaxes
+        xlim, ylim = ax.get_xlim(), ax.get_ylim()
+        xs = (xlim[1] - xlim[0]) or 1.0
+        ys = (ylim[1] - ylim[0]) or 1.0
+        dist = np.sqrt(((d['_x'] - x) / xs * 10) ** 2 + ((d['_y'] - y) / ys * 10) ** 2)
+        if dist.empty:
+            return
+        idx = dist.idxmin()
+        if dist[idx] >= 0.5:
+            if self.annot.get_visible():
+                self.annot.set_visible(False)
+                self.canvas.draw_idle()
+            return
+        r = d.loc[idx]
+        name = (str(r[self._label_col]) if self._label_col and pd.notna(r.get(self._label_col))
+                else 'Unknown')
+        text = (f"{name}\nmeta p: {r['_p']:.2e}"
+                f"\nmean log2{'FE' if self._xcol() == 'meta_log2fe_mean' else 'FC'}: {r['_x']:.2f}"
+                f"\nfound in: {r.get('meta_found_in', '')}")
+        self.annot.xy = (r['_x'], r['_y'])
+        self.annot.set_text(text)
+        self.annot.set_fontsize(self._labelsize_spin.value())
+        ox = -120 if r['_x'] > xlim[0] + (xlim[1] - xlim[0]) * 0.80 else 16
+        oy = -70 if r['_y'] > ylim[0] + (ylim[1] - ylim[0]) * 0.75 else 16
+        self.annot.set_position((ox, oy))
+        self.annot.set_visible(True)
+        self.canvas.draw_idle()
 
     # ── Export ────────────────────────────────────────────────────────────
 
