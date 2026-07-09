@@ -11,8 +11,9 @@ CMG-SeqViewer의 cross-species 메타 분석(M2)은 비인간 데이터셋의 �
     # 특정 종만:      python scripts/build_ortholog_table.py --species mouse macaque
     # 미러 호스트:    python scripts/build_ortholog_table.py --host http://useast.ensembl.org
 
-출력: data/orthologs/ortholog_map.csv  (human 중심 long-format)
+출력: data/orthologs/ortholog_map.csv.gz  (human 중심 long-format, gzip)
     species, source_ensembl, source_symbol, human_ensembl, human_symbol
+    (pandas가 .gz 확장자로 압축/해제를 자동 처리 — read_csv/to_csv 모두 투명)
 
 설계 원칙 (META_ANALYSIS_PLAN.md M2):
   - long-format이라 종 추가 = SPECIES 딕셔너리에 한 줄(코드 무변경, 데이터만 확장).
@@ -36,7 +37,8 @@ SPECIES = {
 }
 
 DEFAULT_HOST = 'http://www.ensembl.org'
-DEFAULT_OUT = 'data/orthologs/ortholog_map.csv'
+# .csv.gz 로 저장 (pandas가 확장자로 gzip 압축/해제 자동 처리)
+DEFAULT_OUT = 'data/orthologs/ortholog_map.csv.gz'
 
 _COLS = ['species', 'source_ensembl', 'source_symbol', 'human_ensembl', 'human_symbol']
 

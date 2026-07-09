@@ -1,7 +1,8 @@
 # Ortholog mapping data (cross-species meta-analysis, M2)
 
-`ortholog_map.csv` — human 중심 1:1 ortholog long-format 매핑 테이블. CMG-SeqViewer의
+`ortholog_map.csv.gz` — human 중심 1:1 ortholog long-format 매핑 테이블(gzip). CMG-SeqViewer의
 cross-species 메타 분석(M2)이 비인간 데이터셋의 유전자를 human 심볼 공간으로 통일하는 데 쓴다.
+(pandas `read_csv`가 `.gz`를 투명하게 읽음. 71,614행 / 4종, 압축 ~0.9 MB.)
 
 ## 포맷 (long)
 
