@@ -169,11 +169,34 @@ human+rodent+primate를 한 메타에 섞으면 **종간 이질성이 크다**. 
 "이 신호가 종을 가로질러 견고한가 vs 특정 계통 특이적인가"를 정량화** → 종간 메타에서 가장 중요한
 지표가 된다. 즉 M2(심볼 통일) + M5(이질성 정량)가 짝을 이룬다.
 
+### 파이프라인 내 배치 — "합치기 직전의 선행 정렬(late mapping)"
+
+상동 유전자 매칭은 **결합(M1/M5) 계산과 동시가 아니라, 그것을 가능하게 하는 직전 전처리**다.
+매칭이 곧 **"서로 다른 종의 어떤 유전자를 같은 것으로 볼지"를 정하는 JOIN 키**이기 때문이다.
+
+```
+[1] 외부 DE (종별 독립, 전체 유전자)   ← 상동유전자 개입 없음 (CMG는 결과만 import)
+[2] 종별 DE 데이터셋 로드
+[3] Compare > Statistics Filtering (1회)
+     ├ 3a. ★M2 매칭★: 비인간 gene_id/symbol → human 심볼로 통일  ← 여기
+     ├ 3b. 와이드 테이블 조립 (통일된 human 심볼을 JOIN 키) → mouse Trp53/human TP53가 한 행
+     └ 3c. M1(p 결합)·M5(효과크기 결합)  ← 매칭된 행에 대해 계산
+```
+
+- **매칭은 M1·M5 둘 다의 공통 선행 전처리**다. 결합 방법마다 따로 하지 않고 **한 번**만 하며,
+  통일된 동일 키를 두 결합이 함께 소비한다. (코드상 `gene_mapping`/`full_lookup`의 identifier를
+  human 키로 만드는 지점에 remap을 끼운다.)
+- **CMG는 구조상 "사후(late) 매핑"** — DE를 직접 안 하고 결과를 import하므로, 각 종 DE는 자기
+  **전체 유전자**로 이미 계산됐고 상동 유전자 통일은 **합칠 때만** 적용된다. 이는 통계적으로도
+  선호되는 시점(첨부 문서 4장): DE 이전 count matrix에서 미리 1:1 필터하면 **종 특이 강발현 유전자를
+  사전 배제**하는 위험이 있는데, late 매핑은 이를 피한다.
+
 ### 구현 흐름
 
 1. **organism 감지** → 비인간 데이터셋 식별.
 2. **OrthologMapper.map_to_human(df, source_organism)** — 비인간 df의 gene_id/symbol을
    human_symbol(+human_ensembl)로 치환, 1:1 매핑 실패 행 제외, (원본→human) 이력 보존.
+   삽입 지점은 위 3a (와이드 테이블 JOIN 키를 만들기 직전).
 3. 매핑 후 **기존 `_compare_statistics` 그대로 실행** → M1/M5 메타 컬럼 자동 생성.
 4. 결과 헤더/메타데이터에 `(mouse→human)` 등 종 표기, **매핑 실패 개수 경고**.
 5. cross-species → **M4b(early aggregation)로 이어질 때 M2가 선행**(공통 유전자 공간 확보 후 enrichment).
