@@ -374,68 +374,15 @@ class MAPlotDialog(BasePlotDialog):
             'annotation_custom_genes': list(self.annotation_custom_genes),
         })
 
-        df = self.dataset.dataframe
-        if df is None or df.empty:
-            ax.text(0.5, 0.5, 'No data available.', ha='center', va='center', fontsize=14)
+        # 렌더는 순수 함수 src/plots/ma.py::render_ma 에 있으며 재현 번들과 공유한다.
+        from plots.ma import render_ma
+        result = render_ma(ax, self.dataset.dataframe, self._plot_params())
+        if result is None:
             self.canvas.draw()
             return
 
-        if 'base_mean' not in df.columns or 'log2fc' not in df.columns:
-            missing = [c for c in ('base_mean', 'log2fc') if c not in df.columns]
-            ax.text(0.5, 0.5,
-                    f'Required columns not found:\n{", ".join(missing)}',
-                    ha='center', va='center', fontsize=14)
-            self.canvas.draw()
-            return
-
-        df = df.copy()
-        df['_x'] = np.log2(df['base_mean'].clip(lower=1e-6))
-        df['_y'] = df['log2fc']
-
-        df['_reg'] = 'ns'
-        if 'adj_pvalue' in df.columns:
-            up_mask   = (df['log2fc'] >=  self.log2fc_threshold) & (df['adj_pvalue'] <= self.padj_threshold)
-            down_mask = (df['log2fc'] <= -self.log2fc_threshold) & (df['adj_pvalue'] <= self.padj_threshold)
-            df.loc[up_mask,   '_reg'] = 'up'
-            df.loc[down_mask, '_reg'] = 'down'
-
-        scatter_collections = []
-        for reg, color, label in [
-            ('ns',   self.ns_color,   f"NS ({(df['_reg']=='ns').sum():,})"),
-            ('down', self.down_color, f"Down ({(df['_reg']=='down').sum():,})"),
-            ('up',   self.up_color,   f"Up ({(df['_reg']=='up').sum():,})"),
-        ]:
-            subset = df[df['_reg'] == reg]
-            sc = ax.scatter(
-                subset['_x'], subset['_y'],
-                c=color.name(), s=self.dot_size, alpha=0.5,
-                label=label,
-                picker=(reg != 'ns'),
-            )
-            if reg != 'ns':
-                scatter_collections.append((sc, subset))
-
-        ax.axhline(0, color='black', linewidth=0.8, alpha=0.6)
-        ax.axhline( self.log2fc_threshold, color='gray', linewidth=0.8,
-                   linestyle='--', alpha=0.7)
-        ax.axhline(-self.log2fc_threshold, color='gray', linewidth=0.8,
-                   linestyle='--', alpha=0.7)
-
-        ax.set_xlabel(self.plot_xlabel, fontsize=12)
-        ax.set_ylabel(self.plot_ylabel, fontsize=12)
-        ax.set_title(self.plot_title, fontsize=14, fontweight='bold')
-        ax.grid(True, alpha=0.3)
-
-        if self.x_min is not None and self.x_max is not None:
-            ax.set_xlim(self.x_min, self.x_max)
-        if self.y_min is not None and self.y_max is not None:
-            ax.set_ylim(self.y_min, self.y_max)
-
-        if self.show_legend:
-            ax.legend(loc='upper right', fontsize=10)
-
-        self._draw_gene_labels(ax, df)
-
+        # hover 데이터 (up/down만)
+        self.deg_data = result[result['_reg'].isin(['up', 'down'])].copy()
         self.annot = ax.annotate(
             "", xy=(0, 0), xytext=(20, 20), textcoords="offset points",
             bbox=dict(boxstyle="round", fc="w", alpha=0.9),
@@ -443,10 +390,39 @@ class MAPlotDialog(BasePlotDialog):
             zorder=1000,
         )
         self.annot.set_visible(False)
-        self._scatter_collections = scatter_collections
-
         self.canvas.mpl_connect('motion_notify_event', self._on_hover)
         self.canvas.draw()
+
+    def _plot_params(self) -> dict:
+        return {
+            'padj_threshold': self.padj_threshold,
+            'log2fc_threshold': self.log2fc_threshold,
+            'dot_size': self.dot_size,
+            'up_color': self.up_color.name(),
+            'down_color': self.down_color.name(),
+            'ns_color': self.ns_color.name(),
+            'x_min': self.x_min, 'x_max': self.x_max,
+            'y_min': self.y_min, 'y_max': self.y_max,
+            'title': self.plot_title, 'xlabel': self.plot_xlabel, 'ylabel': self.plot_ylabel,
+            'show_legend': self.show_legend,
+            'annotation_mode': self.annotation_mode,
+            'annotation_top_n': self.annotation_top_n,
+            'annotation_label_size': self.annotation_label_size,
+            'annotation_custom_genes': list(self.annotation_custom_genes),
+        }
+
+    def get_bundle_context(self) -> dict:
+        return {
+            'figure': self.figure,
+            'dataframe': self.dataset.dataframe,
+            'plot_params': self._plot_params(),
+            'dataset_name': getattr(self.dataset, 'name', 'unknown'),
+            'plot_type': 'ma',
+            'figure_title': self.plot_title or 'MA Plot',
+            'figure_slug': 'ma_plot',
+            'source_stem': 'ma_plot',
+            'notes': 'Generated from cmg-seqviewer MA plot',
+        }
 
     def _draw_gene_labels(self, ax, df):
         if not hasattr(self, 'annot_mode_combo'):
@@ -493,42 +469,39 @@ class MAPlotDialog(BasePlotDialog):
             )
 
     def _on_hover(self, event):
-        if event.inaxes is None or not hasattr(self, '_scatter_collections'):
-            if hasattr(self, 'annot'):
-                self.annot.set_visible(False)
+        annot = getattr(self, 'annot', None)
+        deg = getattr(self, 'deg_data', None)
+        if annot is None or deg is None or len(deg) == 0 or event.inaxes is None:
+            if annot is not None and annot.get_visible():
+                annot.set_visible(False)
                 self.canvas.draw_idle()
             return
-
-        found = False
-        for sc, subset in self._scatter_collections:
-            cont, ind = sc.contains(event)
-            if cont:
-                idx = ind['ind'][0]
-                row = subset.iloc[idx]
-
-                gene_col = next(
-                    (c for c in ('nearest_gene', 'symbol', 'gene_id', 'peak_id')
-                     if c in row.index),
-                    None
-                )
-                gene_name = str(row[gene_col]) if gene_col else 'Unknown'
-                padj_val  = row.get('adj_pvalue', float('nan'))
-                base_mean = row.get('base_mean', float('nan'))
-
-                text = (
-                    f"Gene: {gene_name}\n"
-                    f"log₂FC: {row['log2fc']:.3f}\n"
-                    f"Mean acc: {base_mean:.1f}\n"
-                    f"Padj: {padj_val:.2e}"
-                )
-                self.annot.xy = (row['_x'], row['_y'])
-                self.annot.set_text(text)
-                self.annot.set_visible(True)
-                found = True
-                break
-
-        if not found:
-            self.annot.set_visible(False)
+        x, y = event.xdata, event.ydata
+        if x is None or y is None:
+            return
+        ax = event.inaxes
+        xlim, ylim = ax.get_xlim(), ax.get_ylim()
+        xs = (xlim[1] - xlim[0]) or 1.0
+        ys = (ylim[1] - ylim[0]) or 1.0
+        dist = np.sqrt(((deg['_x'] - x) / xs * 10) ** 2 + ((deg['_y'] - y) / ys * 10) ** 2)
+        if dist.empty:
+            return
+        idx = dist.idxmin()
+        if dist[idx] >= 0.5:
+            if annot.get_visible():
+                annot.set_visible(False)
+                self.canvas.draw_idle()
+            return
+        row = deg.loc[idx]
+        gene_col = next((c for c in ('nearest_gene', 'symbol', 'gene_id', 'peak_id')
+                         if c in row.index), None)
+        name = str(row[gene_col]) if gene_col else 'Unknown'
+        padj_val = row.get('adj_pvalue', float('nan'))
+        base_mean = row.get('base_mean', float('nan'))
+        annot.xy = (row['_x'], row['_y'])
+        annot.set_text(f"Gene: {name}\nlog₂FC: {row['log2fc']:.3f}\n"
+                       f"Mean acc: {base_mean:.1f}\nPadj: {padj_val:.2e}")
+        annot.set_visible(True)
         self.canvas.draw_idle()
 
     # ── Export ────────────────────────────────────────────────────────────
