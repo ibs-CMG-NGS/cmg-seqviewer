@@ -1062,6 +1062,22 @@ class HeatmapWidget(QWidget):
             'notes': 'Generated from cmg-seqviewer heatmap',
         }
 
+    def _export_figure_bundle(self):
+        """현재 heatmap을 재현 가능한 bundle로 export."""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        folder = QFileDialog.getExistingDirectory(self, "Select bundle output folder")
+        if not folder:
+            return
+        try:
+            bundle_dir = export_figure_bundle(
+                self.get_bundle_context(),
+                folder + "/heatmap_bundle",
+                "heatmap", "Expression Heatmap", "heatmap",
+            )
+            QMessageBox.information(self, "Bundle exported", f"Bundle created at:\n{bundle_dir}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Bundle export failed", str(exc))
+
     def get_settings_panel(self) -> 'QWidget | None':
         """설정 패널 반환 (embed_settings=False일 때 외부 배치용)."""
         return self._settings_panel
@@ -1241,6 +1257,11 @@ class HeatmapWidget(QWidget):
         export_btn = QPushButton("Export Data")
         export_btn.clicked.connect(self._export_heatmap_data)
         button_layout.addWidget(export_btn)
+
+        bundle_btn = QPushButton("Export Bundle")
+        bundle_btn.setToolTip("재현 가능한 figure 번들(데이터+스크립트+메타)로 export")
+        bundle_btn.clicked.connect(self._export_figure_bundle)
+        button_layout.addWidget(bundle_btn)
 
         if self._show_pin_button:
             pin_btn = QPushButton("📌 Pin to Tab")
