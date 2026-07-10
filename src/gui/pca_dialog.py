@@ -199,6 +199,33 @@ class PCADialog(BasePlotDialog):
     def _extra_buttons(self) -> list:
         return [("Export PCA Scores (CSV)", self._export_csv)]
 
+    # ── Bundle / params ────────────────────────────────────────────────────
+
+    def _plot_params(self) -> dict:
+        return {
+            'n_genes': self.n_genes,
+            'transform': self.transform,
+            'scaling': self.scaling,
+            'x_pc': self.x_pc,
+            'y_pc': self.y_pc,
+            'point_size': self.point_size,
+            'show_labels': self.show_labels,
+            'title': self.plot_title,
+        }
+
+    def get_bundle_context(self) -> dict:
+        return {
+            'figure': self.figure,
+            'dataframe': self.dataframe,
+            'plot_params': self._plot_params(),
+            'dataset_name': getattr(self, 'dataset_name', 'unknown'),
+            'plot_type': 'pca',
+            'figure_title': self.plot_title or 'PCA Plot',
+            'figure_slug': 'pca_plot',
+            'source_stem': 'pca_plot',
+            'notes': 'Generated from cmg-seqviewer PCA plot',
+        }
+
     # ── Settings helpers ──────────────────────────────────────────────────
 
     def n_genes_clamped(self) -> int:
@@ -230,76 +257,26 @@ class PCADialog(BasePlotDialog):
     # ── Plot ──────────────────────────────────────────────────────────────
 
     def _do_plot(self):
-        self.figure.clear()
+        """렌더는 순수 함수 src/plots/pca.py::render_pca 에 있으며 재현 번들과 공유한다."""
+        from plots.pca import render_pca
 
         self._sync_settings_from_ui()
         self._save_settings()
-
-        ax = self.figure.add_subplot(111)
-
-        if not self.sample_cols:
-            self._show_no_sample_warning(ax)
-            self.canvas.draw()
-            return
+        self.figure.clear()
 
         try:
-            scores, explained = self._run_pca()
+            result = render_pca(self.figure, self.dataframe, self._plot_params())
         except Exception as e:
             self.logger.error(f"PCA failed: {e}", exc_info=True)
-            ax.text(0.5, 0.5, f"PCA failed:\n{e}",
-                    ha='center', va='center', transform=ax.transAxes, fontsize=11,
-                    color='red')
+            ax = self.figure.axes[0] if self.figure.axes else self.figure.add_subplot(111)
+            ax.text(0.5, 0.5, f"PCA failed:\n{e}", ha='center', va='center',
+                    transform=ax.transAxes, fontsize=11, color='red')
             self.canvas.draw()
             return
 
-        n_pcs = scores.shape[1]
-        xi = self.x_pc - 1
-        yi = self.y_pc - 1
-
-        if xi >= n_pcs or yi >= n_pcs:
-            ax.text(0.5, 0.5,
-                    f"Only {n_pcs} PCs available.\nReduce X/Y axis PC numbers.",
-                    ha='center', va='center', transform=ax.transAxes, fontsize=12)
-            self.canvas.draw()
-            return
-
-        xs = scores[:, xi]
-        ys = scores[:, yi]
-        labels = self.sample_cols
-
-        cmap = matplotlib.colormaps.get_cmap('tab10')
-        colors = [cmap(i % 10) for i in range(len(labels))]
-
-        ax.scatter(xs, ys, s=self.point_size, c=colors, alpha=0.85,
-                   edgecolors='white', linewidths=0.8, zorder=3)
-
-        if self.show_labels:
-            for x, y, lbl in zip(xs, ys, labels):
-                ax.annotate(
-                    lbl, (x, y),
-                    xytext=(5, 5), textcoords='offset points',
-                    fontsize=8, color='#222',
-                    bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.6, ec='none'),
-                )
-
-        pct_x = explained[xi] * 100 if xi < len(explained) else 0
-        pct_y = explained[yi] * 100 if yi < len(explained) else 0
-
-        ax.set_xlabel(f"PC{self.x_pc}  ({pct_x:.1f}% variance)", fontsize=12)
-        ax.set_ylabel(f"PC{self.y_pc}  ({pct_y:.1f}% variance)", fontsize=12)
-        ax.set_title(self.plot_title, fontsize=13, fontweight='bold')
-        ax.axhline(0, color='#bbb', linewidth=0.8, linestyle='--', zorder=1)
-        ax.axvline(0, color='#bbb', linewidth=0.8, linestyle='--', zorder=1)
-        ax.grid(True, alpha=0.3, zorder=0)
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-
-        scree_lines = [f"PC{i+1}: {v*100:.1f}%" for i, v in enumerate(explained[:5])]
-        scree_text  = "Explained variance:\n" + "  ".join(scree_lines)
-        ax.text(0.99, 0.01, scree_text,
-                transform=ax.transAxes, fontsize=7.5,
-                ha='right', va='bottom', color='#666',
-                bbox=dict(boxstyle='round', fc='white', alpha=0.7, ec='#ccc'))
+        # export 캐시 (scores / explained variance)
+        if result is not None:
+            self._pca_result, self._explained_var = result
 
         self.figure.tight_layout()
         self.canvas.draw()
