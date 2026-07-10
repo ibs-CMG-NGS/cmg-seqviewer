@@ -1044,7 +1044,23 @@ class HeatmapWidget(QWidget):
             'fig_height': self.fig_height,
         }
         params.update(self._labels.get_params())
+        # colorbar 표시 여부는 self.show_legend (PlotLabelsPanel의 show_legend와 구분)
+        params['show_colorbar'] = self.show_legend
         return params
+
+    def get_bundle_context(self) -> dict:
+        """현재 heatmap 상태를 bundle exporter가 사용할 수 있는 형태로 반환."""
+        return {
+            'figure': self.figure,
+            'dataframe': self.dataframe,
+            'plot_params': self.get_plot_params(),
+            'dataset_name': getattr(self, 'dataset_name', 'unknown'),
+            'plot_type': 'heatmap',
+            'figure_title': (self._labels.get_params().get('labels_title') or 'Expression Heatmap'),
+            'figure_slug': 'heatmap',
+            'source_stem': 'heatmap',
+            'notes': 'Generated from cmg-seqviewer heatmap',
+        }
 
     def get_settings_panel(self) -> 'QWidget | None':
         """설정 패널 반환 (embed_settings=False일 때 외부 배치용)."""
@@ -1288,136 +1304,38 @@ class HeatmapWidget(QWidget):
             self._draw_heatmap()
 
     def _draw_heatmap(self):
-        """Heatmap 그리기"""
+        """Heatmap 그리기.
+
+        렌더 로직은 순수 함수 src/plots/heatmap.py::render_heatmap 에 있으며 재현 번들
+        스크립트와 공유한다. 여기서는 그 함수를 호출한 뒤 Qt 전용 요소(hover)와
+        PlotLabelsPanel 재적용만 처리한다.
+        """
+        from plots.heatmap import render_heatmap
+
         self.figure.clear()
-        ax = self.figure.add_subplot(111)
-
-        df = self.dataframe.copy()
-
-        exclude_patterns = [
-            'basemean', 'base_mean', 'log2fold', 'log2fc', 'logfc', 'foldchange',
-            'lfcse', 'stat', 'statistic', 'pval', 'padj', 'fdr', 'qvalue',
-            'gene_id', 'gene', 'symbol', 'dataset', 'description', 'name'
-        ]
-
-        sample_cols = []
-        for col in df.columns:
-            col_lower = col.lower()
-            is_excluded = any(pattern in col_lower for pattern in exclude_patterns)
-            if not is_excluded and pd.api.types.is_numeric_dtype(df[col]):
-                sample_cols.append(col)
-
-        if not sample_cols:
-            ax.text(0.5, 0.5, 'No sample expression columns found.\n'
-                   'Heatmap requires sample count data.',
-                   ha='center', va='center', fontsize=14)
+        result = render_heatmap(self.figure, self.dataframe, self.get_plot_params())
+        if result is None:
             self.canvas.draw()
             return
+        heatmap_data, gene_labels = result
 
-        expr_data = df[sample_cols].copy()
-        expr_data = expr_data.dropna()
-
-        if len(expr_data) == 0:
-            ax.text(0.5, 0.5, 'No valid data after removing NaN values',
-                   ha='center', va='center', fontsize=14)
-            self.canvas.draw()
-            return
-
-        if 'padj' in df.columns:
-            df_with_padj = df.loc[expr_data.index].copy()
-            valid_padj = df_with_padj['padj'].dropna()
-            if len(valid_padj) > 0:
-                top_genes_idx = valid_padj.nsmallest(min(self.n_genes, len(valid_padj))).index
-            else:
-                variances = expr_data.var(axis=1)
-                top_genes_idx = variances.nlargest(min(self.n_genes, len(expr_data))).index
-        else:
-            variances = expr_data.var(axis=1)
-            top_genes_idx = variances.nlargest(min(self.n_genes, len(expr_data))).index
-
-        if 'symbol' in df.columns:
-            gene_labels = df.loc[top_genes_idx, 'symbol'].tolist()
-        elif 'gene_id' in df.columns:
-            gene_labels = df.loc[top_genes_idx, 'gene_id'].tolist()
-        else:
-            gene_labels = top_genes_idx.tolist()
-
-        expr_data = expr_data.loc[top_genes_idx]
-
-        if self.normalization == 'z-score':
-            heatmap_data = expr_data.apply(lambda x: (x - x.mean()) / (x.std() + 1e-10), axis=1)
-            cbar_label = 'Z-score'
-        elif self.normalization == 'minmax':
-            heatmap_data = expr_data.apply(lambda x: (x - x.min()) / (x.max() - x.min() + 1e-10), axis=1)
-            cbar_label = 'Normalized (0-1)'
-        elif self.normalization == 'log2':
-            heatmap_data = np.log2(expr_data + 1)
-            cbar_label = 'Log2(count + 1)'
-        else:
-            heatmap_data = expr_data
-            cbar_label = 'Raw count'
-
-        if self.sorting == 'padj' and 'padj' in df.columns:
-            df_with_padj = df.loc[heatmap_data.index].copy()
-            sort_order = df_with_padj['padj'].argsort()
-            heatmap_data = heatmap_data.iloc[sort_order]
-            gene_labels = [gene_labels[i] for i in sort_order]
-        elif self.sorting == 'log2fc' and 'log2FC' in df.columns:
-            df_with_log2fc = df.loc[heatmap_data.index].copy()
-            sort_order = df_with_log2fc['log2FC'].abs().argsort()[::-1]
-            heatmap_data = heatmap_data.iloc[sort_order]
-            gene_labels = [gene_labels[i] for i in sort_order]
-        elif self.sorting == 'clustering':
-            try:
-                from scipy.cluster.hierarchy import linkage, dendrogram
-                from scipy.spatial.distance import pdist
-                linkage_matrix = linkage(pdist(heatmap_data, metric='euclidean'), method='average')
-                dendro = dendrogram(linkage_matrix, no_plot=True)
-                order = dendro['leaves']
-                heatmap_data = heatmap_data.iloc[order]
-                gene_labels = [gene_labels[i] for i in order]
-            except ImportError:
-                pass
-
-        if self.transpose:
-            heatmap_data = heatmap_data.T
-
-        im = ax.imshow(heatmap_data, cmap=self.colormap, aspect='auto',
-                      interpolation='nearest', vmin=self.colorbar_min, vmax=self.colorbar_max)
-
+        # 상태 저장 (hover / export 용)
         self.current_heatmap_data = heatmap_data
         self.current_gene_labels = gene_labels
-
-        if self.transpose:
-            if len(heatmap_data.index) <= 50:
-                ax.set_yticks(range(len(heatmap_data.index)))
-                ax.set_yticklabels(heatmap_data.index, fontsize=8)
-            if len(gene_labels) <= 20:
-                ax.set_xticks(range(len(gene_labels)))
-                ax.set_xticklabels(gene_labels, rotation=90, fontsize=8, ha='right')
-        else:
-            if len(heatmap_data.columns) <= 50:
-                ax.set_xticks(range(len(heatmap_data.columns)))
-                ax.set_xticklabels(heatmap_data.columns, rotation=90, fontsize=8)
-            if len(gene_labels) <= 20:
-                ax.set_yticks(range(len(gene_labels)))
-                ax.set_yticklabels(gene_labels, fontsize=8)
-
-        self._labels.apply_to_axes(ax)
-
-        if self.show_legend:
-            cbar = self.figure.colorbar(im, ax=ax)
-            cbar.set_label(cbar_label, fontsize=10)
-
         self.heatmap_data = heatmap_data
         self.gene_labels = gene_labels
-        self.figure.canvas.mpl_connect("motion_notify_event", self._on_hover)
 
+        ax = self.figure.axes[0]
+        # PlotLabelsPanel 재적용 (다이얼로그에선 패널이 최종 권한)
+        self._labels.apply_to_axes(ax)
+
+        # Hover (Qt 전용)
+        self.figure.canvas.mpl_connect("motion_notify_event", self._on_hover)
         self.annot = ax.annotate("", xy=(0, 0), xytext=(20, 20),
-                                textcoords="offset points",
-                                bbox=dict(boxstyle="round", fc="w", alpha=0.9),
-                                arrowprops=dict(arrowstyle="->"),
-                                zorder=1000)
+                                 textcoords="offset points",
+                                 bbox=dict(boxstyle="round", fc="w", alpha=0.9),
+                                 arrowprops=dict(arrowstyle="->"),
+                                 zorder=1000)
         self.annot.set_visible(False)
 
         self.figure.tight_layout()
