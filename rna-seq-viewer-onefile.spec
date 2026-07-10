@@ -27,6 +27,7 @@ a = Analysis(
         'matplotlib',
         'matplotlib.backends.backend_qt5agg',
         'seaborn',
+        'adjustText',
     ],
     hookspath=[],
     hooksconfig={},

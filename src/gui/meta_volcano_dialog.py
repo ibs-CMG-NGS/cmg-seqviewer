@@ -200,16 +200,28 @@ class MetaVolcanoDialog(BasePlotDialog):
         self._label_col = next((c for c in ('symbol', 'gene_id', 'description', 'term_id')
                                 if c in d.columns), None)
 
-        # 상위 N개 라벨 (유의 유전자 중 p-value 작은 순)
+        # 상위 N개 라벨 (유의 유전자 중 p-value 작은 순) — adjustText로 겹침 방지
         topn = self._topn_spin.value()
         lbl_size = self._labelsize_spin.value()
         if topn > 0 and self._label_col:
             top = d[sig].nsmallest(topn, '_p')
+            texts = []
             for _, r in top.iterrows():
                 name = str(r[self._label_col])
                 if name and name != 'nan':
-                    ax.annotate(name, (r['_x'], r['_y']), fontsize=lbl_size,
-                                xytext=(3, 3), textcoords='offset points')
+                    texts.append(ax.text(r['_x'], r['_y'], name, fontsize=lbl_size,
+                                         ha='center', va='center',
+                                         bbox=dict(boxstyle='round,pad=0.15', fc='white',
+                                                   ec='none', alpha=0.7), zorder=500))
+            if texts:
+                try:
+                    from adjustText import adjust_text
+                    adjust_text(texts, ax=ax,
+                                arrowprops=dict(arrowstyle='-', color='grey', lw=0.5),
+                                expand=(1.15, 1.4), force_text=(0.4, 0.6),
+                                only_move={'text': 'xy'})
+                except ImportError:
+                    pass
 
         src = self._psrc_combo.currentText()
         xcol = self._xcol()

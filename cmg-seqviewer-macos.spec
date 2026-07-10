@@ -92,6 +92,7 @@ a = Analysis(
         'matplotlib.figure',
         'matplotlib.pyplot',
         'seaborn',
+        'adjustText',
         'matplotlib_venn',
         'networkx',
         'networkx.algorithms',

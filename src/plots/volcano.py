@@ -32,15 +32,28 @@ def _draw_volcano_labels(ax, df, params):
         targets = df[df[gene_col].astype(str).str.upper().isin(wanted)]
         if targets.empty:
             return
+    # 각 대상 유전자를 Text로 생성 후 adjustText로 자동 배치(겹침 방지 + 리더선).
+    texts = []
     for _, row in targets.iterrows():
-        ax.annotate(
-            str(row[gene_col]), xy=(row['log2FC'], row['-log10(padj)']),
-            xytext=(4, 4), textcoords='offset points',
-            fontsize=size, fontweight='bold', color='black',
-            arrowprops=dict(arrowstyle='-', color='grey', lw=0.5, shrinkA=0, shrinkB=2),
-            bbox=dict(boxstyle='round,pad=0.15', fc='white', ec='none', alpha=0.6),
+        texts.append(ax.text(
+            row['log2FC'], row['-log10(padj)'], str(row[gene_col]),
+            fontsize=size, fontweight='bold', color='black', ha='center', va='center',
+            bbox=dict(boxstyle='round,pad=0.15', fc='white', ec='none', alpha=0.7),
             zorder=500,
+        ))
+    if not texts:
+        return
+    try:
+        from adjustText import adjust_text
+        adjust_text(
+            texts, ax=ax,
+            arrowprops=dict(arrowstyle='-', color='grey', lw=0.5),
+            expand=(1.15, 1.4), force_text=(0.4, 0.6), only_move={'text': 'xy'},
+            max_move=None,
         )
+    except ImportError:
+        # adjustText 미설치 환경(일부 번들 재현 등) → 라벨은 점 위에 그대로(겹칠 수 있음)
+        pass
 
 
 def render_volcano(ax, df, params):

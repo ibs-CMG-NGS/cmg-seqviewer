@@ -85,8 +85,18 @@ def render_ma(ax, df, params):
             else:
                 custom = {str(g).upper() for g in (params.get('annotation_custom_genes') or [])}
                 targets = sig[sig[gene_col].astype(str).str.upper().isin(custom)] if custom else sig.iloc[0:0]
-            for _, row in targets.iterrows():
-                ax.annotate(str(row[gene_col]), xy=(row['_x'], row['_y']),
-                            fontsize=size, ha='left', va='bottom',
-                            xytext=(3, 3), textcoords='offset points')
+            texts = [ax.text(row['_x'], row['_y'], str(row[gene_col]),
+                             fontsize=size, ha='center', va='center',
+                             bbox=dict(boxstyle='round,pad=0.15', fc='white', ec='none', alpha=0.7),
+                             zorder=500)
+                     for _, row in targets.iterrows()]
+            if texts:
+                try:
+                    from adjustText import adjust_text
+                    adjust_text(texts, ax=ax,
+                                arrowprops=dict(arrowstyle='-', color='grey', lw=0.5),
+                                expand=(1.15, 1.4), force_text=(0.4, 0.6),
+                                only_move={'text': 'xy'})
+                except ImportError:
+                    pass
     return df
