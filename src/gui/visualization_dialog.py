@@ -25,6 +25,7 @@ import numpy as np
 
 from models.standard_columns import StandardColumns
 from utils import figure_theme, figure_export
+from utils.figure_bundle_export import export_figure_bundle
 from gui.widgets.figure_style_panel import FigureStylePanel
 from gui.widgets.plot_labels_panel import PlotLabelsPanel
 from gui.base_plot_dialog import BasePlotDialog
@@ -171,6 +172,40 @@ class VolcanoPlotWidget(QWidget):
     def get_settings_panel(self) -> 'QWidget | None':
         """설정 패널 반환 (embed_settings=False일 때 외부 배치용)."""
         return self._settings_panel
+
+    def get_bundle_context(self) -> dict:
+        """현재 그림 상태를 bundle exporter가 사용할 수 있는 형태로 반환."""
+        return {
+            'figure': self.figure,
+            'dataframe': self.dataframe,
+            'plot_params': self.get_plot_params(),
+            'dataset_name': getattr(self, 'dataset_name', 'unknown'),
+            'plot_type': 'volcano',
+            'figure_title': self.plot_title or 'Volcano Plot',
+            'figure_slug': 'volcano_plot',
+            'source_stem': 'volcano_plot',
+            'notes': 'Generated from cmg-seqviewer volcano plot',
+        }
+
+    def _export_figure_bundle(self):
+        """현재 volcano plot을 재현 가능한 bundle로 export."""
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+
+        folder = QFileDialog.getExistingDirectory(self, "Select bundle output folder")
+        if not folder:
+            return
+
+        try:
+            bundle_dir = export_figure_bundle(
+                self.get_bundle_context(),
+                folder + "/volcano_plot_bundle",
+                "volcano_plot",
+                self.plot_title or "Volcano Plot",
+                "volcano",
+            )
+            QMessageBox.information(self, "Bundle exported", f"Bundle created at:\n{bundle_dir}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Bundle export failed", str(exc))
 
     def _on_pin_to_tab(self):
         """탭으로 고정 버튼 클릭 → pin_requested 시그널 발생."""
@@ -407,6 +442,10 @@ class VolcanoPlotWidget(QWidget):
             pin_btn.clicked.connect(self._on_pin_to_tab)
             button_layout.addWidget(pin_btn)
 
+        bundle_btn = QPushButton("Export Bundle")
+        bundle_btn.clicked.connect(self._export_figure_bundle)
+        button_layout.addWidget(bundle_btn)
+
         right_panel.addLayout(button_layout)
 
         main_splitter.addWidget(right_widget)
@@ -544,77 +583,40 @@ class VolcanoPlotWidget(QWidget):
             self._draw_plot()
 
     def _draw_plot(self):
-        """실제 matplotlib 그리기 (theme_context 안에서 호출)."""
+        """실제 matplotlib 그리기 (theme_context 안에서 호출).
+
+        렌더 로직은 순수 함수 src/plots/volcano.py::render_volcano 에 있으며
+        재현 번들 스크립트와 공유한다 (단일 진실 공급원). 여기서는 그 함수를 호출한 뒤
+        Qt 전용 요소(hover)와 PlotLabelsPanel 재적용만 처리한다.
+        """
+        from plots.volcano import render_volcano
+
         self.figure.clear()
         ax = self.figure.add_subplot(111)
 
-        # 데이터 준비
-        df = self.dataframe.copy()
-
-        # log2FC와 padj 컬럼 확인
-        if 'log2FC' not in df.columns or 'padj' not in df.columns:
+        if self.dataframe is None or 'log2FC' not in self.dataframe.columns \
+                or 'padj' not in self.dataframe.columns:
             ax.text(0.5, 0.5, 'Required columns not found:\nlog2FC and padj',
-                   ha='center', va='center', fontsize=14)
+                    ha='center', va='center', fontsize=14, transform=ax.transAxes)
             self.canvas.draw()
             return
 
-        # -log10(padj) 계산
-        df['-log10(padj)'] = -np.log10(df['padj'].replace(0, 1e-300))
-
-        # 분류: Up-regulated, Down-regulated, Not significant
-        df['regulation'] = 'ns'
-        df.loc[(df['log2FC'] >= self.log2fc_threshold) &
-               (df['padj'] <= self.padj_threshold), 'regulation'] = 'up'
-        df.loc[(df['log2FC'] <= -self.log2fc_threshold) &
-               (df['padj'] <= self.padj_threshold), 'regulation'] = 'down'
+        # 화면·번들이 공유하는 순수 렌더 (params = get_plot_params())
+        df = render_volcano(ax, self.dataframe, self.get_plot_params())
 
         # DEG 데이터 저장 (hover용)
         self.deg_data = df[df['regulation'].isin(['up', 'down'])].copy()
 
-        # 플롯
-        scatter_collections = []
-        for reg_type, color in [('ns', self.ns_color),
-                                ('down', self.down_color),
-                                ('up', self.up_color)]:
-            subset = df[df['regulation'] == reg_type]
-            sc = ax.scatter(subset['log2FC'], subset['-log10(padj)'],
-                      c=color.name(), s=self.dot_size, alpha=0.6,
-                      label=f'{reg_type.upper()} ({len(subset)})',
-                      picker=True if reg_type != 'ns' else False)  # NS는 picker 비활성화
-            if reg_type != 'ns':
-                scatter_collections.append((sc, subset))
-
-        # Threshold 선
-        ax.axhline(-np.log10(self.padj_threshold), color='black',
-                  linestyle='--', linewidth=1, alpha=0.5)
-        ax.axvline(self.log2fc_threshold, color='black',
-                  linestyle='--', linewidth=1, alpha=0.5)
-        ax.axvline(-self.log2fc_threshold, color='black',
-                  linestyle='--', linewidth=1, alpha=0.5)
-
-        # 축 범위 설정
-        if self.x_min is not None and self.x_max is not None:
-            ax.set_xlim(self.x_min, self.x_max)
-        if self.y_min is not None and self.y_max is not None:
-            ax.set_ylim(self.y_min, self.y_max)
-
-        ax.grid(True, alpha=0.3)
-
-        # Annotation 텍스트 (hover용) - zorder 높게 설정하여 최상위 레이어로
+        # Annotation 텍스트 (hover용) - zorder 높게
         self.annot = ax.annotate("", xy=(0, 0), xytext=(20, 20),
-                                textcoords="offset points",
-                                bbox=dict(boxstyle="round", fc="w", alpha=0.9),
-                                arrowprops=dict(arrowstyle="->"),
-                                zorder=1000)
+                                 textcoords="offset points",
+                                 bbox=dict(boxstyle="round", fc="w", alpha=0.9),
+                                 arrowprops=dict(arrowstyle="->"),
+                                 zorder=1000)
         self.annot.set_visible(False)
-
-        # ── Gene Name Annotation (label) ─────────────────────────────
-        self._draw_gene_labels(ax, df)
-
-        # Hover 이벤트 연결 (DEG만)
         self.figure.canvas.mpl_connect("motion_notify_event", self._on_hover)
 
-        # PlotLabelsPanel 적용 (title/xlabel/ylabel/ticks/legend)
+        # PlotLabelsPanel 재적용 (다이얼로그에선 패널이 최종 권한)
         if hasattr(self, '_labels'):
             self._labels.apply_to_axes(ax)
 
