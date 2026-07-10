@@ -118,6 +118,13 @@ class BasePlotDialog(QDialog):
             btn.clicked.connect(callback)
             bar.addWidget(btn)
 
+        # get_bundle_context()를 구현한 다이얼로그는 재현 번들 export 버튼을 자동 노출
+        if hasattr(self, "get_bundle_context"):
+            bundle_btn = QPushButton("Export Bundle")
+            bundle_btn.setToolTip("재현 가능한 figure 번들(데이터+스크립트+메타)로 export")
+            bundle_btn.clicked.connect(self._on_export_bundle)
+            bar.addWidget(bundle_btn)
+
         bar.addStretch()
 
         close_btn = QPushButton("Close")
@@ -125,6 +132,27 @@ class BasePlotDialog(QDialog):
         bar.addWidget(close_btn)
 
         return bar
+
+    def _on_export_bundle(self):
+        """get_bundle_context() 를 재현 번들로 export (공용)."""
+        context = self.get_bundle_context()
+        folder = QFileDialog.getExistingDirectory(self, "Select bundle output folder")
+        if not folder:
+            return
+        try:
+            from pathlib import Path
+            from utils.figure_bundle_export import export_figure_bundle
+            slug = context.get("figure_slug", "figure_bundle")
+            bundle_dir = export_figure_bundle(
+                context,
+                str(Path(folder) / f"{slug}_bundle"),
+                slug,
+                context.get("figure_title", "Figure"),
+                context.get("plot_type", "plot"),
+            )
+            QMessageBox.information(self, "Bundle exported", f"Bundle created at:\n{bundle_dir}")
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Bundle export failed", str(exc))
 
     # ── 서브클래스 훅 ─────────────────────────────────────────────────────────
 
