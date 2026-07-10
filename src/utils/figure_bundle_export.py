@@ -152,6 +152,8 @@ def _build_regeneration_script(source_stem: str, plot_type: str, plot_params: Ma
         return _build_volcano_plot_script(source_stem, params_repr)
     elif plot_type.lower() == "heatmap":
         return _build_heatmap_plot_script(source_stem, params_repr)
+    elif plot_type.lower() == "go_dot":
+        return _build_go_dot_plot_script(source_stem, params_repr)
     else:
         # Generic fallback for other plot types
         return _build_generic_plot_script(source_stem, plot_type, params_repr)
@@ -245,6 +247,39 @@ df = pd.read_csv(root / "inputs" / "data.csv")
 fig = Figure(figsize=(float(plot_params.get("fig_width", 10)), float(plot_params.get("fig_height", 8))))
 render_heatmap(fig, df, plot_params)
 fig.tight_layout()
+
+fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.pdf", bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.svg", bbox_inches="tight")
+'''
+
+
+def _build_go_dot_plot_script(source_stem: str, params_repr: str) -> str:
+    render_src = _render_source("go_dot", "_gene_ratio", "render_go_dot")
+    if render_src is None:
+        return _build_generic_plot_script(source_stem, "go_dot", params_repr)
+
+    return f'''"""Recreate the GO/KEGG dot plot from this bundle.
+
+render_go_dot 은 cmg-seqviewer 화면 렌더링과 동일한 함수를 inline 한 것이다.
+"""
+from pathlib import Path
+import numpy as np
+import matplotlib
+matplotlib.use("Agg")
+import pandas as pd
+from matplotlib.figure import Figure
+
+# ── inlined from src/plots/go_dot.py ───────────────────────────────────
+{render_src}
+# ───────────────────────────────────────────────────────────────────────
+
+root = Path(__file__).resolve().parents[1]
+plot_params = {params_repr}
+
+df = pd.read_csv(root / "inputs" / "data.csv")
+fig = Figure(figsize=(float(plot_params.get("fig_width", 12)), float(plot_params.get("fig_height", 8))))
+render_go_dot(fig, df, plot_params)
 
 fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")
 fig.savefig(root / "outputs" / "{source_stem}.pdf", bbox_inches="tight")
