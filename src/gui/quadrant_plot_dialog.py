@@ -67,62 +67,22 @@ class QuadrantPlotDialog(BasePlotDialog):
 
     # ── Plot ──────────────────────────────────────────────────────────────
 
+    def _plot_params(self) -> dict:
+        return {
+            'point_size': self.point_size_spin.value(),
+            'alpha': self.alpha_spin.value(),
+            'title': self.plot_title,
+        }
+
     def _do_plot(self):
+        """렌더는 순수 함수 src/plots/quadrant.py 에 있으며 번들과 공유한다.
+        hover 툴팁(Qt 전용)은 render 반환 scatter_data 를 재사용한다."""
+        from plots.quadrant import render_quadrant
+
         self.figure.clear()
-        self._scatter_data = []
         ax = self.figure.add_subplot(111)
         self._ax = ax
-
-        col_rna  = IntegratedColumns.RNA_LOG2FC
-        col_atac = IntegratedColumns.ATAC_LOG2FC_MEAN
-        col_cat  = IntegratedColumns.CONCORDANCE
-        col_sym  = IntegratedColumns.GENE_SYMBOL
-        col_padj = IntegratedColumns.RNA_PADJ
-
-        df = self.df.dropna(subset=[col_rna, col_atac])
-        colors = ConcordanceCategory.COLORS
-
-        for cat in ConcordanceCategory.ALL:
-            sub = df[df[col_cat] == cat]
-            if sub.empty:
-                continue
-            ax.scatter(
-                sub[col_atac], sub[col_rna],
-                c=colors.get(cat, "#CCCCCC"),
-                s=self.point_size_spin.value(), alpha=self.alpha_spin.value(), linewidths=0.3,
-                edgecolors="white", label=f"{cat} (n={len(sub)})",
-                zorder=3,
-            )
-            padj_vals = sub[col_padj].values if col_padj in sub.columns else np.full(len(sub), np.nan)
-            self._scatter_data.append({
-                'x': sub[col_atac].values.astype(float),
-                'y': sub[col_rna].values.astype(float),
-                'symbol': sub[col_sym].values.astype(str),
-                'padj': padj_vals.astype(float),
-                'concordance': sub[col_cat].values.astype(str),
-            })
-
-        ax.axhline(0, color="gray", linewidth=0.8, linestyle="--", zorder=1)
-        ax.axvline(0, color="gray", linewidth=0.8, linestyle="--", zorder=1)
-
-        ax.set_xlabel("ATAC-seq log2FC (chromatin accessibility)", fontsize=11)
-        ax.set_ylabel("RNA-seq log2FC (gene expression)", fontsize=11)
-        ax.set_title(self.plot_title, fontsize=13, fontweight="bold")
-
-        xlim = ax.get_xlim()
-        ylim = ax.get_ylim()
-        xpad = (xlim[1] - xlim[0]) * 0.03
-        ypad = (ylim[1] - ylim[0]) * 0.03
-        ax.text(xlim[1] - xpad, ylim[1] - ypad, "Q1\nBoth↑",
-                ha="right", va="top", fontsize=8, color="#D73027", alpha=0.7)
-        ax.text(xlim[0] + xpad, ylim[1] - ypad, "Q2\nRNA↑ATAC↓",
-                ha="left",  va="top", fontsize=8, color="#FC8D59", alpha=0.7)
-        ax.text(xlim[0] + xpad, ylim[0] + ypad, "Q3\nBoth↓",
-                ha="left",  va="bottom", fontsize=8, color="#4575B4", alpha=0.7)
-        ax.text(xlim[1] - xpad, ylim[0] + ypad, "Q4\nRNA↓ATAC↑",
-                ha="right", va="bottom", fontsize=8, color="#91BFDB", alpha=0.7)
-
-        ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", fontsize=8, framealpha=0.7)
+        self._scatter_data = render_quadrant(ax, self.df, self._plot_params())
         self.figure.tight_layout()
 
         self._annot = ax.annotate(
@@ -138,6 +98,21 @@ class QuadrantPlotDialog(BasePlotDialog):
             self.canvas.mpl_disconnect(self._cid_mouse)
         self._cid_mouse = self.canvas.mpl_connect('motion_notify_event', self._on_mouse_move)
         self.canvas.draw()
+
+    # ── Bundle export ─────────────────────────────────────────────────────
+
+    def get_bundle_context(self) -> dict:
+        return {
+            'figure': self.figure,
+            'dataframe': self.df,
+            'plot_params': self._plot_params(),
+            'dataset_name': self.plot_title,
+            'plot_type': 'quadrant',
+            'figure_title': self.plot_title,
+            'figure_slug': 'quadrant_plot',
+            'source_stem': 'quadrant_plot',
+            'notes': 'Generated from cmg-seqviewer Quadrant (RNA vs ATAC) plot',
+        }
 
     def _on_mouse_move(self, event):
         if event.inaxes is None or self._ax is None:
