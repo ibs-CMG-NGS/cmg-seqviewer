@@ -170,6 +170,8 @@ def _build_regeneration_script(source_stem: str, plot_type: str, plot_params: Ma
         return _build_quadrant_plot_script(source_stem, params_repr)
     elif plot_type.lower() == "integrated_volcano":
         return _build_integrated_volcano_plot_script(source_stem, params_repr)
+    elif plot_type.lower() == "meta_volcano":
+        return _build_meta_volcano_plot_script(source_stem, params_repr)
     else:
         # Generic fallback for other plot types
         return _build_generic_plot_script(source_stem, plot_type, params_repr)
@@ -572,6 +574,42 @@ df = pd.read_csv(root / "inputs" / "data.csv")
 fig = Figure(figsize=(7, 6))
 ax = fig.add_subplot(111)
 render_integrated_volcano(ax, df, plot_params)
+fig.tight_layout()
+
+fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.pdf", bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.svg", bbox_inches="tight")
+'''
+
+
+def _build_meta_volcano_plot_script(source_stem: str, params_repr: str) -> str:
+    render_src = _render_source("meta_volcano", "_found_in_num", "render_meta_volcano")
+    if render_src is None:
+        return _build_generic_plot_script(source_stem, "meta_volcano", params_repr)
+
+    return f'''"""Recreate the Meta Volcano plot from this bundle.
+
+render_meta_volcano 은 cmg-seqviewer 화면 렌더링과 동일한 함수를 inline 한 것이다.
+상위 N개 라벨은 adjustText가 있으면 자동 배치, 없으면 점 위에 표시된다.
+"""
+from pathlib import Path
+import numpy as np
+import matplotlib
+matplotlib.use("Agg")
+import pandas as pd
+from matplotlib.figure import Figure
+
+# ── inlined from src/plots/meta_volcano.py ─────────────────────────────
+{render_src}
+# ───────────────────────────────────────────────────────────────────────
+
+root = Path(__file__).resolve().parents[1]
+plot_params = {params_repr}
+
+df = pd.read_csv(root / "inputs" / "data.csv")
+fig = Figure(figsize=(8, 7))
+ax = fig.add_subplot(111)
+render_meta_volcano(ax, df, plot_params)
 fig.tight_layout()
 
 fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")

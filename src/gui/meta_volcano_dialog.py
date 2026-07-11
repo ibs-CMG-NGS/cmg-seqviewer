@@ -20,11 +20,6 @@ from PyQt6.QtWidgets import (
 
 from gui.base_plot_dialog import BasePlotDialog
 
-_C_UP = '#c0392b'
-_C_DOWN = '#2c6fbb'
-_C_DISCORD = '#e08a1e'
-_C_NS = '#c8c8c8'
-
 _P_SOURCES = {
     "Fisher": "meta_pvalue_fisher",
     "Fisher FDR": "meta_fdr_fisher",
@@ -37,11 +32,6 @@ _X_SOURCES = {
     "Pooled log2FC (RE)": "meta_effect_log2fc",
     "Mean log2FC": "meta_log2fc_mean",
     "Mean log2FE": "meta_log2fe_mean",
-}
-_X_LABELS = {
-    "meta_effect_log2fc": "Pooled log2 fold change (random-effects)",
-    "meta_log2fc_mean": "Mean log2 fold change",
-    "meta_log2fe_mean": "Mean log2 fold enrichment",
 }
 
 
@@ -120,13 +110,6 @@ class MetaVolcanoDialog(BasePlotDialog):
 
     # ── Plot ──────────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _found_in_num(v) -> int:
-        try:
-            return int(str(v).split('/')[0])
-        except (ValueError, TypeError):
-            return 0
-
     def _xcol(self) -> str:
         """선택된 X축 컬럼 (통합 log2FC / 단순 평균 / term FE)."""
         if getattr(self, '_xsrc_combo', None) is not None and self._xsrc_combo.count():
@@ -138,102 +121,36 @@ class MetaVolcanoDialog(BasePlotDialog):
                 return c
         return ''
 
-    def _prepare(self) -> pd.DataFrame:
-        pcol = _P_SOURCES[self._psrc_combo.currentText()]
-        xcol = self._xcol()
-        if not xcol or pcol not in self.df.columns:
-            return pd.DataFrame()
-        d = self.df.copy()
-        d['_x'] = pd.to_numeric(d[xcol], errors='coerce')
-        d['_p'] = pd.to_numeric(d[pcol], errors='coerce')
-        d = d[d['_x'].notna() & d['_p'].notna()].copy()
-        if 'meta_found_in' in d.columns:
-            d['_k'] = d['meta_found_in'].map(self._found_in_num)
-            d = d[d['_k'] >= self._mink_spin.value()]
-        d['_p'] = d['_p'].clip(lower=1e-300, upper=1.0)
-        d['_y'] = -np.log10(d['_p'])
-        return d
+    def _plot_params(self) -> dict:
+        return {
+            'p_col': _P_SOURCES.get(self._psrc_combo.currentText(), ''),
+            'p_source_name': self._psrc_combo.currentText(),
+            'x_col': self._xcol(),
+            'p_threshold': self._p_spin.value(),
+            'lfc_threshold': self._lfc_spin.value(),
+            'min_k': self._mink_spin.value(),
+            'top_n': self._topn_spin.value(),
+            'label_size': self._labelsize_spin.value(),
+        }
 
     def _do_plot(self):
+        """렌더는 순수 함수 src/plots/meta_volcano.py 에 있으며 번들과 공유한다.
+        hover 툴팁(Qt 전용)은 render 반환 (d, label_col) 을 재사용한다."""
+        from plots.meta_volcano import render_meta_volcano
+
         self.figure.clear()
         ax = self.figure.add_subplot(111)
 
-        d = self._prepare()
-        if d.empty:
-            ax.text(0.5, 0.5,
-                    "No meta-analysis columns found.\n"
-                    "Run Compare → Statistics Filtering on 2+ datasets first.",
-                    ha='center', va='center', transform=ax.transAxes, color='#888888')
+        d, label_col = render_meta_volcano(ax, self.df, self._plot_params())
+        self._label_col = label_col
+        if d is None or d.empty:
             self._plot_df = None
+            self._hover_df = None
             self.canvas.draw()
             return
 
-        p_thr = self._p_spin.value()
-        lfc_thr = self._lfc_spin.value()
-        sig = (d['_p'] <= p_thr) & (d['_x'].abs() >= lfc_thr)
-        direction = d.get('meta_direction', pd.Series('', index=d.index)).astype(str)
-        concord = direction.eq('concordant')
-
-        cat_up = sig & concord & (d['_x'] > 0)
-        cat_down = sig & concord & (d['_x'] < 0)
-        cat_disc = sig & ~concord
-        cat_ns = ~sig
-
-        for mask, color, label in (
-            (cat_ns, _C_NS, 'n.s.'),
-            (cat_disc, _C_DISCORD, 'Sig. discordant'),
-            (cat_up, _C_UP, 'Sig. up (concordant)'),
-            (cat_down, _C_DOWN, 'Sig. down (concordant)'),
-        ):
-            if mask.any():
-                ax.scatter(d.loc[mask, '_x'], d.loc[mask, '_y'], s=16,
-                           c=color, label=label, edgecolors='none', alpha=0.8)
-
-        # 임계값 가이드 라인
-        ax.axhline(-np.log10(p_thr), color='#888888', ls='--', lw=0.7)
-        if lfc_thr > 0:
-            ax.axvline(lfc_thr, color='#888888', ls='--', lw=0.7)
-            ax.axvline(-lfc_thr, color='#888888', ls='--', lw=0.7)
-        ax.axvline(0, color='#cccccc', lw=0.6)
-
-        # 라벨/hover에 쓸 식별자 컬럼 (유전자 또는 term)
-        self._label_col = next((c for c in ('symbol', 'gene_id', 'description', 'term_id')
-                                if c in d.columns), None)
-
-        # 상위 N개 라벨 (유의 유전자 중 p-value 작은 순) — adjustText로 겹침 방지
-        topn = self._topn_spin.value()
-        lbl_size = self._labelsize_spin.value()
-        if topn > 0 and self._label_col:
-            top = d[sig].nsmallest(topn, '_p')
-            texts = []
-            for _, r in top.iterrows():
-                name = str(r[self._label_col])
-                if name and name != 'nan':
-                    texts.append(ax.text(r['_x'], r['_y'], name, fontsize=lbl_size,
-                                         ha='center', va='center',
-                                         bbox=dict(boxstyle='round,pad=0.15', fc='white',
-                                                   ec='none', alpha=0.7), zorder=500))
-            if texts:
-                try:
-                    from adjustText import adjust_text
-                    adjust_text(texts, ax=ax,
-                                arrowprops=dict(arrowstyle='-', color='grey', lw=0.5),
-                                expand=(1.15, 1.4), force_text=(0.4, 0.6),
-                                only_move={'text': 'xy'})
-                except ImportError:
-                    pass
-
-        src = self._psrc_combo.currentText()
-        xcol = self._xcol()
-        is_term = xcol == 'meta_log2fe_mean'
-        ax.set_xlabel(_X_LABELS.get(xcol, "Mean log2 fold change"))
-        ax.set_ylabel(f"-log10(meta p-value, {src})")
-        unit = "term" if is_term else "gene"
-        ax.set_title(f"Meta Volcano — cross-dataset {unit} consistency",
-                     fontsize=12, fontweight='bold')
-        ax.legend(fontsize=7, loc='upper right', framealpha=0.9)
-
         # hover용 주석 (숨김 상태로 생성, 최상위 레이어)
+        lbl_size = self._labelsize_spin.value()
         self.annot = ax.annotate(
             "", xy=(0, 0), xytext=(16, 16), textcoords="offset points",
             bbox=dict(boxstyle="round", fc="w", alpha=0.92),
@@ -244,6 +161,21 @@ class MetaVolcanoDialog(BasePlotDialog):
         self._plot_df = d.rename(columns={'_x': 'mean_log2fc', '_p': 'meta_p', '_y': 'neg_log10_p'})
         self.figure.tight_layout()
         self.canvas.draw()
+
+    # ── Bundle export ─────────────────────────────────────────────────────
+
+    def get_bundle_context(self) -> dict:
+        return {
+            'figure': self.figure,
+            'dataframe': self.df,
+            'plot_params': self._plot_params(),
+            'dataset_name': 'meta_volcano',
+            'plot_type': 'meta_volcano',
+            'figure_title': 'Meta Volcano Plot',
+            'figure_slug': 'meta_volcano',
+            'source_stem': 'meta_volcano',
+            'notes': 'Generated from cmg-seqviewer Meta Volcano plot',
+        }
 
     def _on_hover(self, event):
         """마우스 오버 시 가장 가까운 점의 gene/term 정보 표시."""
