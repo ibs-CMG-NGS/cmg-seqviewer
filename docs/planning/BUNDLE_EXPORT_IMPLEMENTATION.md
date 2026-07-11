@@ -320,7 +320,13 @@ $ python scripts/figure.py
 | Meta Volcano | `meta_volcano.py::render_meta_volcano` | `meta_volcano` | ✅ |
 | Count Summary | `count_summary.py::render_count_summary` | `count_summary` | ✅ (long-format 병합) |
 | Annotation Comparison | `annotation_comparison.py::render_annotation_comparison` | `annotation_comparison` | ✅ (long-format 병합) |
-| Venn / UpSet / GO Network | — | — | ⬜ (비-scatter, 후순위) |
+| Venn (2/3-way) | `venn.py::render_venn` | `venn` | ✅ (long-format 멤버십) |
+| UpSet | `upset.py::render_upset` | `upset` | ✅ (long-format 멤버십, 호환 패치 동봉) |
+| GO Network (cluster dot) | — | — | ⬜ (network 모드는 현재 비활성; live 출력은 컨트롤 다수의 cluster dot plot) |
+
+- **집합/그래프 플롯** (Venn · UpSet): 데이터셋별 집합을 long-format 멤버십 테이블(dataset/item)로
+  직렬화해 렌더가 재구성. 외부 라이브러리(matplotlib_venn / upsetplot)는 렌더 내부 import + 부재 시
+  안내 메시지. UpSet 은 pandas>=3.0 / numpy>=2.0 호환 패치를 렌더 모듈에 동봉하고 render 시점에 적용.
 
 - **다중 데이터셋 플롯** (Count Summary · Annotation Comparison): 다이얼로그가 선택된 데이터셋들을
   `_build_long_df()`로 **long-format 단일 프레임**(dataset 라벨 + 값 컬럼)으로 평탄화해 렌더에 넘긴다.
