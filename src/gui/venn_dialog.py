@@ -8,7 +8,6 @@ from PyQt6.QtWidgets import (
     QVBoxLayout, QGroupBox, QFormLayout, QComboBox,
 )
 from PyQt6.QtCore import Qt
-from matplotlib_venn import venn2, venn3, venn2_circles, venn3_circles
 import pandas as pd
 import logging
 
@@ -99,66 +98,52 @@ class VennDiagramDialog(BasePlotDialog):
 
         return gene_sets
 
+    def _build_membership_df(self):
+        """데이터셋별 비교 집합을 long-format(dataset/item) 멤버십 테이블로. (df, labels) 반환."""
+        gene_sets = self._get_gene_sets()
+        labels = [ds.name for ds in self.datasets]
+        frames = [pd.DataFrame({'dataset': lbl, 'item': list(s)})
+                  for lbl, s in zip(labels, gene_sets)]
+        df = pd.concat(frames, ignore_index=True) if frames else \
+            pd.DataFrame(columns=['dataset', 'item'])
+        return df, labels
+
+    def _plot_params(self, labels=None) -> dict:
+        if labels is None:
+            labels = [ds.name for ds in self.datasets]
+        is_atac = all(ds.dataset_type == DatasetType.ATAC_SEQ for ds in self.datasets)
+        filter_name = self.filter_combo.currentText() if hasattr(self, 'filter_combo') else "All Genes"
+        return {
+            'set_labels': labels,
+            'unit': 'Peak' if is_atac else 'Gene',
+            'filter_name': filter_name,
+        }
+
     # ── Plot ──────────────────────────────────────────────────────────────
 
     def _do_plot(self):
+        """렌더는 순수 함수 src/plots/venn.py 에 있으며 번들과 공유한다."""
+        from plots.venn import render_venn
+
         self.figure.clear()
         ax = self.figure.add_subplot(111)
-
-        gene_sets = self._get_gene_sets()
-
-        if len(self.datasets) == 2:
-            venn = venn2(
-                gene_sets,
-                set_labels=[ds.name for ds in self.datasets],
-                ax=ax,
-                alpha=0.6
-            )
-            venn2_circles(gene_sets, ax=ax, linewidth=1.5)
-
-            if venn.get_patch_by_id('10'):
-                venn.get_patch_by_id('10').set_color('#ff9999')
-            if venn.get_patch_by_id('01'):
-                venn.get_patch_by_id('01').set_color('#9999ff')
-            if venn.get_patch_by_id('11'):
-                venn.get_patch_by_id('11').set_color('#cc99cc')
-
-        elif len(self.datasets) == 3:
-            venn = venn3(
-                gene_sets,
-                set_labels=[ds.name for ds in self.datasets],
-                ax=ax,
-                alpha=0.6
-            )
-            venn3_circles(gene_sets, ax=ax, linewidth=1.5)
-
-            colors = {
-                '100': '#ff9999', '010': '#9999ff', '001': '#99ff99',
-                '110': '#ffcc99', '101': '#ffff99', '011': '#99ffff',
-                '111': '#cccccc'
-            }
-            for region_id, color in colors.items():
-                patch = venn.get_patch_by_id(region_id)
-                if patch:
-                    patch.set_color(color)
-
-        is_atac = all(ds.dataset_type == DatasetType.ATAC_SEQ for ds in self.datasets)
-        unit = "Peak" if is_atac else "Gene"
-        filter_name = self.filter_combo.currentText() if hasattr(self, 'filter_combo') else "All Genes"
-        title = f"{unit} Overlap - {filter_name}\n"
-
-        if len(gene_sets) == 2:
-            common = gene_sets[0] & gene_sets[1]
-            unique_0 = gene_sets[0] - gene_sets[1]
-            unique_1 = gene_sets[1] - gene_sets[0]
-            title += f"Common: {len(common)} | "
-            title += f"Unique to {self.datasets[0].name}: {len(unique_0)} | "
-            title += f"Unique to {self.datasets[1].name}: {len(unique_1)}"
-        elif len(gene_sets) == 3:
-            common = gene_sets[0] & gene_sets[1] & gene_sets[2]
-            title += f"Common to all: {len(common)}"
-
-        ax.set_title(title, fontsize=12, fontweight='bold', pad=20)
-
+        df, labels = self._build_membership_df()
+        render_venn(ax, df, self._plot_params(labels))
         self.figure.tight_layout()
         self.canvas.draw()
+
+    # ── Bundle export ─────────────────────────────────────────────────────
+
+    def get_bundle_context(self) -> dict:
+        df, labels = self._build_membership_df()
+        return {
+            'figure': self.figure,
+            'dataframe': df,
+            'plot_params': self._plot_params(labels),
+            'dataset_name': 'venn',
+            'plot_type': 'venn',
+            'figure_title': f'Venn Diagram — {len(self.datasets)} Datasets',
+            'figure_slug': 'venn_diagram',
+            'source_stem': 'venn_diagram',
+            'notes': 'Generated from cmg-seqviewer Venn Diagram (long-format membership input)',
+        }
