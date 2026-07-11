@@ -299,8 +299,32 @@ $ python scripts/figure.py
 
 1. **Level 1 전 플롯 적용** — `BasePlotDialog`에 공용 `get_bundle_context()` + 다이얼로그별 dataframe 훅.
    ~25 플롯이 즉시 이미지+데이터+메타 번들을 가짐.
-2. **Level 2(b) 점진 적용** — 고가치 플롯부터(heatmap · PCA · MA · GO dot/bar …). **volcano가 레퍼런스 구현**
+2. **Level 2(b) 점진 적용** — 고가치 플롯부터. **volcano가 레퍼런스 구현**
    (`src/plots/volcano.py::render_volcano`).
+
+#### Level 2(b) render() 추출 진행 현황
+
+| 플롯 | 렌더 모듈 (`src/plots/`) | plot_type | 상태 |
+|---|---|---|---|
+| Volcano | `volcano.py::render_volcano` | `volcano` | ✅ (레퍼런스) |
+| Heatmap | `heatmap.py::render_heatmap` | `heatmap` | ✅ |
+| GO Dot | `go_dot.py::render_go_dot` | `go_dot` | ✅ |
+| GO Bar | `go_bar.py::render_go_bar` | `go_bar` | ✅ |
+| MA Plot | `ma.py::render_ma` | `ma` | ✅ |
+| PCA | `pca.py::render_pca` | `pca` | ✅ |
+| Genomic Distribution | `genomic_distribution.py::render_genomic_distribution` | `genomic_distribution` | ✅ |
+| Gene Expression Bar | `gene_expression_bar.py::render_gene_expression_bar` | `gene_expression_bar` | ✅ |
+| GO Comparison Dot | `go_comparison_dot.py::render_go_comparison_dot` | `go_comparison_dot` | ✅ |
+| Meta Volcano | — | — | ⬜ (adjustText 자동 라벨은 적용됨) |
+| Quadrant / Integrated Volcano | — | — | ⬜ |
+| Count Summary / Annotation Comparison | — | — | ⬜ |
+| Venn / UpSet / GO Network | — | — | ⬜ (비-scatter, 후순위) |
+
+- **패턴**: 렌더 함수는 `matplotlib/pandas/numpy`만 의존(Qt·utils 금지). 모듈 상수·헬퍼는
+  getsource inline 시 함께 실리도록 **함수 내부 지역 정의** 또는 `_render_source(module, *funcs)`로
+  다중 함수 inline (예: `go_comparison_dot`은 `_build_long_df` + 렌더 2개 inline).
+- **자동 라벨**: gene/sample 라벨이 겹치는 플롯은 `adjustText`로 자동 배치(try/except ImportError).
+  Volcano · MA · Meta Volcano · PCA 적용 완료.
 
 ---
 
