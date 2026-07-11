@@ -160,6 +160,8 @@ def _build_regeneration_script(source_stem: str, plot_type: str, plot_params: Ma
         return _build_ma_plot_script(source_stem, params_repr)
     elif plot_type.lower() == "pca":
         return _build_pca_plot_script(source_stem, params_repr)
+    elif plot_type.lower() == "genomic_distribution":
+        return _build_genomic_distribution_plot_script(source_stem, params_repr)
     else:
         # Generic fallback for other plot types
         return _build_generic_plot_script(source_stem, plot_type, params_repr)
@@ -389,6 +391,39 @@ plot_params = {params_repr}
 df = pd.read_csv(root / "inputs" / "data.csv")
 fig = Figure(figsize=(8, 7))
 render_pca(fig, df, plot_params)
+fig.tight_layout()
+
+fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.pdf", bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.svg", bbox_inches="tight")
+'''
+
+
+def _build_genomic_distribution_plot_script(source_stem: str, params_repr: str) -> str:
+    render_src = _render_source("genomic_distribution", "render_genomic_distribution")
+    if render_src is None:
+        return _build_generic_plot_script(source_stem, "genomic_distribution", params_repr)
+
+    return f'''"""Recreate the Genomic Distribution pie chart from this bundle.
+
+render_genomic_distribution 은 cmg-seqviewer 화면 렌더링과 동일한 함수를 inline 한 것이다.
+"""
+from pathlib import Path
+import matplotlib
+matplotlib.use("Agg")
+import pandas as pd
+from matplotlib.figure import Figure
+
+# ── inlined from src/plots/genomic_distribution.py ─────────────────────
+{render_src}
+# ───────────────────────────────────────────────────────────────────────
+
+root = Path(__file__).resolve().parents[1]
+plot_params = {params_repr}
+
+df = pd.read_csv(root / "inputs" / "data.csv")
+fig = Figure(figsize=(7, 5))
+render_genomic_distribution(fig, df, plot_params)
 fig.tight_layout()
 
 fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")

@@ -5,13 +5,10 @@ ATAC-seq peak의 annotation 카테고리 분포를 Pie chart로 시각화합니�
 """
 import logging
 
-import pandas as pd
 from PyQt6.QtWidgets import QVBoxLayout
-from PyQt6.QtCore import Qt
 
 from models.data_models import Dataset
 from gui.base_plot_dialog import BasePlotDialog
-from utils.annotation_categories import normalize_annotation, color_for_category
 
 
 class GenomicDistributionDialog(BasePlotDialog):
@@ -37,67 +34,28 @@ class GenomicDistributionDialog(BasePlotDialog):
 
     # ── Plot ──────────────────────────────────────────────────────────────
 
+    def _plot_params(self) -> dict:
+        return {'dataset_name': self.dataset.name, 'max_categories': 9}
+
     def _do_plot(self):
+        """렌더는 순수 함수 src/plots/genomic_distribution.py 에 있으며 번들과 공유한다."""
+        from plots.genomic_distribution import render_genomic_distribution
+
         self.figure.clear()
-        ax = self.figure.add_subplot(111)
-
-        if not self._has_annotation_column():
-            ax.text(
-                0.5, 0.5,
-                "Annotation data not available.\n"
-                "This dataset does not contain an 'annotation' column.\n"
-                "Load a full-format ATAC-seq Excel file to enable this plot.",
-                ha='center', va='center', transform=ax.transAxes,
-                fontsize=10, color='#888888',
-                bbox=dict(boxstyle='round', fc='#f8f8f8', ec='#cccccc', alpha=0.8),
-            )
-            self.canvas.draw()
-            return
-
-        df = self.dataset.dataframe
-        normalized = df['annotation'].dropna().map(normalize_annotation)
-        counts = normalized.value_counts()
-
-        if len(counts) > 9:
-            top9 = counts.iloc[:9]
-            others = counts.iloc[9:].sum()
-            counts = pd.concat([top9, pd.Series({'Others': others})])
-
-        labels = counts.index.tolist()
-        sizes = counts.values.tolist()
-        colors = [color_for_category(lbl, i) for i, lbl in enumerate(labels)]
-
-        wedges, texts, autotexts = ax.pie(
-            sizes,
-            labels=None,
-            colors=colors,
-            autopct=lambda pct: f'{pct:.1f}%' if pct >= 3 else '',
-            startangle=90,
-            wedgeprops={'linewidth': 0.8, 'edgecolor': 'white'},
-        )
-        for at in autotexts:
-            at.set_fontsize(8)
-
-        legend_labels = [f"{lbl}  ({cnt:,})" for lbl, cnt in zip(labels, sizes)]
-        ax.legend(
-            wedges, legend_labels,
-            title="Annotation",
-            loc='center left',
-            bbox_to_anchor=(1.0, 0.5),
-            fontsize=8,
-        )
-
-        total = sum(sizes)
-        ax.set_title(
-            f"Genomic Distribution of Peaks\n"
-            f"{self.dataset.name}  |  Total: {total:,} peaks",
-            fontsize=11,
-        )
+        render_genomic_distribution(self.figure, self.dataset.dataframe, self._plot_params())
         self.canvas.draw()
 
-    # ── Helpers ───────────────────────────────────────────────────────────
+    # ── Bundle export ─────────────────────────────────────────────────────
 
-    def _has_annotation_column(self) -> bool:
-        return (self.dataset.dataframe is not None and
-                'annotation' in self.dataset.dataframe.columns and
-                not self.dataset.dataframe['annotation'].isna().all())
+    def get_bundle_context(self) -> dict:
+        return {
+            'figure': self.figure,
+            'dataframe': self.dataset.dataframe,
+            'plot_params': self._plot_params(),
+            'dataset_name': self.dataset.name,
+            'plot_type': 'genomic_distribution',
+            'figure_title': f'Genomic Distribution — {self.dataset.name}',
+            'figure_slug': 'genomic_distribution',
+            'source_stem': 'genomic_distribution',
+            'notes': 'Generated from cmg-seqviewer Genomic Distribution plot',
+        }
