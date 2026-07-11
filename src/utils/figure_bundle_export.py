@@ -164,6 +164,8 @@ def _build_regeneration_script(source_stem: str, plot_type: str, plot_params: Ma
         return _build_genomic_distribution_plot_script(source_stem, params_repr)
     elif plot_type.lower() == "gene_expression_bar":
         return _build_gene_expression_bar_plot_script(source_stem, params_repr)
+    elif plot_type.lower() == "go_comparison_dot":
+        return _build_go_comparison_dot_plot_script(source_stem, params_repr)
     else:
         # Generic fallback for other plot types
         return _build_generic_plot_script(source_stem, plot_type, params_repr)
@@ -463,6 +465,40 @@ fig = Figure(figsize=(10, 8))
 ax = fig.add_subplot(111)
 render_gene_expression_bar(ax, df, plot_params)
 fig.tight_layout()
+
+fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.pdf", bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.svg", bbox_inches="tight")
+'''
+
+
+def _build_go_comparison_dot_plot_script(source_stem: str, params_repr: str) -> str:
+    render_src = _render_source("go_comparison_dot", "_build_long_df", "render_go_comparison_dot")
+    if render_src is None:
+        return _build_generic_plot_script(source_stem, "go_comparison_dot", params_repr)
+
+    return f'''"""Recreate the GO/KEGG Comparison Dot plot from this bundle.
+
+render_go_comparison_dot 은 cmg-seqviewer 화면 렌더링과 동일한 함수를 inline 한 것이다.
+입력 data.csv 는 wide-format 비교 표이며, 함수 내부에서 long-format으로 재구성한다.
+"""
+from pathlib import Path
+import numpy as np
+import matplotlib
+matplotlib.use("Agg")
+import pandas as pd
+from matplotlib.figure import Figure
+
+# ── inlined from src/plots/go_comparison_dot.py ────────────────────────
+{render_src}
+# ───────────────────────────────────────────────────────────────────────
+
+root = Path(__file__).resolve().parents[1]
+plot_params = {params_repr}
+
+df = pd.read_csv(root / "inputs" / "data.csv")
+fig = Figure(figsize=(12, 9))
+render_go_comparison_dot(fig, df, plot_params)
 
 fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")
 fig.savefig(root / "outputs" / "{source_stem}.pdf", bbox_inches="tight")
