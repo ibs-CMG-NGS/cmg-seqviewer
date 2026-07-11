@@ -7,7 +7,6 @@ X축: ATAC log2FC, Y축: RNA log2FC
 
 import logging
 import numpy as np
-import matplotlib.patches as mpatches
 
 from PyQt6.QtWidgets import (
     QVBoxLayout, QGroupBox, QFormLayout, QSpinBox, QDoubleSpinBox,
@@ -15,7 +14,6 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 import pandas as pd
 
-from models.multi_omics_dataset import ConcordanceCategory, IntegratedColumns
 from gui.base_plot_dialog import BasePlotDialog
 
 

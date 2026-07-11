@@ -315,9 +315,10 @@ $ python scripts/figure.py
 | Genomic Distribution | `genomic_distribution.py::render_genomic_distribution` | `genomic_distribution` | ✅ |
 | Gene Expression Bar | `gene_expression_bar.py::render_gene_expression_bar` | `gene_expression_bar` | ✅ |
 | GO Comparison Dot | `go_comparison_dot.py::render_go_comparison_dot` | `go_comparison_dot` | ✅ |
+| Quadrant (RNA vs ATAC) | `quadrant.py::render_quadrant` | `quadrant` | ✅ |
+| Integrated Volcano | `integrated_volcano.py::render_integrated_volcano` | `integrated_volcano` | ✅ |
 | Meta Volcano | — | — | ⬜ (adjustText 자동 라벨은 적용됨) |
-| Quadrant / Integrated Volcano | — | — | ⬜ |
-| Count Summary / Annotation Comparison | — | — | ⬜ |
+| Count Summary / Annotation Comparison | — | — | ⬜ (다중 데이터셋 → 번들 data.csv 병합 필요) |
 | Venn / UpSet / GO Network | — | — | ⬜ (비-scatter, 후순위) |
 
 - **패턴**: 렌더 함수는 `matplotlib/pandas/numpy`만 의존(Qt·utils 금지). 모듈 상수·헬퍼는
