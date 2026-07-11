@@ -75,10 +75,20 @@ def render_pca(fig, df, params):
     ax.scatter(xs, ys, s=int(params.get('point_size', 80)), c=colors, alpha=0.85,
                edgecolors='white', linewidths=0.8, zorder=3)
     if params.get('show_labels', True):
-        for x, y, lbl in zip(xs, ys, sample_cols):
-            ax.annotate(lbl, (x, y), xytext=(5, 5), textcoords='offset points',
-                        fontsize=8, color='#222',
-                        bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.6, ec='none'))
+        # 샘플이 모이면 라벨이 겹치므로 adjustText로 자동 배치 + 리더선
+        texts = [ax.text(x, y, lbl, fontsize=8, color='#222', ha='center', va='center',
+                         bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.75, ec='none'),
+                         zorder=5)
+                 for x, y, lbl in zip(xs, ys, sample_cols)]
+        if texts:
+            try:
+                from adjustText import adjust_text
+                adjust_text(texts, ax=ax,
+                            arrowprops=dict(arrowstyle='-', color='grey', lw=0.5),
+                            expand=(1.2, 1.4), force_text=(0.5, 0.7),
+                            only_move={'text': 'xy'})
+            except ImportError:
+                pass
 
     pct_x = explained[xi] * 100 if xi < len(explained) else 0
     pct_y = explained[yi] * 100 if yi < len(explained) else 0
