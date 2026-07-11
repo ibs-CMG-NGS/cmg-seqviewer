@@ -162,6 +162,8 @@ def _build_regeneration_script(source_stem: str, plot_type: str, plot_params: Ma
         return _build_pca_plot_script(source_stem, params_repr)
     elif plot_type.lower() == "genomic_distribution":
         return _build_genomic_distribution_plot_script(source_stem, params_repr)
+    elif plot_type.lower() == "gene_expression_bar":
+        return _build_gene_expression_bar_plot_script(source_stem, params_repr)
     else:
         # Generic fallback for other plot types
         return _build_generic_plot_script(source_stem, plot_type, params_repr)
@@ -424,6 +426,42 @@ plot_params = {params_repr}
 df = pd.read_csv(root / "inputs" / "data.csv")
 fig = Figure(figsize=(7, 5))
 render_genomic_distribution(fig, df, plot_params)
+fig.tight_layout()
+
+fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.pdf", bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.svg", bbox_inches="tight")
+'''
+
+
+def _build_gene_expression_bar_plot_script(source_stem: str, params_repr: str) -> str:
+    render_src = _render_source("gene_expression_bar", "render_gene_expression_bar")
+    if render_src is None:
+        return _build_generic_plot_script(source_stem, "gene_expression_bar", params_repr)
+
+    return f'''"""Recreate the Gene Expression Bar chart from this bundle.
+
+render_gene_expression_bar 은 cmg-seqviewer 화면 렌더링과 동일한 함수를 inline 한 것이다.
+유의성 별표는 scipy가 있으면 계산, 없으면 생략된다 (함수 내부 try/except).
+"""
+from pathlib import Path
+import numpy as np
+import matplotlib
+matplotlib.use("Agg")
+import pandas as pd
+from matplotlib.figure import Figure
+
+# ── inlined from src/plots/gene_expression_bar.py ──────────────────────
+{render_src}
+# ───────────────────────────────────────────────────────────────────────
+
+root = Path(__file__).resolve().parents[1]
+plot_params = {params_repr}
+
+df = pd.read_csv(root / "inputs" / "data.csv")
+fig = Figure(figsize=(10, 8))
+ax = fig.add_subplot(111)
+render_gene_expression_bar(ax, df, plot_params)
 fig.tight_layout()
 
 fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")

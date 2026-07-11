@@ -380,115 +380,51 @@ class GeneExpressionBarDialog(BasePlotDialog):
         ax.axis('off')
         self.canvas.draw()
 
-    def _do_plot(self):
-        self.figure.clear()
+    def _plot_params(self) -> dict:
+        return {
+            'gene_col': self.gene_col,
+            'sample_groups': {g: list(cols) for g, cols in self.sample_groups.items()},
+            'group_colors': {g: c.name() for g, c in self.group_colors.items()},
+            'max_genes': self.top_n_spin.value(),
+            'sort_by': self.sort_combo.currentText(),
+            'error_bars': self.error_combo.currentText(),
+            'show_points': self.points_check.isChecked(),
+            'log_y': self.logy_check.isChecked(),
+            'show_significance': self.sig_check.isChecked(),
+            'reference_group': self.ref_combo.currentText() if self.ref_combo.count() else None,
+            'test': self.test_combo.currentText(),
+            'name_hint': self.name_hint,
+        }
 
+    def _do_plot(self):
+        """렌더는 순수 함수 src/plots/gene_expression_bar.py 에 있으며 번들과 공유한다."""
+        from plots.gene_expression_bar import render_gene_expression_bar
+
+        self.figure.clear()
         if not self.has_data:
             self._message("No sample columns / groups.\n"
                           "Assign at least one group in 'Sample Groups'.")
             return
 
-        df = self._selected_genes_df()
-        if df.empty:
-            self._message("No genes to display.")
-            return
-
-        genes = df[self.gene_col].astype(str).to_list()
-        group_items: List[Tuple[str, List[str]]] = list(self.sample_groups.items())
-        n_genes = len(genes)
-        n_groups = len(group_items)
-
-        x = np.arange(n_genes)
-        total_width = 0.8
-        bar_width = total_width / max(1, n_groups)
-        rng = np.random.default_rng(0)
-
-        err_mode = self.error_combo.currentText()
-        show_points = self.points_check.isChecked()
-        is_log = self.logy_check.isChecked()
-
         ax = self.figure.add_subplot(111)
-
-        bar_center: Dict[Tuple[int, int], float] = {}
-        bar_top: Dict[Tuple[int, int], float] = {}
-        global_top = 0.0
-
-        for gi, (gname, cols) in enumerate(group_items):
-            offset = (gi - (n_groups - 1) / 2.0) * bar_width
-            centers = x + offset
-            color = self.group_colors.get(gname, self._default_color(gi)).name()
-
-            means, errs, tops = [], [], []
-            for _, row in df.iterrows():
-                vals = self._vals(row, cols)
-                if vals.size == 0:
-                    means.append(np.nan); errs.append(0.0); tops.append(0.0)
-                    continue
-                m = float(np.mean(vals))
-                if err_mode == "SD":
-                    e = float(np.std(vals, ddof=1)) if vals.size > 1 else 0.0
-                elif err_mode == "SEM":
-                    e = float(np.std(vals, ddof=1) / np.sqrt(vals.size)) if vals.size > 1 else 0.0
-                else:
-                    e = 0.0
-                means.append(m); errs.append(e)
-                tops.append(max(m + e, float(np.max(vals))))
-
-            yerr = errs if err_mode != "None" else None
-            ax.bar(centers, means, width=bar_width * 0.92, color=color,
-                   edgecolor='black', linewidth=0.5, label=gname,
-                   yerr=yerr, capsize=3, error_kw={'elinewidth': 0.8})
-
-            for ci in range(n_genes):
-                bar_center[(gi, ci)] = centers[ci]
-                bar_top[(gi, ci)] = tops[ci]
-                if tops[ci] > global_top:
-                    global_top = tops[ci]
-
-            if show_points:
-                for ci, (_, row) in enumerate(df.iterrows()):
-                    vals = self._vals(row, cols)
-                    if vals.size == 0:
-                        continue
-                    jitter = (rng.random(vals.size) - 0.5) * bar_width * 0.5
-                    ax.scatter(np.full(vals.size, centers[ci]) + jitter, vals,
-                               s=18, color='black', alpha=0.7, zorder=3,
-                               edgecolors='white', linewidths=0.3)
-
-        if self.sig_check.isChecked() and n_groups >= 2:
-            ref_name = self.ref_combo.currentText()
-            if ref_name in self.sample_groups:
-                ref_idx = list(self.sample_groups.keys()).index(ref_name)
-                ref_cols = self.sample_groups[ref_name]
-                y_off = (global_top * 0.04) if global_top > 0 else 0.5
-                for ci, (_, row) in enumerate(df.iterrows()):
-                    ref_vals = self._vals(row, ref_cols)
-                    for gi, (gname, cols) in enumerate(group_items):
-                        if gi == ref_idx:
-                            continue
-                        p = self._compute_pvalue(self._vals(row, cols), ref_vals)
-                        star = _p_to_stars(p)
-                        if not star:
-                            continue
-                        cx = bar_center[(gi, ci)]
-                        top = bar_top[(gi, ci)]
-                        ty = top * 1.08 if is_log else top + y_off
-                        ax.text(cx, ty, star, ha='center', va='bottom', color='black')
-                if not is_log and global_top > 0:
-                    ax.set_ylim(top=global_top * 1.25)
-
-        ax.set_xticks(x)
-        ax.set_xticklabels(genes, rotation=45, ha='right')
-        ax.set_ylabel("Expression (raw count)", fontweight='bold')
-        gene_label = genes[0] if len(genes) == 1 else self.name_hint or "Gene Expression"
-        ax.set_title(f"{gene_label} — Expression by Group" if len(genes) == 1 else "Gene Expression by Group", fontweight='bold')
-        if is_log:
-            ax.set_yscale('log')
-        ax.grid(axis='y', alpha=0.3, linestyle='--')
-        ax.legend(title="Group")
-
+        render_gene_expression_bar(ax, self.df, self._plot_params())
         self.figure.tight_layout()
         self.canvas.draw()
+
+    # ── Bundle export ─────────────────────────────────────────────────────
+
+    def get_bundle_context(self) -> dict:
+        return {
+            'figure': self.figure,
+            'dataframe': self.df,
+            'plot_params': self._plot_params(),
+            'dataset_name': self.dataset.name,
+            'plot_type': 'gene_expression_bar',
+            'figure_title': f'Gene Expression Bar — {self.dataset.name}',
+            'figure_slug': 'gene_expression_bar',
+            'source_stem': 'gene_expression_bar',
+            'notes': 'Generated from cmg-seqviewer Gene Expression Bar plot',
+        }
 
     # ── Export ────────────────────────────────────────────────────────────
 
