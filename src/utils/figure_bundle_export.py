@@ -172,6 +172,8 @@ def _build_regeneration_script(source_stem: str, plot_type: str, plot_params: Ma
         return _build_integrated_volcano_plot_script(source_stem, params_repr)
     elif plot_type.lower() == "meta_volcano":
         return _build_meta_volcano_plot_script(source_stem, params_repr)
+    elif plot_type.lower() == "count_summary":
+        return _build_count_summary_plot_script(source_stem, params_repr)
     else:
         # Generic fallback for other plot types
         return _build_generic_plot_script(source_stem, plot_type, params_repr)
@@ -610,6 +612,43 @@ df = pd.read_csv(root / "inputs" / "data.csv")
 fig = Figure(figsize=(8, 7))
 ax = fig.add_subplot(111)
 render_meta_volcano(ax, df, plot_params)
+fig.tight_layout()
+
+fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.pdf", bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.svg", bbox_inches="tight")
+'''
+
+
+def _build_count_summary_plot_script(source_stem: str, params_repr: str) -> str:
+    render_src = _render_source("count_summary", "render_count_summary")
+    if render_src is None:
+        return _build_generic_plot_script(source_stem, "count_summary", params_repr)
+
+    return f'''"""Recreate the DE/DA Count Summary chart from this bundle.
+
+render_count_summary 은 cmg-seqviewer 화면 렌더링과 동일한 함수를 inline 한 것이다.
+inputs/data.csv 는 long-format(dataset/log2fc/adj_pvalue)이며, 데이터셋별 유의 up/down
+개수를 함수 내부에서 재집계한다.
+"""
+from pathlib import Path
+import numpy as np
+import matplotlib
+matplotlib.use("Agg")
+import pandas as pd
+from matplotlib.figure import Figure
+
+# ── inlined from src/plots/count_summary.py ────────────────────────────
+{render_src}
+# ───────────────────────────────────────────────────────────────────────
+
+root = Path(__file__).resolve().parents[1]
+plot_params = {params_repr}
+
+df = pd.read_csv(root / "inputs" / "data.csv")
+fig = Figure(figsize=(9, 6))
+ax = fig.add_subplot(111)
+render_count_summary(ax, df, plot_params)
 fig.tight_layout()
 
 fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")
