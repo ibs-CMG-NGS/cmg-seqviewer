@@ -318,8 +318,14 @@ $ python scripts/figure.py
 | Quadrant (RNA vs ATAC) | `quadrant.py::render_quadrant` | `quadrant` | ✅ |
 | Integrated Volcano | `integrated_volcano.py::render_integrated_volcano` | `integrated_volcano` | ✅ |
 | Meta Volcano | `meta_volcano.py::render_meta_volcano` | `meta_volcano` | ✅ |
-| Count Summary / Annotation Comparison | — | — | ⬜ (다중 데이터셋 → 번들 data.csv 병합 필요) |
+| Count Summary | `count_summary.py::render_count_summary` | `count_summary` | ✅ (long-format 병합) |
+| Annotation Comparison | `annotation_comparison.py::render_annotation_comparison` | `annotation_comparison` | ✅ (long-format 병합) |
 | Venn / UpSet / GO Network | — | — | ⬜ (비-scatter, 후순위) |
+
+- **다중 데이터셋 플롯** (Count Summary · Annotation Comparison): 다이얼로그가 선택된 데이터셋들을
+  `_build_long_df()`로 **long-format 단일 프레임**(dataset 라벨 + 값 컬럼)으로 평탄화해 렌더에 넘긴다.
+  번들 `data.csv`는 이 프레임 하나이며, 렌더가 dataset별 재집계를 내부에서 수행 → 여러 입력을 하나의
+  재현 스크립트로 독립 재현.
 
 - **패턴**: 렌더 함수는 `matplotlib/pandas/numpy`만 의존(Qt·utils 금지). 모듈 상수·헬퍼는
   getsource inline 시 함께 실리도록 **함수 내부 지역 정의** 또는 `_render_source(module, *funcs)`로
