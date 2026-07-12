@@ -13,9 +13,13 @@ def render_heatmap(fig, df, params):
 
     params 키(= HeatmapWidget.get_plot_params()):
       n_genes, normalization('z-score'|'minmax'|'log2'|'none'), transpose(bool),
-      sorting('padj'|'log2fc'|'clustering'), colormap, colorbar_min, colorbar_max,
+      sorting('padj'|'log2fc'|'clustering'), show_dendrogram(bool),
+      colormap, colorbar_min, colorbar_max,
       show_colorbar(bool), labels_title/labels_xlabel/labels_ylabel,
       show_xticklabels/show_yticklabels
+
+    show_dendrogram=True 이면 계층적 클러스터링으로 행(유전자)을 재정렬하고 히트맵 왼쪽에
+    유전자 덴드로그램을 그린다(transpose 시에는 생략). 클러스터링 순서는 scipy 가 자동 계산.
     """
     # 발현 sample 컬럼이 아닌 것으로 간주할 이름 패턴 (함수 내부 — 번들 inline 자기완결)
     exclude_patterns = [
@@ -23,22 +27,27 @@ def render_heatmap(fig, df, params):
         'lfcse', 'stat', 'statistic', 'pval', 'padj', 'fdr', 'qvalue',
         'gene_id', 'gene', 'symbol', 'dataset', 'description', 'name',
     ]
-    ax = fig.add_subplot(111)
     df = df.copy()
 
     n_genes = int(params.get('n_genes', 50))
     normalization = params.get('normalization', 'z-score')
     transpose = bool(params.get('transpose', False))
     sorting = params.get('sorting', 'padj')
+    show_dendrogram = bool(params.get('show_dendrogram', False))
     colormap = params.get('colormap', 'RdBu_r')
     cbar_min = params.get('colorbar_min')
     cbar_max = params.get('colorbar_max')
+
+    # 덴드로그램을 켜면 클러스터링 정렬로 강제 (덴드로그램은 leaf 순서를 그림)
+    if show_dendrogram and not transpose:
+        sorting = 'clustering'
 
     # 발현 sample 컬럼 자동 감지
     sample_cols = [c for c in df.columns
                    if not any(p in c.lower() for p in exclude_patterns)
                    and pd.api.types.is_numeric_dtype(df[c])]
     if not sample_cols:
+        ax = fig.add_subplot(111)
         ax.text(0.5, 0.5, 'No sample expression columns found.\n'
                 'Heatmap requires sample count data.',
                 ha='center', va='center', fontsize=14, transform=ax.transAxes)
@@ -46,6 +55,7 @@ def render_heatmap(fig, df, params):
 
     expr_data = df[sample_cols].copy().dropna()
     if len(expr_data) == 0:
+        ax = fig.add_subplot(111)
         ax.text(0.5, 0.5, 'No valid data after removing NaN values',
                 ha='center', va='center', fontsize=14, transform=ax.transAxes)
         return None
@@ -89,20 +99,38 @@ def render_heatmap(fig, df, params):
         sort_order = df.loc[heatmap_data.index, 'log2FC'].abs().argsort()[::-1]
         heatmap_data = heatmap_data.iloc[sort_order]
         gene_labels = [gene_labels[i] for i in sort_order]
-    elif sorting == 'clustering':
+    linkage_matrix = None
+    if sorting == 'clustering':
         try:
             from scipy.cluster.hierarchy import linkage, dendrogram
             from scipy.spatial.distance import pdist
-            lm = linkage(pdist(heatmap_data, metric='euclidean'), method='average')
-            order = dendrogram(lm, no_plot=True)['leaves']
-            heatmap_data = heatmap_data.iloc[order]
-            gene_labels = [gene_labels[i] for i in order]
+            if len(heatmap_data) >= 2:
+                linkage_matrix = linkage(pdist(heatmap_data, metric='euclidean'),
+                                         method='average')
+                order = dendrogram(linkage_matrix, no_plot=True)['leaves']
+                heatmap_data = heatmap_data.iloc[order]
+                gene_labels = [gene_labels[i] for i in order]
         except ImportError:
-            pass
+            linkage_matrix = None
 
     if transpose:
         heatmap_data = heatmap_data.T
 
+    # 덴드로그램: transpose가 아니고 linkage가 있을 때만 왼쪽에 유전자 덴드로그램 축을 둔다
+    draw_dendro = show_dendrogram and linkage_matrix is not None and not transpose
+    if draw_dendro:
+        gs = fig.add_gridspec(1, 2, width_ratios=[0.18, 1.0], wspace=0.02)
+        ax_dendro = fig.add_subplot(gs[0, 0])
+        ax = fig.add_subplot(gs[0, 1], sharey=None)
+        from scipy.cluster.hierarchy import dendrogram
+        dendrogram(linkage_matrix, ax=ax_dendro, orientation='left',
+                   no_labels=True, link_color_func=lambda k: '#555555')
+        ax_dendro.invert_yaxis()   # imshow(origin='upper') 행 순서와 leaf 순서 정렬
+        ax_dendro.axis('off')
+    else:
+        ax = fig.add_subplot(111)
+
+    ax.set_gid('heatmap_main')   # 다이얼로그가 덴드로그램/colorbar 축과 구분해 찾도록
     im = ax.imshow(heatmap_data, cmap=colormap, aspect='auto',
                    interpolation='nearest', vmin=cbar_min, vmax=cbar_max)
 
@@ -121,6 +149,8 @@ def render_heatmap(fig, df, params):
         if len(gene_labels) <= 20:
             ax.set_yticks(range(len(gene_labels)))
             ax.set_yticklabels(gene_labels, fontsize=8)
+        if draw_dendro:
+            ax.yaxis.tick_right()   # 왼쪽은 덴드로그램 → 유전자 라벨은 오른쪽에
 
     # 라벨 (다이얼로그에선 PlotLabelsPanel이 이후 재적용; 번들에선 이게 최종)
     title = params.get('labels_title')

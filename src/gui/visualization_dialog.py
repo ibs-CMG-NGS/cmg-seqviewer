@@ -976,6 +976,7 @@ class HeatmapWidget(QWidget):
         'normalization': 'z-score',
         'transpose': False,
         'sorting': 'padj',
+        'show_dendrogram': False,
         'colormap': 'RdBu_r',
         'colorbar_min': -3.0,
         'colorbar_max': 3.0,
@@ -1009,6 +1010,7 @@ class HeatmapWidget(QWidget):
         self.normalization = merged['normalization']
         self.transpose = merged['transpose']
         self.sorting = merged['sorting']
+        self.show_dendrogram = merged.get('show_dendrogram', False)
         self.colormap = merged['colormap']
         self.colorbar_min = merged['colorbar_min']
         self.colorbar_max = merged['colorbar_max']
@@ -1036,6 +1038,7 @@ class HeatmapWidget(QWidget):
             'normalization': self.normalization,
             'transpose': self.transpose,
             'sorting': self.sorting,
+            'show_dendrogram': self.show_dendrogram,
             'colormap': self.colormap,
             'colorbar_min': self.colorbar_min,
             'colorbar_max': self.colorbar_max,
@@ -1183,6 +1186,17 @@ class HeatmapWidget(QWidget):
         self.transpose_check.stateChanged.connect(self._on_settings_changed)
         settings_layout.addRow("", self.transpose_check)
 
+        # 유전자 덴드로그램 (계층적 클러스터링). 켜면 정렬은 clustering으로 강제됨.
+        self.dendro_check = QCheckBox("Show gene dendrogram (hierarchical)")
+        self.dendro_check.setChecked(self.show_dendrogram)
+        self.dendro_check.setToolTip(
+            "히트맵 왼쪽에 유전자 계층적 클러스터링 덴드로그램을 표시합니다.\n"
+            "켜면 Gene Sorting이 자동으로 클러스터링 순서로 정렬됩니다.\n"
+            "(Transpose 상태에서는 표시되지 않습니다.)"
+        )
+        self.dendro_check.stateChanged.connect(self._on_settings_changed)
+        settings_layout.addRow("", self.dendro_check)
+
         settings_group.setLayout(settings_layout)
         left_panel.addWidget(settings_group)
 
@@ -1305,6 +1319,7 @@ class HeatmapWidget(QWidget):
         self.colorbar_min = self.colorbar_min_spin.value()
         self.colorbar_max = self.colorbar_max_spin.value()
         self.transpose = self.transpose_check.isChecked()
+        self.show_dendrogram = self.dendro_check.isChecked()
         self.show_legend = self.legend_check.isChecked()
 
         self.__class__._saved_settings.update({
@@ -1312,6 +1327,7 @@ class HeatmapWidget(QWidget):
             'normalization': self.normalization,
             'transpose': self.transpose,
             'sorting': self.sorting,
+            'show_dendrogram': self.show_dendrogram,
             'colormap': self.colormap,
             'colorbar_min': self.colorbar_min,
             'colorbar_max': self.colorbar_max,
@@ -1346,7 +1362,9 @@ class HeatmapWidget(QWidget):
         self.heatmap_data = heatmap_data
         self.gene_labels = gene_labels
 
-        ax = self.figure.axes[0]
+        # 덴드로그램/colorbar 축이 아니라 히트맵 본체 축을 찾는다 (render가 gid로 표시)
+        ax = next((a for a in self.figure.axes if a.get_gid() == 'heatmap_main'),
+                  self.figure.axes[0])
         # PlotLabelsPanel 재적용 (다이얼로그에선 패널이 최종 권한)
         self._labels.apply_to_axes(ax)
 
@@ -1359,7 +1377,9 @@ class HeatmapWidget(QWidget):
                                  zorder=1000)
         self.annot.set_visible(False)
 
-        self.figure.tight_layout()
+        # 덴드로그램은 gridspec 레이아웃이라 tight_layout과 호환되지 않음(경고 방지)
+        if not (self.show_dendrogram and not self.transpose):
+            self.figure.tight_layout()
         self.canvas.draw()
 
     def _save_figure(self):
@@ -1421,9 +1441,11 @@ class HeatmapWidget(QWidget):
 
     def _on_hover(self, event):
         """마우스 오버 시 셀 정보 표시"""
-        if event.inaxes is None:
-            self.annot.set_visible(False)
-            self.canvas.draw_idle()
+        # 덴드로그램/colorbar 축 위에서는 셀 정보를 계산하지 않는다
+        if event.inaxes is None or event.inaxes.get_gid() != 'heatmap_main':
+            if getattr(self, 'annot', None) is not None and self.annot.get_visible():
+                self.annot.set_visible(False)
+                self.canvas.draw_idle()
             return
 
         x, y = int(event.xdata + 0.5), int(event.ydata + 0.5)

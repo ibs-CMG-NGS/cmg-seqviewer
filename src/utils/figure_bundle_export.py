@@ -272,7 +272,9 @@ plot_params = {params_repr}
 df = pd.read_csv(root / "inputs" / "data.csv")
 fig = Figure(figsize=(float(plot_params.get("fig_width", 10)), float(plot_params.get("fig_height", 8))))
 render_heatmap(fig, df, plot_params)
-fig.tight_layout()
+# 덴드로그램은 gridspec 레이아웃이라 tight_layout과 호환되지 않는다
+if not (plot_params.get("show_dendrogram") and not plot_params.get("transpose")):
+    fig.tight_layout()
 
 fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")
 fig.savefig(root / "outputs" / "{source_stem}.pdf", bbox_inches="tight")
