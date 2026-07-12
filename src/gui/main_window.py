@@ -815,6 +815,12 @@ class MainWindow(QMainWindow):
                 'filter_params': None,
                 'comparison_params': None,
             }
+            # 재생성 레시피 stamp: comparison/clustered/integration 시트는 프로젝트 저장 시
+            # 이 레시피로 복원(replay)된다. 생성 핸들러가 _pending_sheet_recipe 를 설정해 둔다.
+            if sheet_type in ('comparison', 'clustered', 'integration'):
+                recipe = getattr(self, '_pending_sheet_recipe', None)
+                if recipe:
+                    self.tab_data[new_idx]['comparison_params'] = dict(recipe)
         # 비-whole 시트는 parent_dataset이 있으면 즉시 트리에 등록
         if parent_dataset and sheet_type != 'whole':
             self.dataset_manager.add_sheet(parent_dataset, new_idx, tab_name, sheet_type)
@@ -1612,9 +1618,13 @@ class MainWindow(QMainWindow):
             comparison_type: 비교 타입 ("gene_list", "statistics", "venn", "scatter", "heatmap", "correlation")
         """
         self.logger.info(f"Comparison requested: {comparison_type} for {len(dataset_names)} datasets")
-        
+
         # 직접 비교 수행 (Presenter는 단일 데이터셋 처리만 담당)
         self._perform_basic_comparison(dataset_names, comparison_type)
+
+    def _replay_comparison(self, dataset_names, comparison_type):
+        """프로젝트 복원 시 저장된 레시피로 비교 시트를 재생성."""
+        self._perform_basic_comparison(list(dataset_names), comparison_type)
     
     def _perform_basic_comparison(self, dataset_names: List[str], comparison_type: str):
         """
@@ -1632,24 +1642,33 @@ class MainWindow(QMainWindow):
                     datasets.append(self.presenter.datasets[name])
                 else:
                     self.logger.warning(f"Dataset not found: {name}")
-            
+
             if len(datasets) < 2:
-                QMessageBox.warning(self, "Comparison Error", 
+                QMessageBox.warning(self, "Comparison Error",
                                   "At least 2 valid datasets are required for comparison.")
                 return
-            
-            # 비교 타입별 처리
-            if comparison_type == "gene_list":
-                self._compare_gene_list(datasets)
-            elif comparison_type == "statistics":
-                self._compare_statistics(datasets)
-            elif comparison_type == "go_term":
-                self._compare_go_terms(datasets)
-            else:
-                QMessageBox.information(self, "Feature Moved", 
-                                      "Visualization features (Venn, Scatter, Heatmap, Correlation) "
-                                      "have been moved to the Visualization menu.")
-        
+
+            # 재생성 레시피: 이 비교로 만들어지는 comparison 탭에 stamp 되어 프로젝트에 저장된다.
+            self._pending_sheet_recipe = {
+                'kind': 'comparison',
+                'dataset_names': list(dataset_names),
+                'comparison_type': comparison_type,
+            }
+            try:
+                # 비교 타입별 처리
+                if comparison_type == "gene_list":
+                    self._compare_gene_list(datasets)
+                elif comparison_type == "statistics":
+                    self._compare_statistics(datasets)
+                elif comparison_type == "go_term":
+                    self._compare_go_terms(datasets)
+                else:
+                    QMessageBox.information(self, "Feature Moved",
+                                          "Visualization features (Venn, Scatter, Heatmap, Correlation) "
+                                          "have been moved to the Visualization menu.")
+            finally:
+                self._pending_sheet_recipe = None
+
         except Exception as e:
             self.logger.error(f"Comparison failed: {e}")
             QMessageBox.critical(self, "Comparison Error", f"Failed to compare datasets:\n{str(e)}")
@@ -3946,6 +3965,27 @@ class MainWindow(QMainWindow):
                             self._pin_plot_to_tab(widget, label_str, "heatmap", plot_params, loaded_ds_name)
                     except Exception as e:
                         self.logger.warning(f"Failed to restore plot '{label_str}': {e}")
+
+        # ── 파생 결과 시트 재생성 (모든 소스 데이터셋 로드 후) ──
+        # comparison: 저장된 레시피(dataset_names + comparison_type)로 재실행
+        for comp in spec.get("comparisons", []):
+            recipe = comp.get("comparison_params") or {}
+            names = recipe.get("dataset_names") or []
+            ctype = recipe.get("comparison_type")
+            label = comp.get("label", "Comparison")
+            if not names or not ctype:
+                self.logger.warning(
+                    f"Comparison '{label}' has no replay recipe (older project?); skipped.")
+                continue
+            missing = [n for n in names if n not in self.presenter.datasets]
+            if missing:
+                self.logger.warning(
+                    f"Comparison '{label}' skipped — source datasets not loaded: {missing}")
+                continue
+            try:
+                self._replay_comparison(names, ctype)
+            except Exception as e:
+                self.logger.warning(f"Failed to replay comparison '{label}': {e}")
 
         # 마지막 활성 탭 복원
         ui_state = spec.get("ui_state", {})
