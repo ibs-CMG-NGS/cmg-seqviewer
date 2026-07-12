@@ -1385,6 +1385,14 @@ class MainPresenter(QObject):
             unique_name = self.view.dataset_manager._generate_unique_name(result_dataset.name)
             result_dataset.name = unique_name
             mo.name = unique_name
+            # 재생성 레시피: 통합 결과는 파일이 없으므로 프로젝트 복원 시 이 레시피로 replay 한다.
+            if not hasattr(result_dataset, 'metadata') or result_dataset.metadata is None:
+                result_dataset.metadata = {}
+            result_dataset.metadata['integration_recipe'] = {
+                'rna_name': rna_name, 'atac_name': atac_name, 'method': method,
+                'tss_window': tss_window, 'rna_padj': rna_padj, 'rna_lfc': rna_lfc,
+                'atac_padj': atac_padj, 'atac_lfc': atac_lfc,
+            }
             self.datasets[unique_name] = result_dataset
             self.current_dataset = result_dataset
 

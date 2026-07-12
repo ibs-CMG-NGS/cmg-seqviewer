@@ -1625,6 +1625,55 @@ class MainWindow(QMainWindow):
     def _replay_comparison(self, dataset_names, comparison_type):
         """프로젝트 복원 시 저장된 레시피로 비교 시트를 재생성."""
         self._perform_basic_comparison(list(dataset_names), comparison_type)
+
+    def _replay_dataset_sheets(self, loaded_ds_name, sheets):
+        """프로젝트 복원: 한 데이터셋의 filtered/plot 하위 시트를 재현한다."""
+        from models.data_models import FilterCriteria
+        for sheet in sheets:
+            stype = sheet.get("type")
+
+            if stype == "filtered":
+                fp_dict = sheet.get("filter_params")
+                if not fp_dict:
+                    continue
+                try:
+                    criteria = FilterCriteria.from_dict(fp_dict)
+                    self.presenter.switch_dataset(loaded_ds_name)
+                    self.presenter.apply_filter(criteria)
+                except Exception as e:
+                    self.logger.warning(f"Failed to replay filter for sheet '{sheet.get('label')}': {e}")
+
+            elif stype == "plot":
+                plot_type = sheet.get("plot_type", "")
+                plot_params = sheet.get("plot_params") or {}
+                label_str = sheet.get("label", "Plot")
+                try:
+                    target_ds = self.presenter.datasets.get(loaded_ds_name)
+                    if target_ds is None:
+                        raise ValueError(f"Dataset '{loaded_ds_name}' not found")
+                    df = target_ds.dataframe
+                    # Rename standardized columns to visualization names
+                    from models.standard_columns import StandardColumns
+                    _rename_map = {
+                        StandardColumns.LOG2FC: 'log2FC',
+                        StandardColumns.ADJ_PVALUE: 'padj',
+                        StandardColumns.PVALUE: 'pvalue',
+                    }
+                    df = df.rename(columns=_rename_map)
+                    if plot_type == "volcano":
+                        widget = VolcanoPlotWidget(
+                            df, plot_params=plot_params,
+                            show_pin_button=False, embed_settings=False
+                        )
+                        self._pin_plot_to_tab(widget, label_str, "volcano", plot_params, loaded_ds_name)
+                    elif plot_type == "heatmap":
+                        widget = HeatmapWidget(
+                            df, plot_params=plot_params,
+                            show_pin_button=False, embed_settings=False
+                        )
+                        self._pin_plot_to_tab(widget, label_str, "heatmap", plot_params, loaded_ds_name)
+                except Exception as e:
+                    self.logger.warning(f"Failed to restore plot '{label_str}': {e}")
     
     def _perform_basic_comparison(self, dataset_names: List[str], comparison_type: str):
         """
@@ -3741,15 +3790,22 @@ class MainWindow(QMainWindow):
             # 데이터셋 파일 경로 / 타입 맵 구성
             dataset_file_map: dict = {}
             dataset_type_map: dict = {}
-            dataset_source_map: dict = {}  # "file" or "database"
+            dataset_source_map: dict = {}  # "file" | "database" | "integration"
             dataset_db_id_map: dict = {}   # db_dataset_id (database source 전용)
+            dataset_integration_map: dict = {}  # integration_recipe (integration source 전용)
             for name, ds in self.presenter.datasets.items():
                 fp = getattr(ds, "file_path", None) or ""
                 dataset_file_map[name] = str(fp)
                 dt = getattr(ds, "dataset_type", None)
                 dataset_type_map[name] = dt.value if dt else ""
-                db_id = ds.metadata.get("db_dataset_id", "") if hasattr(ds, "metadata") else ""
-                if db_id:
+                meta = ds.metadata if hasattr(ds, "metadata") and ds.metadata else {}
+                db_id = meta.get("db_dataset_id", "")
+                integ = meta.get("integration_recipe")
+                if integ:
+                    # 파일 없는 통합 결과 — 복원 시 레시피로 replay
+                    dataset_source_map[name] = "integration"
+                    dataset_integration_map[name] = integ
+                elif db_id:
                     dataset_source_map[name] = "database"
                     dataset_db_id_map[name] = db_id
                 else:
@@ -3779,7 +3835,10 @@ class MainWindow(QMainWindow):
                 ds_name = ds_spec.get("name", "")
                 source = dataset_source_map.get(ds_name, "file")
                 ds_spec["source"] = source
-                if source == "database":
+                if source == "integration":
+                    ds_spec["integration_recipe"] = dataset_integration_map.get(ds_name, {})
+                    ds_spec["file_path"] = ""  # 파일 없음 — 레시피로 재생성
+                elif source == "database":
                     ds_spec["db_dataset_id"] = dataset_db_id_map.get(ds_name, "")
                     ds_spec["file_path"] = ""  # 파일 경로 불필요
                 else:
@@ -3833,6 +3892,7 @@ class MainWindow(QMainWindow):
 
         missing_files: list = []
         loaded_count = 0
+        deferred_integration: list = []  # 파일 없는 통합 결과 — 소스 로드 후 replay
 
         for ds_spec in spec.get("datasets", []):
             ds_name = ds_spec.get("name", "")
@@ -3841,6 +3901,11 @@ class MainWindow(QMainWindow):
             source = ds_spec.get("source", "file")
             sheets = ds_spec.get("sheets", [])
             loaded_ds_name = ds_name  # 실제 presenter.datasets 키 (unique_name 적용 시 갱신)
+
+            # ── 통합 결과 소스: 소스 RNA/ATAC 로드 후 replay 하도록 뒤로 미룸 ──
+            if source == "integration":
+                deferred_integration.append(ds_spec)
+                continue
 
             # ── 데이터베이스 소스 ──
             if source == "database":
@@ -3920,51 +3985,28 @@ class MainWindow(QMainWindow):
                         continue
 
             # sheets 재현 (filtered + plot)
-            for sheet in sheets:
-                stype = sheet.get("type")
+            self._replay_dataset_sheets(loaded_ds_name, sheets)
 
-                if stype == "filtered":
-                    fp_dict = sheet.get("filter_params")
-                    if not fp_dict:
-                        continue
-                    try:
-                        criteria = FilterCriteria.from_dict(fp_dict)
-                        self.presenter.switch_dataset(loaded_ds_name)
-                        self.presenter.apply_filter(criteria)
-                    except Exception as e:
-                        self.logger.warning(f"Failed to replay filter for sheet '{sheet.get('label')}': {e}")
-
-                elif stype == "plot":
-                    plot_type = sheet.get("plot_type", "")
-                    plot_params = sheet.get("plot_params") or {}
-                    label_str = sheet.get("label", "Plot")
-                    try:
-                        target_ds = self.presenter.datasets.get(loaded_ds_name)
-                        if target_ds is None:
-                            raise ValueError(f"Dataset '{loaded_ds_name}' not found")
-                        df = target_ds.dataframe
-                        # Rename standardized columns to visualization names
-                        from models.standard_columns import StandardColumns
-                        _rename_map = {
-                            StandardColumns.LOG2FC: 'log2FC',
-                            StandardColumns.ADJ_PVALUE: 'padj',
-                            StandardColumns.PVALUE: 'pvalue',
-                        }
-                        df = df.rename(columns=_rename_map)
-                        if plot_type == "volcano":
-                            widget = VolcanoPlotWidget(
-                                df, plot_params=plot_params,
-                                show_pin_button=False, embed_settings=False
-                            )
-                            self._pin_plot_to_tab(widget, label_str, "volcano", plot_params, loaded_ds_name)
-                        elif plot_type == "heatmap":
-                            widget = HeatmapWidget(
-                                df, plot_params=plot_params,
-                                show_pin_button=False, embed_settings=False
-                            )
-                            self._pin_plot_to_tab(widget, label_str, "heatmap", plot_params, loaded_ds_name)
-                    except Exception as e:
-                        self.logger.warning(f"Failed to restore plot '{label_str}': {e}")
+        # ── 통합 결과 재생성 (소스 데이터셋 로드 후) ──
+        for ds_spec in deferred_integration:
+            recipe = ds_spec.get("integration_recipe") or {}
+            rna = recipe.get("rna_name")
+            atac = recipe.get("atac_name")
+            ds_label = ds_spec.get("name", "integration")
+            if not recipe or rna not in self.presenter.datasets or atac not in self.presenter.datasets:
+                miss = [n for n in (rna, atac) if n not in self.presenter.datasets]
+                self.logger.warning(
+                    f"Integration '{ds_label}' skipped — source datasets not loaded: {miss}")
+                missing_files.append(ds_label)
+                continue
+            try:
+                self.presenter.integrate_datasets(**recipe)
+                loaded_count += 1
+                # 통합 결과의 실제 이름(현재 current_dataset)으로 하위 시트 replay
+                integ_name = getattr(self.presenter.current_dataset, "name", ds_label)
+                self._replay_dataset_sheets(integ_name, ds_spec.get("sheets", []))
+            except Exception as e:
+                self.logger.warning(f"Failed to replay integration '{ds_label}': {e}")
 
         # ── 파생 결과 시트 재생성 (모든 소스 데이터셋 로드 후) ──
         # comparison: 저장된 레시피(dataset_names + comparison_type)로 재실행
