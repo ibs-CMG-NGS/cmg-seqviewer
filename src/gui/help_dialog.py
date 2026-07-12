@@ -1659,10 +1659,12 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
             <li><b>📂 Dataset Tree Panel:</b> Left panel now shows datasets as a tree with child nodes
                 for each derived sheet (Whole, Filtered, Comparison, Plot). Click to switch tabs,
                 bidirectional sync with the tab bar.</li>
-            <li><b>💾 Project Save/Load (.seqproj):</b> Save your entire analysis session
-                (datasets, filters, plot tabs) and restore it later. Use
+            <li><b>💾 Project Save/Load (.seqproj):</b> Save your analysis session as a
+                lightweight recipe (datasets, filters, comparisons, RNA&#8211;ATAC integration,
+                pinned Volcano/Heatmap tabs) and re-derive it later. Use
                 <b>File &rarr; Save Project</b> (Ctrl+Shift+S) / <b>Open Project</b> (Ctrl+Shift+O).
-                Recent Projects sub-menu for quick access.</li>
+                See section <b>7b</b> for what is and isn't restored. Recent Projects sub-menu
+                for quick access.</li>
             <li><b>📌 Pin to Tab:</b> Plot dialogs now have a "📌 Pin to Tab" button to embed
                 Volcano Plot or Heatmap as a persistent tab in the main window.</li>
             <li><b>Plot Settings Dock:</b> Right-side dock panel appears automatically when
@@ -1713,22 +1715,28 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
         <h1>7b. Project Save/Load</h1>
 
         <h2>Overview</h2>
-        <p>CMG-SeqViewer can save your entire analysis session — loaded datasets,
-        applied filters, and pinned plot tabs — to a <b>.seqproj</b> file.
-        Opening the file later restores the session exactly as you left it.</p>
+        <p>CMG-SeqViewer saves your analysis session to a small <b>.seqproj</b> file.
+        Rather than copying all the data, it stores a <b>recipe</b>: the source files/IDs
+        plus the parameters used to derive every sheet. On open, the app reloads the
+        sources and <b>re-runs</b> those steps to rebuild the session. This keeps project
+        files tiny (a few KB) and uses no extra memory, but it means the
+        <b>original source files must still be available</b> when you reopen.</p>
 
         <h2>Saving a Project</h2>
         <ol>
             <li>Go to <b>File &rarr; Save Project...</b> or press <b>Ctrl+Shift+S</b></li>
             <li>Choose a location and filename (extension <code>.seqproj</code> is added automatically)</li>
-            <li>All current datasets and their derived sheets are saved</li>
         </ol>
         <p>What is saved in the <code>.seqproj</code> file:</p>
         <ul>
             <li><b>Datasets</b> — file paths (relative to the project file for portability) or
                 database IDs for DB-sourced datasets</li>
-            <li><b>Filtered sheets</b> — filter parameters so the filter can be replayed on restore</li>
-            <li><b>Plot tabs (📈)</b> — plot type and all visualization parameters
+            <li><b>Filtered sheets</b> — filter parameters (replayed on restore)</li>
+            <li><b>Comparison sheets</b> — the source dataset names and comparison type
+                (gene-list / statistics / GO-term), replayed on restore</li>
+            <li><b>RNA&#8211;ATAC integration results</b> — the integration recipe
+                (RNA/ATAC sources, method, thresholds), replayed on restore</li>
+            <li><b>Plot tabs (📈)</b> — plot type and visualization parameters
                 (<code>plot_params</code>) for Volcano and Heatmap tabs pinned via
                 <em>📌 Pin to Tab</em></li>
             <li><b>UI state</b> — last active tab index</li>
@@ -1738,28 +1746,43 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
         <ol>
             <li>Go to <b>File &rarr; Open Project...</b> or press <b>Ctrl+Shift+O</b></li>
             <li>Select a <code>.seqproj</code> file</li>
-            <li>The app loads each dataset and replays filters and plot tabs in order</li>
+            <li>The app reloads each source dataset, replays its filters/plots, then
+                regenerates comparison and integration results</li>
         </ol>
-        <p>If a data file cannot be found, the affected dataset is skipped and a warning
-        dialog lists the missing files. Other datasets load normally.</p>
+        <p>If something cannot be restored, a <b>Project Restore — Partial</b> dialog
+        appears and separates two cases: <b>source files not found</b> (a file moved or
+        was deleted — that dataset and everything derived from it is skipped) and
+        <b>generated results that must be recreated manually</b> (see Limitations).</p>
 
         <h2>Recent Projects</h2>
         <p>Recently opened project files appear in <b>File &rarr; Recent Projects</b>
         for one-click access.</p>
 
         <h2>File Portability</h2>
-        <p>File paths inside <code>.seqproj</code> are stored as paths <b>relative</b> to
-        the project file. This means you can move the project folder to another machine
-        (keeping the relative directory structure) and it will still open correctly.</p>
-        <p>If a dataset was loaded from the internal <b>database</b>, the database ID is
-        stored instead — no external file needed.</p>
+        <p>File paths inside <code>.seqproj</code> are stored <b>relative</b> to the
+        project file, so you can move the project folder together with its data files
+        (keeping the directory structure) to another machine and it will still open.
+        Datasets loaded from the internal <b>database</b> store a database ID instead —
+        no external file needed.</p>
 
-        <h2>Limitations</h2>
+        <h2>What is NOT (yet) restored automatically</h2>
+        <p>These are reported in the <b>Project Restore — Partial</b> dialog so you know
+        exactly what to recreate — nothing is lost silently:</p>
         <ul>
-            <li><b>Comparison sheets</b> are not yet restored automatically (planned)</li>
-            <li><b>Clustered heatmap</b> tabs are not restored (clustering is non-deterministic
-                without a fixed seed)</li>
-            <li>PCA, Venn, and DotPlot dialogs cannot be pinned as tabs yet</li>
+            <li><b>GO Term clustering results</b> (Clustered sheets) — recreate via
+                <b>Analysis &rarr; Cluster GO Terms</b></li>
+            <li><b>Cross-species harmonized</b> and <b>meta-analysis</b> results</li>
+        </ul>
+        <p>Other notes:</p>
+        <ul>
+            <li>Only <b>Volcano</b> and <b>Heatmap</b> can be pinned as persistent tabs and
+                therefore saved. Other visualizations (MA, PCA, GO dot/bar, Quadrant,
+                Meta&nbsp;Volcano, Venn, UpSet, …) are modal dialogs and are not part of the
+                saved session.</li>
+            <li>Because the session is <b>re-derived</b>, sheets are recomputed from the
+                current source files rather than stored verbatim. If a source file changed
+                since saving, the restored sheets reflect the new file.</li>
+            <li>Restored plots are drawn from the parent dataset's full table.</li>
         </ul>
         """
 
