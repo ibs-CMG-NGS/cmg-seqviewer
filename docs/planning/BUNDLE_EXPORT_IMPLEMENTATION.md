@@ -341,6 +341,78 @@ $ python scripts/figure.py
 
 ---
 
+## 3.6 새 플롯 추가 가이드 (Recipe)
+
+앞으로 새 플롯을 추가할 때는 아래 순서를 따른다. 새 플롯과 가장 닮은 기존 렌더 모듈을 복사해
+시작하는 것이 가장 빠르다.
+
+**레퍼런스 구현으로 삼을 것:**
+- 단일 axes 스캐터: `src/plots/volcano.py` (`render_volcano`)
+- fig + colorbar + 모듈 헬퍼 inline: `src/plots/go_comparison_dot.py`
+- 다중 데이터셋(long-format 병합): `src/plots/count_summary.py`
+- 외부 라이브러리 + 호환 패치 동봉: `src/plots/upset.py`
+
+### 1) 다이얼로그를 `BasePlotDialog` 규약으로 작성
+- `_setup_controls(layout)` + `_do_plot()` 구현 → Refresh/Save/테마/라벨/`_extra_buttons` 자동 제공.
+- `__init__` 끝에서 `self._update_plot()` 호출.
+- 여기까지만 해도 **Level 1**(이미지+데이터+메타 번들)은 무료로 확보된다.
+
+### 2) 렌더를 순수 함수로 분리 — `src/plots/{type}.py`
+```python
+def render_{type}(ax_or_fig, df, params):   # 단일 axes면 ax, 다축(colorbar/UpSet)이면 fig
+    ...
+    return <다이얼로그가 재사용할 값>        # counts_df, scatter_data, (d, label_col) 등
+```
+**self-contained가 핵심** — 번들 스크립트는 앱 없이 독립 실행되어야 한다:
+- 의존은 `matplotlib/pandas/numpy`만. **Qt · `models.StandardColumns` · `utils.*` 참조 금지**
+  → 컬럼명은 문자열 리터럴, 상수·색상맵·정규화 dict는 **함수 내부 지역 변수**로 정의
+  (모듈 레벨에 두면 `inspect.getsource` inline 시 빠진다).
+- 외부 라이브러리(scipy · matplotlib_venn · upsetplot · adjustText)는 **함수 안에서 import +
+  `try/except`** 로 부재 시 안내 메시지/fallback.
+- hover 등 Qt 상호작용은 다이얼로그에 남기고, render가 필요한 데이터를 **반환**해 재사용.
+
+### 3) 다이얼로그가 렌더를 호출
+```python
+def _plot_params(self): return {...}          # 컨트롤 값 → dict (repr 가능한 값만)
+def _do_plot(self):
+    from plots.{type} import render_{type}
+    self.figure.clear(); ax = self.figure.add_subplot(111)
+    self._result = render_{type}(ax, self._get_df(), self._plot_params())
+    self.canvas.draw()
+```
+다중 데이터셋/집합 플롯이면 `_build_long_df()`(또는 `_build_membership_df()`)로 **long-format 단일
+프레임**(dataset 라벨 + 값 컬럼)으로 평탄화해 넘긴다.
+
+### 4) 번들 컨텍스트 추가
+```python
+def get_bundle_context(self):
+    return {'figure': .., 'dataframe': .., 'plot_params': self._plot_params(),
+            'plot_type': '{type}', 'figure_slug': '{type}', 'source_stem': '{type}',
+            'figure_title': ..., 'dataset_name': ..., 'notes': ...}
+```
+→ `BasePlotDialog`의 공용 "Export Bundle" 버튼이 자동 활성화된다.
+
+### 5) `src/utils/figure_bundle_export.py`에 배선 (Level 2b)
+- `_build_regeneration_script`의 dispatch에 분기 추가:
+  `elif plot_type.lower() == "{type}": return _build_{type}_plot_script(source_stem, params_repr)`
+- 기존 `_build_*_plot_script` 하나를 복사해 `_render_source("{type}", "render_{type}")`로 렌더를 inline.
+  **모듈 레벨 헬퍼가 있으면** `_render_source("{type}", "_helper", "render_{type}")`처럼 함께 나열
+  (순서대로 inline됨).
+
+### 6) 검증 (매번 동일)
+- 헤드리스(`QT_QPA_PLATFORM=offscreen`)로 다이얼로그 렌더 + `export_figure_bundle` 호출 → 생성된
+  `scripts/figure.py`를 **subprocess로 독립 실행해 `rc=0`** 확인 + `render_{type}` inline 여부 확인.
+- `pytest test/test_figure_bundle_export.py` 회귀 통과.
+
+### 7) 새 의존성이면
+- `requirements.txt` + 3개 PyInstaller spec(`rna-seq-viewer.spec`, `rna-seq-viewer-onefile.spec`,
+  `cmg-seqviewer-macos.spec`)의 `hiddenimports`에 추가 (지연 import는 PyInstaller가 자동 감지 못 함).
+
+### 8) 문서
+- 위 §3.5 "render() 추출 진행 현황" 표에 한 줄 추가.
+
+---
+
 ## 4. 아키텍처 결정사항 (Design Decisions)
 
 ### 4.1 왜 Python 스크립트인가?
