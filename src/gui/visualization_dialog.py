@@ -31,6 +31,24 @@ from gui.widgets.plot_labels_panel import PlotLabelsPanel
 from gui.base_plot_dialog import BasePlotDialog
 
 
+def _fit_settings_scroll_width(scroll: QScrollArea, container: QWidget,
+                               min_w: int = 220, max_w: int = 600) -> None:
+    """설정 패널을 콘텐츠가 실제로 필요로 하는 폭에 맞춰 잡아 가로 스크롤을 없앤다.
+
+    기준은 sizeHint(선호 폭)가 아니라 minimumSizeHint(축소 불가능한 최소 폭)다.
+    가로 스크롤은 콘텐츠의 '최소' 폭이 뷰포트보다 클 때 생기므로, 긴 라벨(예:
+    "Show gene dendrogram (hierarchical)")처럼 줄일 수 없는 위젯이 정하는 최소 폭에만
+    맞추면 된다. QLineEdit 같은 축소 가능한 위젯의 넉넉한 선호 폭까지 반영하면 패널이
+    과하게 넓어지므로 사용하지 않는다. 로케일/폰트가 달라져도 매직 넘버 없이 자동 조정.
+    """
+    scrollbar_w = scroll.verticalScrollBar().sizeHint().width()
+    needed = container.minimumSizeHint().width() + scrollbar_w + 8
+    width = int(min(max_w, max(min_w, needed)))
+    scroll.setMinimumWidth(width)
+    scroll.setMaximumWidth(width + 40)   # 사용자가 splitter로 약간 넓힐 여지
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+
 def create_plot_icon(emoji: str, bg_color: QColor = None) -> QIcon:
     """플롯 다이얼로그용 아이콘 생성
 
@@ -396,9 +414,7 @@ class VolcanoPlotWidget(QWidget):
         scroll = QScrollArea()
         scroll.setWidget(settings_container)
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setMinimumWidth(220)
-        scroll.setMaximumWidth(300)
+        _fit_settings_scroll_width(scroll, settings_container)
 
         if self._embed_settings:
             main_splitter.addWidget(scroll)
@@ -1121,10 +1137,10 @@ class HeatmapWidget(QWidget):
         # Normalization 방법
         self.norm_combo = QComboBox()
         self.norm_combo.addItems([
-            "Z-score (row-wise)",
-            "Min-Max (0-1)",
-            "Log2 Transform",
-            "None (Raw values)"
+            "Z-score",
+            "Min-Max",
+            "Log2",
+            "None (raw)"
         ])
         norm_map = {'z-score': 0, 'minmax': 1, 'log2': 2, 'none': 3}
         self.norm_combo.setCurrentIndex(norm_map.get(self.normalization, 0))
@@ -1134,9 +1150,9 @@ class HeatmapWidget(QWidget):
         # Sorting 방법
         self.sort_combo = QComboBox()
         self.sort_combo.addItems([
-            "Padj (ascending)",
-            "Log2FC (absolute descending)",
-            "Hierarchical Clustering"
+            "Padj ↑",
+            "|Log2FC| ↓",
+            "Clustering"
         ])
         sort_map = {'padj': 0, 'log2fc': 1, 'clustering': 2}
         self.sort_combo.setCurrentIndex(sort_map.get(self.sorting, 0))
@@ -1146,7 +1162,7 @@ class HeatmapWidget(QWidget):
         # Colormap 선택
         self.colormap_combo = QComboBox()
         self.colormap_combo.addItems([
-            "RdBu_r (Red-Blue)",
+            "RdBu_r",
             "viridis",
             "plasma",
             "coolwarm",
@@ -1180,14 +1196,15 @@ class HeatmapWidget(QWidget):
         colorbar_layout.addWidget(self.colorbar_max_spin)
         settings_layout.addRow("Colorbar Range:", colorbar_layout)
 
-        # Transpose
-        self.transpose_check = QCheckBox("Transpose (Swap Genes ↔ Samples)")
+        # Transpose (행 전체를 차지하도록 단일 인자 addRow — 라벨 컬럼 폭 낭비 방지)
+        self.transpose_check = QCheckBox("Transpose (genes ↔ samples)")
         self.transpose_check.setChecked(self.transpose)
+        self.transpose_check.setToolTip("유전자와 샘플 축을 서로 바꿉니다.")
         self.transpose_check.stateChanged.connect(self._on_settings_changed)
-        settings_layout.addRow("", self.transpose_check)
+        settings_layout.addRow(self.transpose_check)
 
         # 유전자 덴드로그램 (계층적 클러스터링). 켜면 정렬은 clustering으로 강제됨.
-        self.dendro_check = QCheckBox("Show gene dendrogram (hierarchical)")
+        self.dendro_check = QCheckBox("Show gene dendrogram")
         self.dendro_check.setChecked(self.show_dendrogram)
         self.dendro_check.setToolTip(
             "히트맵 왼쪽에 유전자 계층적 클러스터링 덴드로그램을 표시합니다.\n"
@@ -1195,7 +1212,7 @@ class HeatmapWidget(QWidget):
             "(Transpose 상태에서는 표시되지 않습니다.)"
         )
         self.dendro_check.stateChanged.connect(self._on_settings_changed)
-        settings_layout.addRow("", self.dendro_check)
+        settings_layout.addRow(self.dendro_check)
 
         settings_group.setLayout(settings_layout)
         left_panel.addWidget(settings_group)
@@ -1236,9 +1253,7 @@ class HeatmapWidget(QWidget):
         scroll = QScrollArea()
         scroll.setWidget(settings_container)
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setMinimumWidth(220)
-        scroll.setMaximumWidth(300)
+        _fit_settings_scroll_width(scroll, settings_container)
 
         if self._embed_settings:
             main_splitter.addWidget(scroll)
