@@ -3891,6 +3891,7 @@ class MainWindow(QMainWindow):
             return
 
         missing_files: list = []
+        unrestorable_generated: list = []  # 레시피 없는 생성 결과(클러스터링 등)
         loaded_count = 0
         deferred_integration: list = []  # 파일 없는 통합 결과 — 소스 로드 후 replay
 
@@ -3969,6 +3970,12 @@ class MainWindow(QMainWindow):
                             self.logger.warning(f"DB fallback failed for '{ds_name}': {e}")
                             missing_files.append(ds_name)
                             continue
+                    elif not ds_file:
+                        # 파일 경로가 애초에 없음 = 앱에서 생성된 파생 결과
+                        # (예: GO 클러스터링, cross-species harmonized, meta 결과).
+                        # 아직 재생성 레시피가 없어 자동 복원 불가 — 명시적으로 안내한다.
+                        unrestorable_generated.append(ds_name)
+                        continue
                     else:
                         missing_files.append(ds_file or ds_name)
                         continue
@@ -4037,18 +4044,25 @@ class MainWindow(QMainWindow):
 
         self._add_recent_project(path)
 
-        # 누락 파일 경고
+        # 복원 경고: 누락 파일 + 재생성 불가한 파생 결과를 구분해 안내
+        warn_parts = []
         if missing_files:
-            files_list = "\n".join(missing_files[:10])
-            QMessageBox.warning(
-                self,
-                "Missing Files",
-                f"The following files could not be found and were skipped:\n{files_list}",
-            )
+            warn_parts.append(
+                "Source files not found (skipped):\n  " + "\n  ".join(missing_files[:10]))
+        if unrestorable_generated:
+            warn_parts.append(
+                "Generated results that must be recreated manually\n"
+                "(GO clustering / cross-species / meta results are not yet auto-restored):\n  "
+                + "\n  ".join(unrestorable_generated[:10]))
+        if warn_parts:
+            QMessageBox.warning(self, "Project Restore — Partial",
+                                "\n\n".join(warn_parts))
 
         msg = f"Project opened: {loaded_count} dataset(s) loaded."
         if missing_files:
             msg += f" {len(missing_files)} file(s) skipped."
+        if unrestorable_generated:
+            msg += f" {len(unrestorable_generated)} generated result(s) not restored."
         self.logger.info(msg)
 
     def _set_window_icon(self):
