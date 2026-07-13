@@ -74,7 +74,9 @@ Other notes:
   if a source file changed since saving, restored sheets reflect the new file.
   If a source file is missing, that dataset and everything derived from it is
   skipped (listed under "source files not found").
-- Restored plots are drawn from the parent dataset's full table.
+- A Volcano/Heatmap pinned from a **filtered sheet** stores that sheet's filter
+  (`source_filter_params`); on restore the filter is re-applied to the parent so
+  the plot is redrawn on the same subset (not the parent's full table).
 
 ## Deferred / roadmap
 

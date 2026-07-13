@@ -1647,11 +1647,26 @@ class MainWindow(QMainWindow):
                 plot_type = sheet.get("plot_type", "")
                 plot_params = sheet.get("plot_params") or {}
                 label_str = sheet.get("label", "Plot")
+                src_filter = sheet.get("source_filter_params")
                 try:
                     target_ds = self.presenter.datasets.get(loaded_ds_name)
                     if target_ds is None:
                         raise ValueError(f"Dataset '{loaded_ds_name}' not found")
-                    df = target_ds.dataframe
+                    base_df = target_ds.dataframe
+                    # plot이 filtered 시트에서 만들어졌으면 그 filter를 재적용해 동일 부분집합 위에 그린다
+                    if src_filter:
+                        try:
+                            criteria = FilterCriteria.from_dict(src_filter)
+                            self.presenter.switch_dataset(loaded_ds_name)
+                            fdf = self.presenter.compute_filtered_df(criteria)
+                            if fdf is not None and not fdf.empty:
+                                base_df = fdf
+                            else:
+                                self.logger.warning(
+                                    f"Plot '{label_str}': source filter yielded no rows; using full dataset")
+                        except Exception as e:
+                            self.logger.warning(
+                                f"Plot '{label_str}': failed to reapply source filter ({e}); using full dataset")
                     # Rename standardized columns to visualization names
                     from models.standard_columns import StandardColumns
                     _rename_map = {
@@ -1659,7 +1674,7 @@ class MainWindow(QMainWindow):
                         StandardColumns.ADJ_PVALUE: 'padj',
                         StandardColumns.PVALUE: 'pvalue',
                     }
-                    df = df.rename(columns=_rename_map)
+                    df = base_df.rename(columns=_rename_map)
                     if plot_type == "volcano":
                         widget = VolcanoPlotWidget(
                             df, plot_params=plot_params,
@@ -2584,8 +2599,13 @@ class MainWindow(QMainWindow):
         self.data_tabs.removeTab(index)
 
     def _pin_plot_to_tab(self, widget, label: str, plot_type: str,
-                          plot_params: dict, parent_dataset: str = None):
-        """Plot widget을 새 탭으로 고정"""
+                          plot_params: dict, parent_dataset: str = None,
+                          source_filter_params: dict = None):
+        """Plot widget을 새 탭으로 고정.
+
+        source_filter_params: plot이 filtered 시트에서 만들어졌으면 그 filter (복원 시
+        부모 데이터셋에 재적용해 동일한 부분집합 위에 plot을 다시 그린다).
+        """
         tab_index = self.data_tabs.addTab(widget, f"📈 {label}")
         # tab_data를 setCurrentIndex 전에 설정해야 _on_tab_changed에서 dock을 바로 업데이트할 수 있음
         self.tab_data[tab_index] = {
@@ -2598,6 +2618,7 @@ class MainWindow(QMainWindow):
             'comparison_params': None,
             'plot_type': plot_type,
             'plot_params': plot_params,
+            'source_filter_params': source_filter_params,
             'plot_widget': widget,
         }
         self.data_tabs.setCurrentIndex(tab_index)
@@ -3130,12 +3151,18 @@ class MainWindow(QMainWindow):
                                       "This dataset may not support this visualization.")
                     return
             
+            # 현재 탭이 filtered 시트이면 그 filter 를 plot 원본으로 기록(복원 시 재적용)
+            _cur_entry = self.tab_data.get(self.data_tabs.currentIndex(), {})
+            _parent_ds = _cur_entry.get('parent_dataset')
+            _src_filter = (_cur_entry.get('filter_params')
+                           if _cur_entry.get('sheet_type') == 'filtered' else None)
+
             # 시각화 다이얼로그 열기
             if viz_type == "volcano":
                 dialog = VolcanoPlotDialog(df, self)
-                _parent_ds = self.tab_data.get(self.data_tabs.currentIndex(), {}).get('parent_dataset')
                 dialog.plot_pinned.connect(
-                    lambda w, lbl, pt, pp, _pd=_parent_ds: self._pin_plot_to_tab(w, lbl, pt, pp, _pd)
+                    lambda w, lbl, pt, pp, _pd=_parent_ds, _sf=_src_filter:
+                        self._pin_plot_to_tab(w, lbl, pt, pp, _pd, _sf)
                 )
                 dialog.exec()
             elif viz_type == "histogram":
@@ -3143,9 +3170,9 @@ class MainWindow(QMainWindow):
                 dialog.exec()
             elif viz_type == "heatmap":
                 dialog = HeatmapDialog(df, self)
-                _parent_ds = self.tab_data.get(self.data_tabs.currentIndex(), {}).get('parent_dataset')
                 dialog.plot_pinned.connect(
-                    lambda w, lbl, pt, pp, _pd=_parent_ds: self._pin_plot_to_tab(w, lbl, pt, pp, _pd)
+                    lambda w, lbl, pt, pp, _pd=_parent_ds, _sf=_src_filter:
+                        self._pin_plot_to_tab(w, lbl, pt, pp, _pd, _sf)
                 )
                 dialog.exec()
             

@@ -273,10 +273,47 @@ class MainPresenter(QObject):
         else:
             self.logger.warning(f"Dataset not found: {dataset_name}")
     
+    def compute_filtered_df(self, criteria: FilterCriteria):
+        """탭/시그널 없이 current_dataset 에 필터를 적용한 DataFrame 만 반환한다.
+
+        apply_filter 의 df 계산 dispatch와 동일한 헬퍼를 재사용한다. 프로젝트 복원 시
+        filtered 시트에서 pin 한 plot 의 원본(필터된) 데이터를 재현하는 데 쓴다.
+        조건에 맞는 데이터가 없거나 지원되지 않으면 None 반환.
+        """
+        if self.current_dataset is None:
+            return None
+        if criteria.mode == FilterMode.GENE_LIST:
+            if criteria.term_id_list:
+                return self._filter_go_by_term_ids(criteria.term_id_list)
+            if criteria.gene_list:
+                return self._filter_by_gene_list(criteria.gene_list)
+            return None
+        dt = self.current_dataset.dataset_type
+        if dt == DatasetType.DIFFERENTIAL_EXPRESSION:
+            return self._filter_by_statistics(
+                adj_pvalue_max=criteria.adj_pvalue_max, log2fc_min=criteria.log2fc_min,
+                regulation_direction=criteria.regulation_direction)
+        if dt == DatasetType.GO_ANALYSIS:
+            return self._filter_by_statistics(
+                fdr_max=criteria.fdr_max, ontology=criteria.ontology,
+                go_direction=criteria.go_direction)
+        if dt == DatasetType.MULTI_GROUP:
+            return self._filter_mg_by_statistics(
+                padj_max=criteria.mg_padj_max, basemean_min=criteria.mg_basemean_min)
+        if dt == DatasetType.ATAC_SEQ:
+            return self._filter_atac_by_statistics(
+                adj_pvalue_max=criteria.adj_pvalue_max, log2fc_min=criteria.log2fc_min,
+                regulation_direction=criteria.regulation_direction,
+                atac_annotation=criteria.atac_annotation,
+                atac_distance_max=criteria.atac_distance_max,
+                atac_peak_width_min=criteria.atac_peak_width_min,
+                atac_peak_width_max=criteria.atac_peak_width_max)
+        return None
+
     def apply_filter(self, criteria: FilterCriteria):
         """
         필터 적용
-        
+
         Args:
             criteria: 필터링 기준 (mode, gene_list 또는 통계값 포함)
         """

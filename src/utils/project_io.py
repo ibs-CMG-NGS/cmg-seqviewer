@@ -142,12 +142,15 @@ class ProjectIO:
             cp = entry.get("comparison_params")
             if cp is not None:
                 sheet_entry["comparison_params"] = cp
-            # plot 탭: plot_type / plot_params 직렬화
+            # plot 탭: plot_type / plot_params / (있으면) 원본 filter 직렬화
             if sheet_type == "plot":
                 sheet_entry["plot_type"] = entry.get("plot_type", "")
                 pp = entry.get("plot_params")
                 if pp:
                     sheet_entry["plot_params"] = pp
+                sfp = entry.get("source_filter_params")
+                if sfp:
+                    sheet_entry["source_filter_params"] = sfp
 
             datasets_spec[root]["sheets"].append(sheet_entry)
 
