@@ -134,18 +134,21 @@ class BasePlotDialog(QDialog):
         return bar
 
     def _on_export_bundle(self):
-        """get_bundle_context() 를 재현 번들로 export (공용)."""
+        """get_bundle_context() 를 재현 번들로 export (공용).
+
+        기본 폴더 이름은 {slug}_bundle 로 제안하되, Save 대화상자에서 사용자가 위치와
+        폴더 이름을 자유롭게 바꿀 수 있다.
+        """
         context = self.get_bundle_context()
-        folder = QFileDialog.getExistingDirectory(self, "Select bundle output folder")
-        if not folder:
+        slug = context.get("figure_slug", "figure_bundle")
+        path = self._prompt_bundle_path(f"{slug}_bundle")
+        if not path:
             return
         try:
-            from pathlib import Path
             from utils.figure_bundle_export import export_figure_bundle
-            slug = context.get("figure_slug", "figure_bundle")
             bundle_dir = export_figure_bundle(
                 context,
-                str(Path(folder) / f"{slug}_bundle"),
+                path,
                 slug,
                 context.get("figure_title", "Figure"),
                 context.get("plot_type", "plot"),
@@ -153,6 +156,16 @@ class BasePlotDialog(QDialog):
             QMessageBox.information(self, "Bundle exported", f"Bundle created at:\n{bundle_dir}")
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Bundle export failed", str(exc))
+
+    def _prompt_bundle_path(self, default_name: str) -> str:
+        """번들 폴더 경로를 Save 대화상자로 받는다(이름 편집 가능). 취소 시 빈 문자열."""
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Figure Bundle — choose folder name",
+            default_name,
+            "Figure Bundle Folder (*)",
+        )
+        return path
 
     # ── 서브클래스 훅 ─────────────────────────────────────────────────────────
 

@@ -49,6 +49,21 @@ def _fit_settings_scroll_width(scroll: QScrollArea, container: QWidget,
     scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
 
+def _prompt_bundle_path(parent, default_name: str) -> str:
+    """번들 폴더 경로를 Save 대화상자로 받는다(이름 편집 가능).
+
+    기본 이름은 {slug}_bundle 로 제안하되 사용자가 위치·폴더 이름을 바꿀 수 있다.
+    취소 시 빈 문자열 반환.
+    """
+    path, _ = QFileDialog.getSaveFileName(
+        parent,
+        "Export Figure Bundle — choose folder name",
+        default_name,
+        "Figure Bundle Folder (*)",
+    )
+    return path
+
+
 def create_plot_icon(emoji: str, bg_color: QColor = None) -> QIcon:
     """플롯 다이얼로그용 아이콘 생성
 
@@ -207,16 +222,16 @@ class VolcanoPlotWidget(QWidget):
 
     def _export_figure_bundle(self):
         """현재 volcano plot을 재현 가능한 bundle로 export."""
-        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        from PyQt6.QtWidgets import QMessageBox
 
-        folder = QFileDialog.getExistingDirectory(self, "Select bundle output folder")
-        if not folder:
+        path = _prompt_bundle_path(self, "volcano_plot_bundle")
+        if not path:
             return
 
         try:
             bundle_dir = export_figure_bundle(
                 self.get_bundle_context(),
-                folder + "/volcano_plot_bundle",
+                path,
                 "volcano_plot",
                 self.plot_title or "Volcano Plot",
                 "volcano",
@@ -1083,14 +1098,14 @@ class HeatmapWidget(QWidget):
 
     def _export_figure_bundle(self):
         """현재 heatmap을 재현 가능한 bundle로 export."""
-        from PyQt6.QtWidgets import QFileDialog, QMessageBox
-        folder = QFileDialog.getExistingDirectory(self, "Select bundle output folder")
-        if not folder:
+        from PyQt6.QtWidgets import QMessageBox
+        path = _prompt_bundle_path(self, "heatmap_bundle")
+        if not path:
             return
         try:
             bundle_dir = export_figure_bundle(
                 self.get_bundle_context(),
-                folder + "/heatmap_bundle",
+                path,
                 "heatmap", "Expression Heatmap", "heatmap",
             )
             QMessageBox.information(self, "Bundle exported", f"Bundle created at:\n{bundle_dir}")

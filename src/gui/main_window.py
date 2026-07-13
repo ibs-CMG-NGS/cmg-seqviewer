@@ -2551,15 +2551,20 @@ class MainWindow(QMainWindow):
             return
 
         if hasattr(current_tab, 'get_bundle_context'):
-            folder = QFileDialog.getExistingDirectory(self, "Select bundle output folder")
-            if not folder:
+            context = current_tab.get_bundle_context()
+            slug = context.get('figure_slug', 'figure_bundle')
+            # 기본 이름 {slug}_bundle 제안, 사용자가 위치·이름 변경 가능
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Export Figure Bundle — choose folder name",
+                f"{slug}_bundle", "Figure Bundle Folder (*)",
+            )
+            if not path:
                 return
             try:
-                context = current_tab.get_bundle_context()
                 bundle_dir = export_figure_bundle(
                     context,
-                    str(Path(folder) / context.get('figure_slug', 'figure_bundle')),
-                    context.get('figure_slug', 'figure_bundle'),
+                    path,
+                    slug,
                     context.get('figure_title', 'Figure'),
                     context.get('plot_type', 'plot'),
                 )
