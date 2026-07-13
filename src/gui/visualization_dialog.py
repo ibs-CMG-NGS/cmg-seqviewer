@@ -1382,6 +1382,11 @@ class HeatmapWidget(QWidget):
                   self.figure.axes[0])
         # PlotLabelsPanel 재적용 (다이얼로그에선 패널이 최종 권한)
         self._labels.apply_to_axes(ax)
+        # 덴드로그램이 켜지면 유전자 라벨은 render가 오른쪽에 둔다. PlotLabelsPanel이 왼쪽
+        # tick label/축 제목을 다시 켜서 좌우 중복이 생기므로, 좌측을 자동 비활성화한다.
+        if self.show_dendrogram and not self.transpose:
+            ax.tick_params(axis='y', labelleft=False, labelright=True)
+            ax.set_ylabel('')
 
         # Hover (Qt 전용)
         self.figure.canvas.mpl_connect("motion_notify_event", self._on_hover)

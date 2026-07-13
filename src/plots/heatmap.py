@@ -158,15 +158,21 @@ def render_heatmap(fig, df, params):
         ax.set_title(title)
     if params.get('labels_xlabel'):
         ax.set_xlabel(params['labels_xlabel'])
-    if params.get('labels_ylabel'):
+    # 덴드로그램이 있으면 유전자 라벨이 오른쪽으로 이동하므로 좌측 y축 제목은 생략한다
+    # (왼쪽은 덴드로그램, 오른쪽 gene tick label이 행을 식별).
+    if params.get('labels_ylabel') and not draw_dendro:
         ax.set_ylabel(params['labels_ylabel'])
     if not params.get('show_xticklabels', True):
         ax.tick_params(axis='x', labelbottom=False)
     if not params.get('show_yticklabels', True):
-        ax.tick_params(axis='y', labelleft=False)
+        # 덴드로그램 시엔 오른쪽 라벨만 끈다(왼쪽엔 애초에 없음)
+        ax.tick_params(axis='y', labelright=False) if draw_dendro \
+            else ax.tick_params(axis='y', labelleft=False)
 
     if params.get('show_colorbar', True):
-        cbar = fig.colorbar(im, ax=ax)
+        # 덴드로그램 시 오른쪽 gene tick label과 colorbar가 겹치지 않도록 간격 확대
+        cbar_pad = 0.14 if draw_dendro else 0.02
+        cbar = fig.colorbar(im, ax=ax, pad=cbar_pad)
         cbar.set_label(cbar_label, fontsize=10)
 
     return heatmap_data, gene_labels
