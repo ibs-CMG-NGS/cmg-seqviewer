@@ -36,7 +36,10 @@ def render_go_dot(fig, df, params):
     """GO/KEGG dot plot을 fig에 그린다. (plotted_df, sizes) 반환. 데이터 없으면 None.
 
     params: top_n, x_axis('Gene Ratio'|'Fold Enrichment'), size_mode('Gene Count'|'Gene Ratio'|
-            'Fold Enrichment'), palette, color_min, color_max, xlabel_text
+            'Fold Enrichment'), sort_by('FDR'|'Gene Ratio'|'Fold Enrichment'|'Gene Count'),
+            palette, color_min, color_max, xlabel_text
+
+    선택(어떤 term)은 항상 FDR 최소 Top N, 정렬(표시 순서)만 sort_by 로 조절한다.
     """
     # 크기 정규화 표(함수 내부 — 번들 inline 자기완결)
     _SIZE_NORM = {
@@ -72,8 +75,26 @@ def render_go_dot(fig, df, params):
     else:
         df['_x_val'] = df['_gene_ratio']
 
-    df = df.sort_values('_x_val', ascending=False).head(int(params.get('top_n', 20)))
-    df = df.sort_values('_x_val', ascending=True)
+    # ── 선택: 항상 FDR 최소 Top N (가장 유의한 N개) ──
+    # X축 값으로 선택하면 유의하지만 값이 작은 term이 누락되므로, 유의성으로 선택한다.
+    # (Export Data 와도 동일 기준 → 플롯/내보내기 term 집합 일치)
+    top_n = int(params.get('top_n', 20))
+    if 'fdr' in df.columns:
+        df = df.nsmallest(top_n, 'fdr')
+    else:
+        df = df.sort_values('_x_val', ascending=False).head(top_n)
+
+    # ── 표시 순서: sort_by (기본 FDR — 가장 유의한 term이 위) ──
+    sort_by = params.get('sort_by', 'FDR')
+    if sort_by == 'FDR' and 'fdr' in df.columns:
+        df = df.sort_values('fdr', ascending=False)   # 낮은 FDR = 마지막 행 = 위쪽
+    elif sort_by == 'Fold Enrichment' and 'fold_enrichment' in df.columns:
+        df['_sortk'] = pd.to_numeric(df['fold_enrichment'], errors='coerce').fillna(0)
+        df = df.sort_values('_sortk', ascending=True)
+    elif sort_by == 'Gene Count' and 'gene_count' in df.columns:
+        df = df.sort_values('gene_count', ascending=True)
+    else:  # Gene Ratio
+        df = df.sort_values('_gene_ratio', ascending=True)
 
     x_data = df['_x_val']
     y_labels = [str(l)[:60] + '...' if len(str(l)) > 60 else str(l)

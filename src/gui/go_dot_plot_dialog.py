@@ -50,6 +50,16 @@ class GODotPlotDialog(BasePlotDialog):
         self.size_combo.currentTextChanged.connect(self._update_plot)
         settings_layout.addRow("Dot Size:", self.size_combo)
 
+        # 표시 순서 (선택은 항상 FDR 최소 Top N; 이 콤보는 순서만 결정)
+        self.sort_combo = QComboBox()
+        self.sort_combo.addItems(["FDR", "Gene Ratio", "Fold Enrichment", "Gene Count"])
+        self.sort_combo.setToolTip(
+            "Top N term 선택은 항상 FDR(유의성) 기준이며,\n"
+            "이 옵션은 뽑힌 term의 표시 순서만 바꿉니다."
+        )
+        self.sort_combo.currentTextChanged.connect(self._update_plot)
+        settings_layout.addRow("Sort by:", self.sort_combo)
+
         settings_group.setLayout(settings_layout)
         layout.addWidget(settings_group)
 
@@ -124,6 +134,7 @@ class GODotPlotDialog(BasePlotDialog):
             'top_n': self.top_n_spin.value(),
             'x_axis': self.x_axis_combo.currentText(),
             'size_mode': self.size_combo.currentText(),
+            'sort_by': self.sort_combo.currentText(),
             'palette': self.palette_combo.currentText(),
             'color_min': self.color_min_spin.value(),
             'color_max': self.color_max_spin.value(),
