@@ -1345,6 +1345,39 @@ class MainPresenter(QObject):
                     )]
                     self.logger.debug(f"After description filter: {len(df)} terms")
 
+            # 빈 결과 처리 — 정보 메시지만 표시하고 탭은 만들지 않음
+            if df.empty:
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.information(
+                    None, "No Results",
+                    "No GO/KEGG terms match the current filter criteria.\n"
+                    "Please adjust your filter settings."
+                )
+                return df
+
+            # 탭 이름 구성
+            parts = []
+            if fdr_threshold is not None:
+                parts.append(f"FDR≤{fdr_threshold:g}")
+            if ontologies:
+                parts.append("+".join(ontologies))
+            if direction:
+                parts.append(str(direction))
+            if description_filter and description_filter[0]:
+                parts.append(f'"{description_filter[0]}"')
+            tab_name = "Filtered: " + (", ".join(parts) if parts else "GO/KEGG")
+
+            # 고급 GO 필터(다중 ontology·gene count·description)는 표준 FilterCriteria로
+            # 완전히 재현되지 않는다. 잘못된 프로젝트 복원을 막기 위해 이 시트에는
+            # filter_params 를 남기지 않는다(emit 동안만 last_filter_criteria 를 비운다).
+            _saved_criteria = self.last_filter_criteria
+            self.last_filter_criteria = None
+            try:
+                # filter_completed → GUI가 sheet_type='filtered' 탭을 생성한다
+                self.filter_completed.emit(df, tab_name)
+            finally:
+                self.last_filter_criteria = _saved_criteria
+
             return df
 
         except Exception as e:
