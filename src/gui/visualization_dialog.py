@@ -1380,7 +1380,20 @@ class HeatmapWidget(QWidget):
         from plots.heatmap import render_heatmap
 
         self.figure.clear()
-        result = render_heatmap(self.figure, self.dataframe, self.get_plot_params())
+        try:
+            result = render_heatmap(self.figure, self.dataframe, self.get_plot_params())
+        except Exception as e:
+            # 렌더 실패는 앱을 종료시키지 않는다 — figure에 안내만 표시
+            import logging
+            logging.getLogger(__name__).warning(f"Heatmap render failed: {e}", exc_info=True)
+            self.figure.clear()
+            ax = self.figure.add_subplot(111)
+            ax.text(0.5, 0.5, f"Could not draw heatmap:\n{e}",
+                    ha='center', va='center', fontsize=11, color='#a00',
+                    transform=ax.transAxes, wrap=True)
+            ax.axis('off')
+            self.canvas.draw()
+            return
         if result is None:
             self.canvas.draw()
             return

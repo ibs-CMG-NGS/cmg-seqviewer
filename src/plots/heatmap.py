@@ -46,11 +46,17 @@ def render_heatmap(fig, df, params):
     sample_cols = [c for c in df.columns
                    if not any(p in c.lower() for p in exclude_patterns)
                    and pd.api.types.is_numeric_dtype(df[c])]
-    if not sample_cols:
+    # 의미 있는 heatmap 은 최소 2개 sample 컬럼이 필요하다. GO/KEGG 등 발현이 아닌
+    # 데이터셋을 잘못 선택하면 여기서 걸러 안내 메시지를 띄운다(크래시 방지).
+    if len(sample_cols) < 2:
         ax = fig.add_subplot(111)
-        ax.text(0.5, 0.5, 'No sample expression columns found.\n'
-                'Heatmap requires sample count data.',
-                ha='center', va='center', fontsize=14, transform=ax.transAxes)
+        ax.text(0.5, 0.5,
+                'Heatmap requires per-sample expression data\n'
+                '(at least 2 sample columns).\n\n'
+                'This dataset does not look like sample expression data\n'
+                '(e.g. a GO/KEGG enrichment table).',
+                ha='center', va='center', fontsize=12, transform=ax.transAxes,
+                color='#666666')
         return None
 
     expr_data = df[sample_cols].copy().dropna()
@@ -105,12 +111,15 @@ def render_heatmap(fig, df, params):
             from scipy.cluster.hierarchy import linkage, dendrogram
             from scipy.spatial.distance import pdist
             if len(heatmap_data) >= 2:
-                linkage_matrix = linkage(pdist(heatmap_data, metric='euclidean'),
+                # pdist/linkage 는 비유한값(NaN/inf)이 있으면 실패한다 → 0으로 대체해 방어
+                clust_input = heatmap_data.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+                linkage_matrix = linkage(pdist(clust_input, metric='euclidean'),
                                          method='average')
                 order = dendrogram(linkage_matrix, no_plot=True)['leaves']
                 heatmap_data = heatmap_data.iloc[order]
                 gene_labels = [gene_labels[i] for i in order]
-        except ImportError:
+        except Exception:
+            # 클러스터링 실패는 치명적이지 않다 — 덴드로그램 없이 원래 순서로 진행
             linkage_matrix = None
 
     if transpose:
