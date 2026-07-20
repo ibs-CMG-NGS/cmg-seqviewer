@@ -322,7 +322,7 @@ $ python scripts/figure.py
 | Annotation Comparison | `annotation_comparison.py::render_annotation_comparison` | `annotation_comparison` | ✅ (long-format 병합) |
 | Venn (2/3-way) | `venn.py::render_venn` | `venn` | ✅ (long-format 멤버십) |
 | UpSet | `upset.py::render_upset` | `upset` | ✅ (long-format 멤버십, 호환 패치 동봉) |
-| GO Network (cluster dot) | — | — | ⬜ (network 모드는 현재 비활성; live 출력은 컨트롤 다수의 cluster dot plot) |
+| GO Cluster Dot | `go_cluster_dot.py::render_go_cluster_dot` | `go_cluster_dot` | ✅ (rep_df = 클러스터 대표 term 표) |
 
 - **집합/그래프 플롯** (Venn · UpSet): 데이터셋별 집합을 long-format 멤버십 테이블(dataset/item)로
   직렬화해 렌더가 재구성. 외부 라이브러리(matplotlib_venn / upsetplot)는 렌더 내부 import + 부재 시
