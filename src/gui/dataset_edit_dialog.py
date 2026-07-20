@@ -108,7 +108,12 @@ class DatasetEditDialog(QDialog):
         self.timepoint_input = QLineEdit()
         self.timepoint_input.setPlaceholderText("e.g., 24h, 48h, Day 3")
         meta_layout.addRow("Timepoint:", self.timepoint_input)
-        
+
+        # Researcher (분석 담당자 이니셜, 콤마 구분)
+        self.researcher_input = QLineEdit()
+        self.researcher_input.setPlaceholderText("Comma-separated initials (e.g., ljh, hiy)")
+        meta_layout.addRow("Researcher:", self.researcher_input)
+
         # Tags
         self.tags_input = QLineEdit()
         self.tags_input.setPlaceholderText("Comma-separated tags")
@@ -144,7 +149,11 @@ class DatasetEditDialog(QDialog):
         self.organism_combo.setCurrentText(self.metadata.organism)
         self.tissue_input.setText(self.metadata.tissue)
         self.timepoint_input.setText(self.metadata.timepoint)
-        
+
+        # Researcher (list → 콤마 구분)
+        if self.metadata.researcher:
+            self.researcher_input.setText(", ".join(self.metadata.researcher))
+
         # Tags
         if self.metadata.tags:
             self.tags_input.setText(", ".join(self.metadata.tags))
@@ -170,7 +179,14 @@ class DatasetEditDialog(QDialog):
             self.metadata.tissue = self.tissue_input.text().strip()
             self.metadata.timepoint = self.timepoint_input.text().strip()
             self.metadata.notes = self.notes_input.toPlainText().strip()
-            
+
+            # Researcher 파싱 (콤마 구분 → list)
+            researcher_text = self.researcher_input.text().strip()
+            if researcher_text:
+                self.metadata.researcher = [r.strip() for r in researcher_text.split(',') if r.strip()]
+            else:
+                self.metadata.researcher = []
+
             # Tags 파싱
             tags_text = self.tags_input.text().strip()
             if tags_text:
