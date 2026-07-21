@@ -848,9 +848,11 @@ class MainWindow(QMainWindow):
             if tab_index in self.tab_data:
                 self.tab_data[tab_index]['dataframe'] = dataframe
                 self.tab_data[tab_index]['dataset'] = dataset
-                # 'whole' 시트: parent_dataset이 아직 None이면 dataset.name으로 채움
+                # 'whole' 시트("Whole Dataset" 탭)는 데이터셋을 전환하며 재사용되므로,
+                # parent_dataset 을 '지금 표시 중인 데이터셋'으로 항상 동기화한다.
+                # (예전엔 None 일 때만 채워서 처음 로드한 데이터셋 이름이 계속 남았고,
+                #  그 결과 다른 데이터셋에서 만든 필터/플롯이 엉뚱한 부모로 저장됐다.)
                 if (dataset is not None
-                        and self.tab_data[tab_index].get('parent_dataset') is None
                         and self.tab_data[tab_index].get('sheet_type') == 'whole'):
                     self.tab_data[tab_index]['parent_dataset'] = dataset.name
             else:
