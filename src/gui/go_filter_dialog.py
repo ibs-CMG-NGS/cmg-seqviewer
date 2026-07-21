@@ -209,7 +209,11 @@ class GOFilterDialog(QDialog):
         self.min_gene_spinbox = QSpinBox()
         self.min_gene_spinbox.setMinimum(0)
         self.min_gene_spinbox.setMaximum(10000)
-        self.min_gene_spinbox.setValue(2)
+        # 기본 3: Count(내 리스트 ∩ term)가 1~2인 term은 통계가 불안정하고 해석 가치가 낮다
+        self.min_gene_spinbox.setValue(3)
+        self.min_gene_spinbox.setToolTip(
+            "이 term에 걸린 내 유전자 개수(Count)의 최소값.\n"
+            "1~2개는 우연히 유의해질 수 있어 보통 3 이상을 씁니다.")
         self.min_gene_spinbox.setFixedWidth(100)
         min_layout.addWidget(self.min_gene_spinbox)
         min_layout.addStretch()
@@ -347,7 +351,7 @@ class GOFilterDialog(QDialog):
         self.all_radio.setChecked(True)
         
         # Gene count
-        self.min_gene_spinbox.setValue(2)
+        self.min_gene_spinbox.setValue(3)
         self.max_gene_spinbox.setValue(1000)
         self.gene_count_enabled.setChecked(True)
         
