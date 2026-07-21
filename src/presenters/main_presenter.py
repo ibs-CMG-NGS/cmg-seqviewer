@@ -296,7 +296,9 @@ class MainPresenter(QObject):
         if dt == DatasetType.GO_ANALYSIS:
             return self._filter_by_statistics(
                 fdr_max=criteria.fdr_max, ontology=criteria.ontology,
-                go_direction=criteria.go_direction)
+                go_direction=criteria.go_direction,
+                fold_enrichment_min=getattr(criteria, 'fold_enrichment_min', 0.0),
+                min_gene_count=getattr(criteria, 'go_min_gene_count', 0))
         if dt == DatasetType.MULTI_GROUP:
             return self._filter_mg_by_statistics(
                 padj_max=criteria.mg_padj_max, basemean_min=criteria.mg_basemean_min)
@@ -381,7 +383,9 @@ class MainPresenter(QObject):
                         log2fc_min=None,      # GO에서는 사용 안함
                         fdr_max=criteria.fdr_max,
                         ontology=criteria.ontology,
-                        go_direction=criteria.go_direction
+                        go_direction=criteria.go_direction,
+                        fold_enrichment_min=getattr(criteria, 'fold_enrichment_min', 0.0),
+                        min_gene_count=getattr(criteria, 'go_min_gene_count', 0),
                     )
                     # 탭 이름에 필터 정보 포함 (유효숫자 줄이기)
                     filters = []
@@ -616,6 +620,8 @@ class MainPresenter(QObject):
                                fdr_max: Optional[float] = None,
                                ontology: Optional[str] = None,
                                go_direction: Optional[str] = None,
+                               fold_enrichment_min: Optional[float] = None,
+                               min_gene_count: Optional[int] = None,
                                regulation_direction: str = "both") -> pd.DataFrame:
         """
         통계값으로 필터링 (p-value, FC)
@@ -677,10 +683,28 @@ class MainPresenter(QObject):
                 gene_set_col = StandardColumns.GENE_SET
                 if gene_set_col in df.columns:
                     mask = mask & (df[gene_set_col].str.upper() == go_direction.upper())
-            
+
+            # Fold Enrichment 최소값
+            if fold_enrichment_min and fold_enrichment_min > 0:
+                fe_col = StandardColumns.FOLD_ENRICHMENT
+                if fe_col in df.columns:
+                    fe_vals = pd.to_numeric(df[fe_col], errors='coerce')
+                    mask = mask & (fe_vals >= fold_enrichment_min)
+
+            # Count(내 리스트 ∩ term) 최소값 — 1~2개 term 의 노이즈 제거
+            if min_gene_count and min_gene_count > 0:
+                gc_col = StandardColumns.GENE_COUNT
+                if gc_col in df.columns:
+                    gc_vals = pd.to_numeric(df[gc_col], errors='coerce')
+                    mask = mask & (gc_vals >= min_gene_count)
+
             filtered = df[mask]
-            
+
             filter_desc = f"FDR≤{fdr_max}"
+            if fold_enrichment_min and fold_enrichment_min > 0:
+                filter_desc += f", FE≥{fold_enrichment_min}"
+            if min_gene_count and min_gene_count > 0:
+                filter_desc += f", Count≥{min_gene_count}"
             if ontology and ontology != "All":
                 filter_desc += f", {ontology}"
             if go_direction and go_direction != "All":

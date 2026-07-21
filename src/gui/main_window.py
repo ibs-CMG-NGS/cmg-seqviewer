@@ -1498,7 +1498,13 @@ class MainWindow(QMainWindow):
                     if fe_min > 0 and StandardColumns.FOLD_ENRICHMENT in filtered_df.columns:
                         fe_values = pd.to_numeric(filtered_df[StandardColumns.FOLD_ENRICHMENT], errors='coerce')
                         filtered_df = filtered_df[fe_values >= fe_min]
-                    
+
+                    # Count(내 리스트 ∩ term) 최소값 필터
+                    min_count = getattr(criteria, 'go_min_gene_count', 0)
+                    if min_count > 0 and StandardColumns.GENE_COUNT in filtered_df.columns:
+                        gc_values = pd.to_numeric(filtered_df[StandardColumns.GENE_COUNT], errors='coerce')
+                        filtered_df = filtered_df[gc_values >= min_count]
+
                     # Ontology 필터
                     if criteria.ontology != "All" and StandardColumns.ONTOLOGY in filtered_df.columns:
                         filtered_df = filtered_df[filtered_df[StandardColumns.ONTOLOGY] == criteria.ontology]
@@ -1524,6 +1530,9 @@ class MainWindow(QMainWindow):
                     fe_min = getattr(criteria, 'fold_enrichment_min', 0.0)
                     if fe_min > 0:
                         filters.append(f"FE≥{fe_min:.1f}")
+                    min_count = getattr(criteria, 'go_min_gene_count', 0)
+                    if min_count > 0:
+                        filters.append(f"Count≥{min_count}")
                     if criteria.ontology != "All":
                         filters.append(criteria.ontology)
                     if criteria.go_direction != "All":

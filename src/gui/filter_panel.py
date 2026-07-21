@@ -6,7 +6,7 @@ Filter Panel Widget
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
                             QLabel, QLineEdit, QTextEdit, QPushButton,
-                            QDoubleSpinBox, QCheckBox, QComboBox, QRadioButton,
+                            QDoubleSpinBox, QSpinBox, QCheckBox, QComboBox, QRadioButton,
                             QButtonGroup, QFileDialog, QTabWidget)
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent
@@ -251,6 +251,18 @@ class FilterPanel(QWidget):
         self.go_fe_input.setFixedWidth(70)
         self.go_fe_input.setToolTip("Minimum fold enrichment (gene_ratio / bg_ratio). 0 = no filter")
         go_fdr_layout.addWidget(self.go_fe_input)
+
+        go_fdr_layout.addSpacing(16)
+
+        go_fdr_layout.addWidget(QLabel("Count ≥"))
+        self.go_min_count_input = QSpinBox()
+        self.go_min_count_input.setRange(0, 10000)
+        self.go_min_count_input.setValue(3)
+        self.go_min_count_input.setFixedWidth(60)
+        self.go_min_count_input.setToolTip(
+            "이 term에 걸린 내 유전자 개수(Count)의 최소값.\n"
+            "1~2개는 우연히 유의해질 수 있어 보통 3 이상을 씁니다. 0 = 필터 안 함")
+        go_fdr_layout.addWidget(self.go_min_count_input)
 
         go_fdr_layout.addStretch()
         go_inner.addLayout(go_fdr_layout)
@@ -593,6 +605,7 @@ class FilterPanel(QWidget):
             term_id_list=term_id_list,
             fdr_max=self._get_go_fdr_value(),
             fold_enrichment_min=self.go_fe_input.value(),
+            go_min_gene_count=self.go_min_count_input.value(),
             regulation_direction=regulation_direction,
             ontology=self.ontology_combo.currentText(),
             go_direction=self.go_direction_combo.currentText(),
