@@ -1680,13 +1680,35 @@ class MainWindow(QMainWindow):
                             df, plot_params=plot_params,
                             show_pin_button=False, embed_settings=False
                         )
-                        self._pin_plot_to_tab(widget, label_str, "volcano", plot_params, loaded_ds_name)
+                        self._pin_plot_to_tab(widget, label_str, "volcano", plot_params,
+                                              loaded_ds_name, src_filter)
                     elif plot_type == "heatmap":
                         widget = HeatmapWidget(
                             df, plot_params=plot_params,
                             show_pin_button=False, embed_settings=False
                         )
-                        self._pin_plot_to_tab(widget, label_str, "heatmap", plot_params, loaded_ds_name)
+                        self._pin_plot_to_tab(widget, label_str, "heatmap", plot_params,
+                                              loaded_ds_name, src_filter)
+                    else:
+                        # 그 외 pinned 플롯: 레지스트리로 재렌더한다. 단, df 가 별도로
+                        # 가공된 표(멤버십·비교 결과 등)인 플롯은 부모 데이터셋만으로
+                        # 복원할 수 없으므로 건너뛰고 알린다.
+                        from plots.registry import is_supported, restorable_from_dataset
+                        if not is_supported(plot_type):
+                            self.logger.warning(
+                                f"Plot '{label_str}': unknown plot type '{plot_type}'; skipped.")
+                        elif not restorable_from_dataset(plot_type):
+                            self.logger.warning(
+                                f"Plot '{label_str}' ({plot_type}) uses a derived table; "
+                                "cannot be rebuilt from the parent dataset — skipped.")
+                        else:
+                            from gui.pinned_plot_widget import PinnedPlotWidget
+                            widget = PinnedPlotWidget(
+                                plot_type, df, plot_params, figure_title=label_str,
+                                dataset_name=loaded_ds_name,
+                            )
+                            self._pin_plot_to_tab(widget, label_str, plot_type, plot_params,
+                                                  loaded_ds_name, src_filter)
                 except Exception as e:
                     self.logger.warning(f"Failed to restore plot '{label_str}': {e}")
     
@@ -2602,6 +2624,28 @@ class MainWindow(QMainWindow):
 
         # 4. 실제 탭 제거 (currentChanged 신호 발화)
         self.data_tabs.removeTab(index)
+
+    def pin_plot_from_context(self, context: dict):
+        """BasePlotDialog 계열이 호출: get_bundle_context() 로 범용 pinned 탭을 만든다.
+
+        각 플롯 다이얼로그를 임베드 위젯으로 리팩터하지 않고도 plot_type + df + params
+        만으로 재렌더되는 스냅샷 탭을 만든다(src/plots/registry.py).
+        """
+        from gui.pinned_plot_widget import PinnedPlotWidget
+
+        cur = self.tab_data.get(self.data_tabs.currentIndex(), {})
+        parent_ds = cur.get('parent_dataset')
+        src_filter = (cur.get('filter_params')
+                      if cur.get('sheet_type') == 'filtered' else None)
+
+        plot_type = context.get('plot_type', '')
+        params = context.get('plot_params') or {}
+        label = context.get('figure_title') or context.get('figure_slug') or 'Plot'
+        widget = PinnedPlotWidget(
+            plot_type, context.get('dataframe'), params,
+            figure_title=label, dataset_name=context.get('dataset_name', ''),
+        )
+        self._pin_plot_to_tab(widget, label, plot_type, params, parent_ds, src_filter)
 
     def _pin_plot_to_tab(self, widget, label: str, plot_type: str,
                           plot_params: dict, parent_dataset: str = None,

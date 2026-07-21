@@ -125,6 +125,17 @@ class BasePlotDialog(QDialog):
             bundle_btn.clicked.connect(self._on_export_bundle)
             bar.addWidget(bundle_btn)
 
+            # 재렌더 가능한 plot_type 이면 탭 고정 버튼도 자동 노출
+            try:
+                from plots.registry import is_supported
+                if is_supported(self.get_bundle_context().get("plot_type", "")):
+                    pin_btn = QPushButton("📌 Pin to Tab")
+                    pin_btn.setToolTip("이 플롯을 메인 창의 탭으로 고정합니다(스냅샷).")
+                    pin_btn.clicked.connect(self._on_pin_to_tab)
+                    bar.addWidget(pin_btn)
+            except Exception:  # noqa: BLE001 — 버튼 노출 실패가 다이얼로그를 막지 않도록
+                pass
+
         bar.addStretch()
 
         close_btn = QPushButton("Close")
@@ -132,6 +143,32 @@ class BasePlotDialog(QDialog):
         bar.addWidget(close_btn)
 
         return bar
+
+    def _find_pin_host(self):
+        """부모 체인을 거슬러 pin_plot_from_context() 를 가진 메인 윈도우를 찾는다."""
+        w = self.parent()
+        seen = 0
+        while w is not None and seen < 10:
+            if hasattr(w, "pin_plot_from_context"):
+                return w
+            w = w.parent() if hasattr(w, "parent") else None
+            seen += 1
+        return None
+
+    def _on_pin_to_tab(self):
+        """현재 플롯을 메인 창 탭으로 고정 (공용)."""
+        host = self._find_pin_host()
+        if host is None:
+            QMessageBox.information(
+                self, "Pin to Tab",
+                "이 창에서는 탭 고정을 사용할 수 없습니다 (메인 창에서 열어주세요).")
+            return
+        try:
+            host.pin_plot_from_context(self.get_bundle_context())
+            QMessageBox.information(self, "Pinned",
+                                    "플롯을 메인 창의 탭으로 고정했습니다.")
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Pin failed", str(exc))
 
     def _on_export_bundle(self):
         """get_bundle_context() 를 재현 번들로 export (공용).
