@@ -15,7 +15,6 @@ from PyQt6.QtWidgets import (
     QDoubleSpinBox, QMessageBox, QFormLayout
 )
 from PyQt6.QtCore import Qt
-from matplotlib.lines import Line2D
 
 from models.data_models import Dataset
 from gui.base_plot_dialog import BasePlotDialog
@@ -250,192 +249,45 @@ class GOComparisonDotPlotDialog(BasePlotDialog):
 
     # ── Plot ──────────────────────────────────────────────────────────────
 
-    def _do_plot(self):
-        self.figure.clear()
-
-        long_df = self._get_plot_data()
-
-        if long_df.empty:
-            ax = self.figure.add_subplot(111)
-            ax.text(0.5, 0.5, 'No data to display\nAdjust filters',
-                    ha='center', va='center', fontsize=14)
-            self.canvas.draw()
-            return
-
-        ax = self.figure.add_subplot(111)
-
-        transpose = self.transpose_check.isChecked()
-
-        ds_order   = self.dataset_names
-        disp_order = self.display_names
-        ds_idx     = {ds: i for i, ds in enumerate(ds_order)}
-        long_df    = long_df.copy()
-        long_df['_ds_idx'] = long_df['dataset'].map(ds_idx)
-
-        desc_map = (
-            self.df.set_index('term_id')['description']
-            .to_dict() if 'description' in self.df.columns else {}
-        )
-
-        y_ranks = sorted(long_df['_y_rank'].dropna().unique())
-        term_by_rank = {}
-        for _, row in long_df.drop_duplicates('_y_rank').iterrows():
-            term_by_rank[row['_y_rank']] = row['term_id']
-
-        term_labels = []
-        for rank in y_ranks:
-            tid  = term_by_rank.get(rank, '')
-            desc = desc_map.get(tid, tid)
-            label = str(desc)
-            if len(label) > 55:
-                label = label[:52] + '...'
-            term_labels.append(label)
-
-        if transpose:
-            long_df['_x'] = long_df['_y_rank']
-            long_df['_y'] = long_df['_ds_idx']
-            x_ticks  = y_ranks
-            x_labels = term_labels
-            y_ticks  = list(range(len(disp_order)))
-            y_labels = disp_order
-            x_rot    = 40
-            x_ha     = 'right'
-            y_fs     = 10
-        else:
-            long_df['_x'] = long_df['_ds_idx']
-            long_df['_y'] = long_df['_y_rank']
-            x_ticks  = list(range(len(disp_order)))
-            x_labels = disp_order
-            y_ticks  = y_ranks
-            n_terms  = len(y_ranks)
-            y_fs     = 9 if n_terms <= 15 else (8 if n_terms <= 25 else 7)
-            y_labels = term_labels
-            x_rot    = 35
-            x_ha     = 'right'
-
-        size_mode = self.size_combo.currentText()
-        cmap      = self.palette_combo.currentText()
-        vmin      = self.color_min_spin.value()
-        vmax      = self.color_max_spin.value()
-        if vmin >= vmax:
-            vmax = vmin + 1.0
-
-        fdr_col = long_df['fdr'].copy()
-        fdr_col = fdr_col.clip(lower=1e-300)
-        neg_log_fdr = -np.log10(fdr_col)
-
-        _CMP_SIZE_NORM = {
-            "Fold Enrichment": (20.0,  [(2.0, "2×"),       (5.0,  "5×"),       (15.0, "≥15×")]),
-            "Gene Count":      (100.0, [(10,  "10 genes"),  (30,   "30 genes"),  (80,   "≥80 genes")]),
+    def _plot_params(self) -> dict:
+        return {
+            'dataset_names': list(self.dataset_names),
+            'safe_names': list(self.safe_names),
+            'display_names': list(self.display_names),
+            'top_n': self.top_n_spin.value(),
+            'sort_by': self.sort_combo.currentText(),
+            'min_datasets': self.min_datasets_spin.value(),
+            'size_mode': self.size_combo.currentText(),
+            'transpose': self.transpose_check.isChecked(),
+            'palette': self.palette_combo.currentText(),
+            'color_min': self.color_min_spin.value(),
+            'color_max': self.color_max_spin.value(),
+            'xlabel': self._xlabel_text,
+            'ylabel': self._ylabel_text,
         }
-        _S_MIN, _S_MAX = 40, 400
 
-        if size_mode == "Fold Enrichment":
-            raw_size = pd.to_numeric(long_df['fe'], errors='coerce').fillna(0)
-        else:
-            raw_size = pd.to_numeric(long_df['gene_count'], errors='coerce').fillna(0)
+    def _do_plot(self):
+        """렌더는 순수 함수 src/plots/go_comparison_dot.py 에 있으며 번들과 공유한다."""
+        from plots.go_comparison_dot import render_go_comparison_dot
 
-        if size_mode in _CMP_SIZE_NORM:
-            _cmp_norm_max, _cmp_size_rep = _CMP_SIZE_NORM[size_mode]
-            sizes = _S_MIN + np.clip(raw_size / _cmp_norm_max, 0, 1) * (_S_MAX - _S_MIN)
-        else:
-            _cmp_norm_max, _cmp_size_rep = None, None
-            sizes = pd.Series(150.0, index=raw_size.index)
-
-        has_fe  = long_df['fe'].notna()
-        has_fdr = long_df['fdr'].notna()
-
-        mask_full = has_fe & has_fdr
-        if mask_full.any():
-            sc = ax.scatter(
-                long_df.loc[mask_full, '_x'],
-                long_df.loc[mask_full, '_y'],
-                s=sizes[mask_full],
-                c=neg_log_fdr[mask_full],
-                cmap=cmap, vmin=vmin, vmax=vmax,
-                alpha=0.85, edgecolors='black', linewidth=0.4, zorder=3
-            )
-        else:
-            sc = ax.scatter([], [], c=[], cmap=cmap, vmin=vmin, vmax=vmax)
-
-        mask_no_fdr = has_fe & ~has_fdr
-        if mask_no_fdr.any():
-            ax.scatter(
-                long_df.loc[mask_no_fdr, '_x'],
-                long_df.loc[mask_no_fdr, '_y'],
-                s=sizes[mask_no_fdr],
-                color='lightgray', edgecolors='gray', linewidth=0.4,
-                alpha=0.6, zorder=2
-            )
-
-        mask_absent = ~has_fe
-        if mask_absent.any():
-            ax.scatter(
-                long_df.loc[mask_absent, '_x'],
-                long_df.loc[mask_absent, '_y'],
-                s=40,
-                facecolors='none', edgecolors='#cccccc', linewidth=0.6,
-                alpha=0.5, zorder=1
-            )
-
-        ax.set_xticks(x_ticks)
-        ax.set_xticklabels(x_labels, rotation=x_rot, ha=x_ha, fontsize=9)
-        ax.set_yticks(y_ticks)
-        ax.set_yticklabels(y_labels, fontsize=y_fs)
-        ax.set_xlabel(self._xlabel_text, fontsize=11, fontweight='bold')
-        ax.set_ylabel(self._ylabel_text, fontsize=11, fontweight='bold')
-        ax.set_title("GO/KEGG Term Comparison", fontsize=13, fontweight='bold')
-        ax.grid(axis='both', alpha=0.2, linestyle='--')
-
-        if transpose:
-            ax.set_xlim(min(y_ranks) - 0.6, max(y_ranks) + 0.6)
-            ax.set_ylim(-0.6, len(disp_order) - 0.4)
-        else:
-            ax.set_xlim(-0.6, len(disp_order) - 0.4)
-            if y_ranks:
-                ax.set_ylim(min(y_ranks) - 0.6, max(y_ranks) + 0.6)
-
-        try:
-            cbar = self.figure.colorbar(sc, ax=ax, shrink=0.5, pad=0.02, anchor=(0, 1.0))
-            cbar.set_label('-log10(FDR)', fontsize=10)
-        except Exception:
-            pass
-
-        if _cmp_size_rep is not None and _cmp_norm_max is not None:
-            _leg_fontsize = 8
-
-            def _ms(v):
-                s = _S_MIN + np.clip(v / _cmp_norm_max, 0, 1) * (_S_MAX - _S_MIN)
-                return 2.0 * np.sqrt(s / np.pi)
-
-            _max_diam = max(_ms(v) for v, _ in _cmp_size_rep)
-            _labelspacing = _max_diam / _leg_fontsize + 0.5
-
-            legend_elements = [
-                Line2D([0], [0], marker='o', color='none',
-                       markerfacecolor='#808080', markeredgecolor='#333333',
-                       markeredgewidth=0.8, markersize=_ms(v), label=lbl)
-                for v, lbl in _cmp_size_rep
-            ]
-            leg = ax.legend(handles=legend_elements, title=size_mode,
-                            loc='upper left', fontsize=_leg_fontsize,
-                            title_fontsize=_leg_fontsize,
-                            labelspacing=_labelspacing,
-                            handlelength=0, handletextpad=1.2,
-                            borderpad=0.9, framealpha=0.95,
-                            edgecolor='#bbbbbb', fancybox=False,
-                            bbox_to_anchor=(1.02, 0.30))
-            leg.get_title().set_fontweight('bold')
-
-        try:
-            self.figure.tight_layout(rect=(0, 0, 0.82, 1))
-        except Exception:
-            if transpose:
-                self.figure.subplots_adjust(left=0.12, right=0.82, bottom=0.30)
-            else:
-                self.figure.subplots_adjust(left=0.35, right=0.82, bottom=0.15)
-
+        self.figure.clear()
+        render_go_comparison_dot(self.figure, self.df, self._plot_params())
         self.canvas.draw()
+
+    # ── Bundle export ─────────────────────────────────────────────────────
+
+    def get_bundle_context(self) -> dict:
+        return {
+            'figure': self.figure,
+            'dataframe': self.df,
+            'plot_params': self._plot_params(),
+            'dataset_name': self.dataset.name,
+            'plot_type': 'go_comparison_dot',
+            'figure_title': 'GO/KEGG Comparison Dot Plot',
+            'figure_slug': 'go_comparison_dot',
+            'source_stem': 'go_comparison_dot',
+            'notes': 'Generated from cmg-seqviewer GO/KEGG Comparison Dot plot',
+        }
 
     # ── Export ────────────────────────────────────────────────────────────
 

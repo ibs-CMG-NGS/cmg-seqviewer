@@ -6,9 +6,9 @@ Filter Panel Widget
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
                             QLabel, QLineEdit, QTextEdit, QPushButton,
-                            QDoubleSpinBox, QCheckBox, QComboBox, QRadioButton,
-                            QButtonGroup, QFileDialog, QTabWidget)
-from PyQt6.QtCore import pyqtSignal
+                            QDoubleSpinBox, QSpinBox, QCheckBox, QComboBox, QRadioButton,
+                            QButtonGroup, QFileDialog, QTabWidget, QFormLayout)
+from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent
 from models.data_models import FilterCriteria, FilterMode
 from typing import List
@@ -224,13 +224,18 @@ class FilterPanel(QWidget):
         go_label = QLabel("<b>GO/KEGG Analysis Filtering:</b>")
         go_inner.addWidget(go_label)
 
-        # FDR cutoff (자유 입력, scientific notation 지원)
-        go_fdr_layout = QHBoxLayout()
-        go_fdr_layout.addWidget(QLabel("FDR ≤"))
+        # GO/KEGG 필터 컨트롤 — 한 줄에 하나씩 배치해 라벨을 정렬하고 여백을 확보한다
+        go_form = QFormLayout()
+        go_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        go_form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        go_form.setHorizontalSpacing(10)
+        go_form.setVerticalSpacing(8)
+        go_form.setContentsMargins(4, 6, 4, 4)
 
+        # FDR cutoff (자유 입력, scientific notation 지원)
         self.go_fdr_input = QLineEdit()
         self.go_fdr_input.setText("0.05")
-        self.go_fdr_input.setFixedWidth(80)
+        self.go_fdr_input.setMaximumWidth(130)
         self.go_fdr_input.setPlaceholderText("e.g., 1e-5")
         self.go_fdr_input.setToolTip("Enter FDR threshold (supports scientific notation like 1e-5)")
 
@@ -238,42 +243,40 @@ class FilterPanel(QWidget):
         validator = QDoubleValidator(0.0, 1.0, 20)
         validator.setNotation(QDoubleValidator.Notation.ScientificNotation)
         self.go_fdr_input.setValidator(validator)
-        go_fdr_layout.addWidget(self.go_fdr_input)
+        go_form.addRow("FDR ≤", self.go_fdr_input)
 
-        go_fdr_layout.addSpacing(16)
-
-        go_fdr_layout.addWidget(QLabel("FE ≥"))
         self.go_fe_input = QDoubleSpinBox()
         self.go_fe_input.setRange(0.0, 100.0)
         self.go_fe_input.setSingleStep(0.5)
         self.go_fe_input.setDecimals(1)
         self.go_fe_input.setValue(0.0)
-        self.go_fe_input.setFixedWidth(70)
+        self.go_fe_input.setMaximumWidth(130)
         self.go_fe_input.setToolTip("Minimum fold enrichment (gene_ratio / bg_ratio). 0 = no filter")
-        go_fdr_layout.addWidget(self.go_fe_input)
+        go_form.addRow("FE ≥", self.go_fe_input)
 
-        go_fdr_layout.addStretch()
-        go_inner.addLayout(go_fdr_layout)
+        self.go_min_count_input = QSpinBox()
+        self.go_min_count_input.setRange(0, 10000)
+        self.go_min_count_input.setValue(3)
+        self.go_min_count_input.setMaximumWidth(130)
+        self.go_min_count_input.setToolTip(
+            "이 term에 걸린 내 유전자 개수(Count)의 최소값.\n"
+            "1~2개는 우연히 유의해질 수 있어 보통 3 이상을 씁니다. 0 = 필터 안 함")
+        go_form.addRow("Count ≥", self.go_min_count_input)
 
-        # Ontology와 Direction을 한 줄로 배치
-        go_filters_layout = QHBoxLayout()
-
-        go_filters_layout.addWidget(QLabel("Ontology:"))
         self.ontology_combo = QComboBox()
         self.ontology_combo.addItems(["All", "BP", "MF", "CC", "KEGG"])
+        self.ontology_combo.setMaximumWidth(130)
         self.ontology_combo.setToolTip("Biological Process / Molecular Function / Cellular Component / KEGG")
-        go_filters_layout.addWidget(self.ontology_combo)
+        go_form.addRow("Ontology", self.ontology_combo)
 
-        go_filters_layout.addSpacing(20)
-
-        go_filters_layout.addWidget(QLabel("Gene Set:"))
         self.go_direction_combo = QComboBox()
         self.go_direction_combo.addItems(["All", "UP", "DOWN", "TOTAL"])
+        self.go_direction_combo.setMaximumWidth(130)
         self.go_direction_combo.setToolTip("DEG group used for GO/KEGG analysis (UP-regulated, DOWN-regulated, or TOTAL DEGs)")
-        go_filters_layout.addWidget(self.go_direction_combo)
+        go_form.addRow("Gene Set", self.go_direction_combo)
 
-        go_filters_layout.addStretch()
-        go_inner.addLayout(go_filters_layout)
+        go_inner.addLayout(go_form)
+        go_inner.addSpacing(8)
 
         self.advanced_go_filter_btn = QPushButton("⚙️ Advanced Filtering...")
         self.advanced_go_filter_btn.setToolTip("Open advanced GO/KEGG filtering dialog")
@@ -593,6 +596,7 @@ class FilterPanel(QWidget):
             term_id_list=term_id_list,
             fdr_max=self._get_go_fdr_value(),
             fold_enrichment_min=self.go_fe_input.value(),
+            go_min_gene_count=self.go_min_count_input.value(),
             regulation_direction=regulation_direction,
             ontology=self.ontology_combo.currentText(),
             go_direction=self.go_direction_combo.currentText(),

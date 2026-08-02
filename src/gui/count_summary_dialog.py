@@ -7,9 +7,7 @@ DE/DA Count Summary Dialog
 import logging
 from typing import List
 
-import numpy as np
 import pandas as pd
-from matplotlib.ticker import FuncFormatter
 from PyQt6.QtWidgets import (
     QVBoxLayout, QFormLayout, QGroupBox, QDoubleSpinBox, QCheckBox,
     QFileDialog, QMessageBox,
@@ -18,9 +16,6 @@ from PyQt6.QtWidgets import (
 from models.data_models import Dataset, DatasetType
 from models.standard_columns import StandardColumns
 from gui.base_plot_dialog import BasePlotDialog
-
-_UP_COLOR = '#c0392b'
-_DOWN_COLOR = '#2c6fbb'
 
 
 class CountSummaryDialog(BasePlotDialog):
@@ -67,83 +62,64 @@ class CountSummaryDialog(BasePlotDialog):
 
     # ── Plot ──────────────────────────────────────────────────────────────
 
-    def _compute_counts(self):
-        """데이터셋별 up/down/total 집계 → DataFrame."""
-        padj_max = self._fdr_spin.value()
-        lfc_min = self._lfc_spin.value()
+    def _build_long_df(self):
+        """데이터셋들을 long-format(dataset/log2fc/adj_pvalue)으로 병합. (df, order) 반환."""
         lfc_col = StandardColumns.LOG2FC
         padj_col = StandardColumns.ADJ_PVALUE
-
-        rows = []
+        frames, order = [], []
         for ds in self.datasets:
-            df = ds.dataframe
             label = ds.metadata.get('experiment_condition') or ds.name
+            order.append(label)
+            df = ds.dataframe
             if df is None or lfc_col not in df.columns or padj_col not in df.columns:
-                rows.append({'label': label, 'up': 0, 'down': 0, 'total': 0})
                 continue
-            total = int(df[lfc_col].notna().sum())
-            sig = df[(df[padj_col] <= padj_max) & (df[lfc_col].abs() >= lfc_min)]
-            up = int((sig[lfc_col] > 0).sum())
-            down = int((sig[lfc_col] < 0).sum())
-            rows.append({'label': label, 'up': up, 'down': down, 'total': total})
-        return pd.DataFrame(rows)
+            frames.append(pd.DataFrame({
+                'dataset': label,
+                'log2fc': pd.to_numeric(df[lfc_col], errors='coerce').values,
+                'adj_pvalue': pd.to_numeric(df[padj_col], errors='coerce').values,
+            }))
+        long_df = pd.concat(frames, ignore_index=True) if frames else \
+            pd.DataFrame(columns=['dataset', 'log2fc', 'adj_pvalue'])
+        return long_df, order
+
+    def _plot_params(self, order=None) -> dict:
+        if order is None:
+            order = [ds.metadata.get('experiment_condition') or ds.name for ds in self.datasets]
+        all_atac = all(ds.dataset_type == DatasetType.ATAC_SEQ for ds in self.datasets)
+        return {
+            'fdr_max': self._fdr_spin.value(),
+            'lfc_min': self._lfc_spin.value(),
+            'as_pct': self._pct_check.isChecked(),
+            'unit': 'peaks' if all_atac else 'genes',
+            'order': order,
+        }
 
     def _do_plot(self):
+        """렌더는 순수 함수 src/plots/count_summary.py 에 있으며 번들과 공유한다."""
+        from plots.count_summary import render_count_summary
+
         self.figure.clear()
         ax = self.figure.add_subplot(111)
-
-        counts = self._compute_counts()
-        self._counts_df = counts
-        if counts.empty:
-            ax.text(0.5, 0.5, "No datasets to plot.", ha='center', va='center',
-                    transform=ax.transAxes, color='#888888')
-            self.canvas.draw()
-            return
-
-        as_pct = self._pct_check.isChecked()
-        ups = counts['up'].astype(float).tolist()
-        downs = counts['down'].astype(float).tolist()
-        if as_pct:
-            totals = [t if t else 1 for t in counts['total'].tolist()]
-            ups = [100.0 * u / t for u, t in zip(ups, totals)]
-            downs = [100.0 * d / t for d, t in zip(downs, totals)]
-
-        x = list(range(len(counts)))
-        ax.bar(x, ups, color=_UP_COLOR, label='Up-regulated')
-        ax.bar(x, [-d for d in downs], color=_DOWN_COLOR, label='Down-regulated')
-        ax.axhline(0, color='#333333', linewidth=0.8)
-
-        # 막대 위/아래에 원본 개수 라벨
-        raw_up = counts['up'].tolist()
-        raw_down = counts['down'].tolist()
-        for xi, yu, n in zip(x, ups, raw_up):
-            if n > 0:
-                ax.text(xi, yu, f"{n:,}", ha='center', va='bottom', fontsize=8)
-        for xi, yd, n in zip(x, downs, raw_down):
-            if n > 0:
-                ax.text(xi, -yd, f"{n:,}", ha='center', va='top', fontsize=8)
-
-        ax.set_xticks(x)
-        ax.set_xticklabels(counts['label'].tolist(), rotation=30, ha='right', fontsize=8)
-
-        all_atac = all(ds.dataset_type == DatasetType.ATAC_SEQ for ds in self.datasets)
-        unit = 'peaks' if all_atac else 'genes'
-        if as_pct:
-            ax.set_ylabel(f"% of {unit}")
-            ax.yaxis.set_major_formatter(FuncFormatter(lambda v, pos: f"{abs(v):.0f}"))
-        else:
-            ax.set_ylabel(f"Number of {unit}")
-            ax.yaxis.set_major_formatter(FuncFormatter(lambda v, pos: f"{abs(int(v)):,}"))
-
-        ax.set_title(
-            f"Significant {unit} (FDR ≤ {self._fdr_spin.value():g}, "
-            f"|log2FC| ≥ {self._lfc_spin.value():g})",
-            fontsize=12, fontweight='bold',
-        )
-        ax.legend(fontsize=8, loc='upper right')
-        ax.margins(y=0.15)
+        long_df, order = self._build_long_df()
+        self._counts_df = render_count_summary(ax, long_df, self._plot_params(order))
         self.figure.tight_layout()
         self.canvas.draw()
+
+    # ── Bundle export ─────────────────────────────────────────────────────
+
+    def get_bundle_context(self) -> dict:
+        long_df, order = self._build_long_df()
+        return {
+            'figure': self.figure,
+            'dataframe': long_df,
+            'plot_params': self._plot_params(order),
+            'dataset_name': 'count_summary',
+            'plot_type': 'count_summary',
+            'figure_title': 'DE/DA Count Summary',
+            'figure_slug': 'count_summary',
+            'source_stem': 'count_summary',
+            'notes': 'Generated from cmg-seqviewer DE/DA Count Summary (long-format input)',
+        }
 
     # ── Export ────────────────────────────────────────────────────────────
 

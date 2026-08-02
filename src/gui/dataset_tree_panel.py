@@ -274,10 +274,12 @@ class DatasetTreePanel(QWidget):
         return self.get_current_root_dataset()
 
     def get_all_root_datasets(self) -> List[str]:
-        """모든 루트 데이터셋 이름 목록을 반환한다."""
+        """모든 루트 데이터셋 이름 목록을 반환한다 (결과 그룹 노드는 제외)."""
         result = []
         for i in range(self.dataset_tree.topLevelItemCount()):
             item = self.dataset_tree.topLevelItem(i)
+            if item.data(0, _ROLE_KIND) == "group":
+                continue
             result.append(item.data(0, _ROLE_DATA))
         return result
 
@@ -352,6 +354,38 @@ class DatasetTreePanel(QWidget):
         child.setData(0, _ROLE_KIND, sheet_type)
         root.setExpanded(True)
 
+    # ------------------------------------------------------------------
+    # Cross-dataset 결과 시트 (단일 부모가 없는 comparison/clustered 등)
+    # ------------------------------------------------------------------
+
+    def _ensure_results_group(self) -> QTreeWidgetItem:
+        """최상단 'Cross-Dataset Results' 그룹 노드를 찾거나 생성한다.
+
+        이 노드는 실제 데이터셋이 아니므로 _ROLE_KIND='group' 으로 표시하고
+        get_all_root_datasets() 열거에서 제외된다.
+        """
+        for i in range(self.dataset_tree.topLevelItemCount()):
+            it = self.dataset_tree.topLevelItem(i)
+            if it.data(0, _ROLE_KIND) == "group":
+                return it
+        grp = QTreeWidgetItem(self.dataset_tree)
+        grp.setText(0, "🔗 Cross-Dataset Results")
+        grp.setData(0, _ROLE_KIND, "group")
+        grp.setData(0, _ROLE_DATA, None)
+        grp.setData(0, _ROLE_WHOLE_TAB, None)
+        grp.setExpanded(True)
+        return grp
+
+    def add_result_sheet(self, tab_index: int, sheet_label: str, sheet_type: str = "comparison"):
+        """단일 부모가 없는 결과 시트를 'Cross-Dataset Results' 그룹 아래에 등록한다."""
+        group = self._ensure_results_group()
+        icon = _SHEET_ICONS.get(sheet_type, "📄")
+        child = QTreeWidgetItem(group)
+        child.setText(0, f"{icon} {sheet_label}")
+        child.setData(0, _ROLE_DATA, tab_index)
+        child.setData(0, _ROLE_KIND, sheet_type)
+        group.setExpanded(True)
+
     def remove_sheet(self, tab_index: int):
         """tab_index에 해당하는 시트를 제거한다.
 
@@ -369,6 +403,11 @@ class DatasetTreePanel(QWidget):
             parent = child.parent()
             if parent is not None:
                 parent.removeChild(child)
+                # 결과 그룹이 비면 그룹 노드도 제거
+                if parent.data(0, _ROLE_KIND) == "group" and parent.childCount() == 0:
+                    idx = self.dataset_tree.indexOfTopLevelItem(parent)
+                    if idx >= 0:
+                        self.dataset_tree.takeTopLevelItem(idx)
 
     def update_sheet_tab_index(self, old_index: int, new_index: int):
         """탭 제거 후 인덱스가 shift될 때 child/root 노드의 tab_index를 갱신한다."""
@@ -480,6 +519,8 @@ class DatasetTreePanel(QWidget):
         if self._syncing:
             return
         kind = item.data(0, _ROLE_KIND)
+        if kind == "group":
+            return   # 결과 그룹 헤더는 클릭 동작 없음 (확장/축소만)
         if kind == "root":
             dataset_name = item.data(0, _ROLE_DATA)
             whole_tab = item.data(0, _ROLE_WHOLE_TAB)

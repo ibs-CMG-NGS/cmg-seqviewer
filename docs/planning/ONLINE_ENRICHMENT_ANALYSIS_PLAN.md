@@ -209,6 +209,11 @@ gseapy/GOATOOLS 원본 결과를 기존 StandardColumns로 매핑:
 
 → 새 파일 로드 대신 **이미 로드된 RNA 데이터셋 + 기존 필터 패널**에서 DEG를 추출해 enrichment로 넘기는 흐름으로 설계. 진짜 재사용 포인트.
 
+**DEG 입력 소스는 3종으로 설계** (아래 G16 참조):
+1. 단일 데이터셋 DEG (필터 패널 임계값 적용) — 기본
+2. 사용자 붙여넣기 gene list
+3. **`Comparison: Statistics` 시트의 meta-DEG / meta 랭킹** — 여러 실험 결합 시그니처 (early-aggregation 메타 분석, META_ANALYSIS_PLAN M4b)
+
 #### G4. `_gene_set` 내부 컬럼 생성 누락 (clustering/network 깨짐)
 `GOClusteringDialog`/`GONetworkDialog`는 `gene_symbols`가 아니라 **`_gene_set`(Python set)** 컬럼을 요구(`go_kegg_loader._parse_gene_symbols`가 `/` 구분자로 생성). 데이터 변환 표에 이 단계가 없다.
 → gseapy `Genes`(`;` 구분)를 `/`로 통일 후 `_gene_set` set 컬럼까지 생성해야 클러스터링 재사용 성립.
@@ -250,6 +255,29 @@ GOATOOLS는 Entrez ID 기반인데 symbol→Entrez에 `mygene`(온라인 API)을
 - Bar/Dot/Clustering/Network 다이얼로그가 `Dataset`(표준 컬럼) 입력으로 재사용 가능
 - gseapy는 gene symbol만 전송(expression 미전송) — 프라이버시 서술 정확
 - 결과 캐싱으로 rate-limit 완화
+
+---
+
+## 메타 분석 연동 (early aggregation) — G16
+
+> 상호 참조: [META_ANALYSIS_PLAN.md](META_ANALYSIS_PLAN.md) **M4b**. 이 엔진이 착지하면
+> "유전자 수준 결합 → 단일 enrichment"(early aggregation) 메타 분석이 **거의 공짜로** 성립한다.
+> 유전자 수준 결합(M1)은 이미 구현됨(`Comparison: Statistics` 시트에 `meta_*` 컬럼).
+
+**설계에 포함할 것:**
+
+- **입력 소스 추가(G3의 3번):** DEG 입력에 **`Comparison: Statistics` 시트의 meta 결과**를 허용.
+  - ORA 경로: `meta_fdr_fisher ≤ cutoff` (+ 방향) 로 **meta-DEG** 추출 → Enrichr/GOATOOLS.
+  - GSEA 경로(더 엄밀·threshold-free): **meta 랭킹**(`meta_z`, 또는 `−log10(meta_pvalue) × sign(meta_log2fc_mean)`)을
+    gseapy **`prerank`** 에 입력.
+- **엔진 API에 GSEA prerank 경로 확보:** 현재 계획은 ORA(Enrichr/GOATOOLS) 중심. `gseapy.prerank`는
+  이미 gseapy에 있으므로 `EnrichmentAnalyzer`에 ranked-list 입력 메서드를 함께 설계하면 M4b가 자연스럽게 얹힌다.
+- **cross-species 순서:** 종이 다르면 **M2(ortholog) → meta-signature → enrichment**. GO term 수준
+  late aggregation(M4a)은 GO가 종-불문이라 M2 없이도 상당 부분 가능(별도 경로).
+- **재현성 메타데이터(G15)와 정합:** meta 입력일 때 결합에 쓰인 데이터셋 목록·임계값을 `Analysis_Info`에 기록.
+
+**결론:** 엔진의 DEG 입력 추상화를 "① 단일 DEG / ② gene list / ③ meta-signature(DEG 또는 ranked)"로
+설계하면, online enrichment와 early-aggregation 메타 분석을 **한 번의 구현으로 동시에** 달성한다.
 
 ### 권장 다음 단계
 1. 위 🔴/🟠 항목을 본문 해당 섹션에 반영(특히 G1 배포, G3 DEG 입력 재사용, G4 `_gene_set`, G8 background).

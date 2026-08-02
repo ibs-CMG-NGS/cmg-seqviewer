@@ -118,6 +118,24 @@ class BasePlotDialog(QDialog):
             btn.clicked.connect(callback)
             bar.addWidget(btn)
 
+        # get_bundle_context()를 구현한 다이얼로그는 재현 번들 export 버튼을 자동 노출
+        if hasattr(self, "get_bundle_context"):
+            bundle_btn = QPushButton("Export Bundle")
+            bundle_btn.setToolTip("재현 가능한 figure 번들(데이터+스크립트+메타)로 export")
+            bundle_btn.clicked.connect(self._on_export_bundle)
+            bar.addWidget(bundle_btn)
+
+            # 재렌더 가능한 plot_type 이면 탭 고정 버튼도 자동 노출
+            try:
+                from plots.registry import is_supported
+                if is_supported(self.get_bundle_context().get("plot_type", "")):
+                    pin_btn = QPushButton("📌 Pin to Tab")
+                    pin_btn.setToolTip("이 플롯을 메인 창의 탭으로 고정합니다(스냅샷).")
+                    pin_btn.clicked.connect(self._on_pin_to_tab)
+                    bar.addWidget(pin_btn)
+            except Exception:  # noqa: BLE001 — 버튼 노출 실패가 다이얼로그를 막지 않도록
+                pass
+
         bar.addStretch()
 
         close_btn = QPushButton("Close")
@@ -125,6 +143,66 @@ class BasePlotDialog(QDialog):
         bar.addWidget(close_btn)
 
         return bar
+
+    def _find_pin_host(self):
+        """부모 체인을 거슬러 pin_plot_from_context() 를 가진 메인 윈도우를 찾는다."""
+        w = self.parent()
+        seen = 0
+        while w is not None and seen < 10:
+            if hasattr(w, "pin_plot_from_context"):
+                return w
+            w = w.parent() if hasattr(w, "parent") else None
+            seen += 1
+        return None
+
+    def _on_pin_to_tab(self):
+        """현재 플롯을 메인 창 탭으로 고정 (공용)."""
+        host = self._find_pin_host()
+        if host is None:
+            QMessageBox.information(
+                self, "Pin to Tab",
+                "이 창에서는 탭 고정을 사용할 수 없습니다 (메인 창에서 열어주세요).")
+            return
+        try:
+            host.pin_plot_from_context(self.get_bundle_context())
+            QMessageBox.information(self, "Pinned",
+                                    "플롯을 메인 창의 탭으로 고정했습니다.")
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Pin failed", str(exc))
+
+    def _on_export_bundle(self):
+        """get_bundle_context() 를 재현 번들로 export (공용).
+
+        기본 폴더 이름은 {slug}_bundle 로 제안하되, Save 대화상자에서 사용자가 위치와
+        폴더 이름을 자유롭게 바꿀 수 있다.
+        """
+        context = self.get_bundle_context()
+        slug = context.get("figure_slug", "figure_bundle")
+        path = self._prompt_bundle_path(f"{slug}_bundle")
+        if not path:
+            return
+        try:
+            from utils.figure_bundle_export import export_figure_bundle
+            bundle_dir = export_figure_bundle(
+                context,
+                path,
+                slug,
+                context.get("figure_title", "Figure"),
+                context.get("plot_type", "plot"),
+            )
+            QMessageBox.information(self, "Bundle exported", f"Bundle created at:\n{bundle_dir}")
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Bundle export failed", str(exc))
+
+    def _prompt_bundle_path(self, default_name: str) -> str:
+        """번들 폴더 경로를 Save 대화상자로 받는다(이름 편집 가능). 취소 시 빈 문자열."""
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Figure Bundle — choose folder name",
+            default_name,
+            "Figure Bundle Folder (*)",
+        )
+        return path
 
     # ── 서브클래스 훅 ─────────────────────────────────────────────────────────
 

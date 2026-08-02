@@ -8,7 +8,6 @@ from PyQt6.QtWidgets import (
     QVBoxLayout, QGroupBox, QDoubleSpinBox, QFormLayout, QCheckBox,
 )
 from PyQt6.QtCore import Qt
-from matplotlib_venn import venn2, venn3
 import pandas as pd
 import logging
 
@@ -91,58 +90,75 @@ class VennDiagramFromComparisonDialog(BasePlotDialog):
         if self.apply_filter:
             self._update_plot()
 
-    # ── Plot ──────────────────────────────────────────────────────────────
+    # ── Data helpers ──────────────────────────────────────────────────────
 
-    def _do_plot(self):
-        self.figure.clear()
-        ax = self.figure.add_subplot(111)
-
+    def _gene_sets(self) -> dict:
+        """현재 필터 상태로 데이터셋별 gene set을 추출."""
         gene_sets = {}
-
         for dataset_name in self.dataset_names:
             log2fc_col = f'{dataset_name}_log2FC'
             padj_col = f'{dataset_name}_padj'
-
             df_subset = self.comparison_df[
                 self.comparison_df[log2fc_col].notna() &
                 self.comparison_df[padj_col].notna()
             ].copy()
-
             if self.apply_filter:
                 df_subset = df_subset[
                     (abs(df_subset[log2fc_col]) >= self.log2fc_threshold) &
                     (df_subset[padj_col] <= self.padj_threshold)
                 ]
-
             genes = set()
             for _, row in df_subset.iterrows():
-                gene_id = row.get('gene_id', '')
-                symbol = row.get('symbol', '')
-                identifier = symbol if symbol else gene_id
+                identifier = row.get('symbol', '') or row.get('gene_id', '')
                 if identifier:
                     genes.add(identifier)
-
             gene_sets[dataset_name] = genes
-            self.logger.info(f"{dataset_name}: {len(genes)} genes")
+        return gene_sets
 
-        try:
-            if len(self.dataset_names) == 2:
-                sets = [gene_sets[name] for name in self.dataset_names]
-                venn = venn2(sets, set_labels=self.dataset_names, ax=ax)
-            else:
-                sets = [gene_sets[name] for name in self.dataset_names]
-                venn = venn3(sets, set_labels=self.dataset_names, ax=ax)
+    def _build_membership_df(self):
+        """gene set을 long-format(dataset/item) 멤버십 테이블로. (df, labels) 반환."""
+        gene_sets = self._gene_sets()
+        labels = list(self.dataset_names)
+        frames = [pd.DataFrame({'dataset': lbl, 'item': list(gene_sets.get(lbl, set()))})
+                  for lbl in labels]
+        df = pd.concat(frames, ignore_index=True) if frames else \
+            pd.DataFrame(columns=['dataset', 'item'])
+        return df, labels
 
-            if self.apply_filter:
-                title = f"Venn Diagram\n(|Log2FC| ≥ {self.log2fc_threshold}, Padj ≤ {self.padj_threshold})"
-            else:
-                title = "Venn Diagram\n(All genes in comparison)"
-            ax.set_title(title, fontsize=14, fontweight='bold')
+    def _plot_params(self, labels=None) -> dict:
+        if labels is None:
+            labels = list(self.dataset_names)
+        if self.apply_filter:
+            filter_name = f"|Log2FC| ≥ {self.log2fc_threshold:g}, Padj ≤ {self.padj_threshold:g}"
+        else:
+            filter_name = "All genes in comparison"
+        return {'set_labels': labels, 'unit': 'Gene', 'filter_name': filter_name}
 
-        except Exception as e:
-            self.logger.error(f"Failed to create Venn diagram: {e}")
-            ax.text(0.5, 0.5, f'Error creating Venn diagram:\n{str(e)}',
-                    ha='center', va='center', fontsize=12, transform=ax.transAxes)
+    # ── Plot ──────────────────────────────────────────────────────────────
 
+    def _do_plot(self):
+        """렌더는 순수 함수 src/plots/venn.py 에 있으며 번들과 공유한다."""
+        from plots.venn import render_venn
+
+        self.figure.clear()
+        ax = self.figure.add_subplot(111)
+        df, labels = self._build_membership_df()
+        render_venn(ax, df, self._plot_params(labels))
         self.figure.tight_layout()
         self.canvas.draw()
+
+    # ── Bundle export ─────────────────────────────────────────────────────
+
+    def get_bundle_context(self) -> dict:
+        df, labels = self._build_membership_df()
+        return {
+            'figure': self.figure,
+            'dataframe': df,
+            'plot_params': self._plot_params(labels),
+            'dataset_name': 'venn',
+            'plot_type': 'venn',
+            'figure_title': f'Venn Diagram — {len(self.dataset_names)} Datasets',
+            'figure_slug': 'venn_diagram',
+            'source_stem': 'venn_diagram',
+            'notes': 'Generated from cmg-seqviewer Venn Diagram (comparison sheet, long-format membership)',
+        }

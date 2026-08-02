@@ -142,14 +142,38 @@ class ProjectIO:
             cp = entry.get("comparison_params")
             if cp is not None:
                 sheet_entry["comparison_params"] = cp
-            # plot 탭: plot_type / plot_params 직렬화
+            # plot 탭: plot_type / plot_params / (있으면) 원본 filter 직렬화
             if sheet_type == "plot":
                 sheet_entry["plot_type"] = entry.get("plot_type", "")
                 pp = entry.get("plot_params")
                 if pp:
                     sheet_entry["plot_params"] = pp
+                sfp = entry.get("source_filter_params")
+                if sfp:
+                    sheet_entry["source_filter_params"] = sfp
 
             datasets_spec[root]["sheets"].append(sheet_entry)
+
+        # 로드된 모든 데이터셋을 whole 루트로 보장한다.
+        # "Whole Dataset" 탭은 하나뿐이고 데이터셋 전환 시 내용만 바뀌므로, 현재 표시 중이
+        # 아니면서 자식 시트도 없는 데이터셋은 위 tab_data 순회로는 누락된다. dataset_file_map은
+        # presenter.datasets 전체를 담으므로 여기서 빠진 데이터셋의 루트 항목을 채운다.
+        # (통합/DB 등 특수 소스는 _on_save_project가 file_path/source를 다시 덮어쓴다.)
+        for name in dataset_file_map:
+            if name in datasets_spec:
+                continue
+            file_path = dataset_file_map.get(name, "")
+            if project_dir and file_path:
+                try:
+                    file_path = os.path.relpath(file_path, start=project_dir)
+                except ValueError:
+                    pass
+            datasets_spec[name] = {
+                "name": name,
+                "type": dataset_type_map.get(name, ""),
+                "file_path": file_path,
+                "sheets": [],
+            }
 
         # comparison 탭 수집
         comparisons = []

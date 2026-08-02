@@ -116,6 +116,8 @@ class GONetworkDialog(BasePlotDialog):
 
         self._xaxis_combo = QComboBox()
         self._xaxis_combo.addItems(["-log10(FDR)", "Gene Ratio", "Fold Enrichment"])
+        # 권장 기본: 효과 크기(Fold Enrichment)를 X축, 유의성(FDR)은 색으로 → 정보 중복 없음
+        self._xaxis_combo.setCurrentText("Fold Enrichment")
         self._xaxis_combo.currentTextChanged.connect(self._update_plot)
         dot_form.addRow("X axis:", self._xaxis_combo)
 
@@ -123,6 +125,12 @@ class GONetworkDialog(BasePlotDialog):
         self._dot_color_combo.addItems(["FDR", "Ontology", "Direction"])
         self._dot_color_combo.currentTextChanged.connect(self._update_plot)
         dot_form.addRow("Color by:", self._dot_color_combo)
+
+        # 점 크기 기준: 클러스터 멤버 수(주제 폭) 또는 대표 term의 유전자 수(근거)
+        self._dot_size_combo = QComboBox()
+        self._dot_size_combo.addItems(["Cluster size", "Gene count"])
+        self._dot_size_combo.currentTextChanged.connect(self._update_plot)
+        dot_form.addRow("Dot size by:", self._dot_size_combo)
 
         self._dot_sort_combo = QComboBox()
         self._dot_sort_combo.addItems(["FDR", "Cluster Size", "Term Name"])
@@ -566,10 +574,46 @@ class GONetworkDialog(BasePlotDialog):
 
     # ── Dot Plot tab ──────────────────────────────────────────────────────────
 
-    def _do_dotplot(self):
+    def _build_rep_df(self):
+        """유효 클러스터 대표 term 표(rep_df)에 _cluster_size 를 붙여 반환. 없으면 None."""
         rep_df = self._get_representatives(self.df)
+        if rep_df is None or rep_df.empty:
+            return None
+        cluster_sizes = self.df.groupby(StandardColumns.CLUSTER_ID).size().to_dict()
+        rep_df = rep_df.copy()
+        rep_df['_cluster_size'] = rep_df[StandardColumns.CLUSTER_ID].map(cluster_sizes).fillna(1)
+        return rep_df
 
-        if rep_df.empty:
+    def _dotplot_params(self) -> dict:
+        x_auto = self._xauto_check.isChecked()
+        y_auto = self._yauto_check.isChecked()
+        return {
+            'x_axis': self._xaxis_combo.currentText(),
+            'color_by': self._dot_color_combo.currentText(),
+            'size_by': self._dot_size_combo.currentText(),
+            'sort_by': self._dot_sort_combo.currentText(),
+            'top_n': self._top_n_spin.value(),
+            'dot_size_min': self._dot_size_min_spin.value(),
+            'dot_size_scale': self._dot_size_scale_spin.value(),
+            'cmap': self._cbar_cmap_combo.currentText(),
+            'z_auto': self._zauto_check.isChecked(),
+            'z_min': self._zmin_spin.value(),
+            'z_max': self._zmax_spin.value(),
+            'colorbar_loc': self._cbar_pos_combo.currentText(),
+            'colorbar_shrink': self._cbar_size_spin.value(),
+            'show_size_legend': self._size_legend_check.isChecked(),
+            'x_min': None if x_auto else self._xmin_spin.value(),
+            'x_max': None if x_auto else self._xmax_spin.value(),
+            'y_min': None if y_auto else self._ymin_spin.value(),
+            'y_max': None if y_auto else self._ymax_spin.value(),
+        }
+
+    def _do_dotplot(self):
+        """렌더는 순수 함수 src/plots/go_cluster_dot.py 에 있으며 번들과 공유한다."""
+        from plots.go_cluster_dot import render_go_cluster_dot
+
+        rep_df = self._build_rep_df()
+        if rep_df is None:
             ax = self.figure.add_subplot(111)
             ax.text(0.5, 0.5, 'No clustered data available',
                     ha='center', va='center', fontsize=13)
@@ -577,217 +621,40 @@ class GONetworkDialog(BasePlotDialog):
             self.canvas.draw()
             return
 
-        # 클러스터 멤버 수 추가
-        cluster_sizes = self.df.groupby(StandardColumns.CLUSTER_ID).size().to_dict()
-        rep_df = rep_df.copy()
-        rep_df['_cluster_size'] = rep_df[StandardColumns.CLUSTER_ID].map(cluster_sizes).fillna(1)
-
-        # 정렬
-        sort_by = self._dot_sort_combo.currentText()
-        if sort_by == "FDR" and StandardColumns.FDR in rep_df.columns:
-            rep_df = rep_df.sort_values(StandardColumns.FDR, ascending=False)
-        elif sort_by == "Cluster Size":
-            rep_df = rep_df.sort_values('_cluster_size', ascending=True)
-        elif sort_by == "Term Name" and StandardColumns.DESCRIPTION in rep_df.columns:
-            rep_df = rep_df.sort_values(StandardColumns.DESCRIPTION, ascending=False)
-
-        # Top N
-        top_n = self._top_n_spin.value()
-        if len(rep_df) > top_n and StandardColumns.FDR in rep_df.columns:
-            keep = rep_df.nsmallest(top_n, StandardColumns.FDR).index
-            rep_df = rep_df.loc[rep_df.index.isin(keep)]
-
-        n_terms = len(rep_df)
-
-        # Y labels — "C001: term name" 형식
-        desc_col = next(
-            (c for c in [StandardColumns.DESCRIPTION, 'Description', 'Term']
-             if c in rep_df.columns), None
-        )
-        cluster_ids = rep_df[StandardColumns.CLUSTER_ID].tolist()
-        if desc_col:
-            y_labels = [
-                f"C{cid}: {str(v)[:60]}"
-                for cid, v in zip(cluster_ids, rep_df[desc_col])
-            ]
-        else:
-            y_labels = [f"C{cid}" for cid in cluster_ids]
-
-        # X values
-        x_axis = self._xaxis_combo.currentText()
-        if x_axis == "-log10(FDR)" and StandardColumns.FDR in rep_df.columns:
-            x_vals = [-np.log10(max(float(v), 1e-300)) for v in rep_df[StandardColumns.FDR]]
-            x_label = "-log10(FDR)"
-        elif x_axis == "Gene Ratio" and StandardColumns.GENE_RATIO in rep_df.columns:
-            raw = rep_df[StandardColumns.GENE_RATIO]
-            x_vals = []
-            for v in raw:
-                try:
-                    if '/' in str(v):
-                        a, b = str(v).split('/')
-                        x_vals.append(float(a) / float(b))
-                    else:
-                        x_vals.append(float(v))
-                except Exception:
-                    x_vals.append(0.0)
-            x_label = "Gene Ratio"
-        elif x_axis == "Fold Enrichment" and StandardColumns.FOLD_ENRICHMENT in rep_df.columns:
-            x_vals = [float(v) if pd.notna(v) else 0.0
-                      for v in rep_df[StandardColumns.FOLD_ENRICHMENT]]
-            x_label = "Fold Enrichment"
-        else:
-            # fallback
-            if StandardColumns.FDR in rep_df.columns:
-                x_vals = [-np.log10(max(float(v), 1e-300)) for v in rep_df[StandardColumns.FDR]]
-                x_label = "-log10(FDR)"
-            else:
-                x_vals = list(range(n_terms))
-                x_label = "Index"
-
-        # Colors
-        color_by = self._dot_color_combo.currentText()
-        legend_handles = []
-        scatter_cmap = None
-        scatter_norm = None
-
-        if color_by == "FDR" and StandardColumns.FDR in rep_df.columns:
-            fdr_vals = [float(v) for v in rep_df[StandardColumns.FDR]]
-            if self._zauto_check.isChecked():
-                vmin = max(min(fdr_vals), 1e-300)
-                vmax = max(fdr_vals, default=1.0)
-                vmax = max(vmax, vmin * 10)
-            else:
-                vmin = max(self._zmin_spin.value(), 1e-300)
-                vmax = self._zmax_spin.value()
-                if vmax <= vmin:
-                    vmax = vmin * 10
-            scatter_norm = mcolors.LogNorm(vmin=vmin, vmax=vmax)
-            scatter_cmap = self._cbar_cmap_combo.currentText()
-            dot_colors = fdr_vals
-        elif color_by == "Ontology" and StandardColumns.ONTOLOGY in rep_df.columns:
-            onts = rep_df[StandardColumns.ONTOLOGY].tolist()
-            unique_onts = list(dict.fromkeys(onts))
-            cmap_ont = cm.tab10
-            ont_map = {o: cmap_ont(i / max(len(unique_onts), 1))
-                       for i, o in enumerate(unique_onts)}
-            dot_colors = [ont_map.get(str(o), '#aaa') for o in onts]
-            legend_handles = [Patch(color=ont_map[o], label=o) for o in unique_onts]
-        elif color_by == "Direction" and StandardColumns.DIRECTION in rep_df.columns:
-            dir_c = {'UP': '#e74c3c', 'DOWN': '#3498db', 'TOTAL': '#95a5a6'}
-            dot_colors = [dir_c.get(str(d), '#95a5a6')
-                          for d in rep_df[StandardColumns.DIRECTION]]
-            seen = list(dict.fromkeys(rep_df[StandardColumns.DIRECTION].tolist()))
-            legend_handles = [Patch(color=dir_c.get(str(d), '#aaa'), label=str(d))
-                              for d in seen]
-        else:
-            dot_colors = '#3498db'
-
-        dot_min = self._dot_size_min_spin.value()
-        dot_scale = self._dot_size_scale_spin.value()
-        dot_sizes = [max(dot_min, float(s) * dot_scale) for s in rep_df['_cluster_size']]
-
-        # 너비: 현재 캔버스 위젯 크기를 그대로 사용 (창 크기에 맞춤)
-        # 높이: term 수에 따라 동적 계산
+        # 동적 figure 크기 (표시될 term 수 기반)
+        n_shown = min(len(rep_df), self._top_n_spin.value())
         dpi = self.figure.dpi
         canvas_w_px = self.canvas.width()
         w_in = (canvas_w_px / dpi) if canvas_w_px > 50 else 8.0
-        fig_h = max(5.0, n_terms * 0.38 + 1.5)
-        self.figure.set_size_inches(w_in, fig_h)
-        ax = self.figure.add_subplot(111)
-        y_pos = list(range(n_terms))
+        self.figure.set_size_inches(w_in, max(5.0, n_shown * 0.38 + 1.5))
 
-        sc = ax.scatter(
-            x_vals, y_pos,
-            s=dot_sizes,
-            c=dot_colors,
-            cmap=scatter_cmap,
-            norm=scatter_norm,
-            alpha=0.85,
-            edgecolors='black',
-            linewidths=0.8,
-            zorder=3
-        )
+        render_go_cluster_dot(self.figure, rep_df, self._dotplot_params())
 
-        if color_by == "FDR" and scatter_cmap:
-            cbar_loc = self._cbar_pos_combo.currentText()
-            cbar_shrink = self._cbar_size_spin.value()
-            cbar = self.figure.colorbar(
-                sc, ax=ax,
-                location=cbar_loc,
-                shrink=cbar_shrink,
-                pad=0.02
-            )
-            cbar.set_label('FDR')
-
-        # Size legend
-        size_handles = []
-        if self._size_legend_check.isChecked():
-            max_members = int(rep_df['_cluster_size'].max())
-            if max_members <= 4:
-                legend_counts = list(range(1, max_members + 1))
-            else:
-                legend_counts = sorted(set(
-                    [1] + [int(round(v))
-                           for v in np.linspace(max_members / 3, max_members, 3)]
-                ))
-            size_handles = [
-                ax.scatter([], [], s=max(dot_min, cnt * dot_scale),
-                           c='#aaaaaa', alpha=0.7,
-                           edgecolors='black', linewidths=0.8,
-                           label=f'{cnt}')
-                for cnt in legend_counts
-            ]
-
-        # Color legend (Ontology / Direction)
-        if legend_handles:
-            color_leg = ax.legend(
-                handles=legend_handles,
-                loc='lower right',
-                title=color_by,
-                framealpha=0.9
-            )
-            ax.add_artist(color_leg)
-
-        # Size legend (별도 범례로 추가)
-        if size_handles:
-            ax.legend(
-                handles=size_handles,
-                title="Members",
-                loc='upper right',
-                framealpha=0.9,
-                handletextpad=1.2,
-                labelspacing=1.0
-            )
-
-        ax.set_yticks(y_pos)
-        ax.set_yticklabels(y_labels)
-        ax.set_xlabel(x_label)
-        ax.set_title(
-            f"GO Cluster Summary Dot Plot\n"
-            f"Top {n_terms} clusters  ·  dot size = cluster member count",
-            fontweight='bold'
-        )
-        ax.grid(axis='x', alpha=0.3, linestyle='--')
-        ax.axvline(x=0, color='gray', linewidth=0.6)
-
-        # X 축 범위 수동 설정
-        if not self._xauto_check.isChecked():
-            ax.set_xlim(self._xmin_spin.value(), self._xmax_spin.value())
-
-        # Y 축 범위 수동 설정 (row 인덱스 기준)
-        if not self._yauto_check.isChecked():
-            y_lo = self._ymin_spin.value() - 0.5
-            y_hi = self._ymax_spin.value() + 0.5
-            ax.set_ylim(y_lo, y_hi)
-        else:
-            # Y max spinbox 범위를 현재 term 수에 맞게 갱신
+        # Y auto 시 spinbox 범위를 현재 term 수에 맞게 갱신 (UI 편의)
+        if self._yauto_check.isChecked():
             self._ymax_spin.blockSignals(True)
-            self._ymax_spin.setMaximum(max(n_terms - 1, 0))
-            self._ymax_spin.setValue(max(n_terms - 1, 0))
-            self._ymin_spin.setMaximum(max(n_terms - 1, 0))
+            self._ymax_spin.setMaximum(max(n_shown - 1, 0))
+            self._ymax_spin.setValue(max(n_shown - 1, 0))
+            self._ymin_spin.setMaximum(max(n_shown - 1, 0))
             self._ymax_spin.blockSignals(False)
 
-        self.figure.tight_layout()
+        self.canvas.draw()
+
+    # ── Bundle export ─────────────────────────────────────────────────────
+
+    def get_bundle_context(self) -> dict:
+        rep_df = self._build_rep_df()
+        return {
+            'figure': self.figure,
+            'dataframe': rep_df if rep_df is not None else pd.DataFrame(),
+            'plot_params': self._dotplot_params(),
+            'dataset_name': getattr(getattr(self, 'dataset', None), 'name', 'go_cluster'),
+            'plot_type': 'go_cluster_dot',
+            'figure_title': 'GO Cluster Summary Dot Plot',
+            'figure_slug': 'go_cluster_dot',
+            'source_stem': 'go_cluster_dot',
+            'notes': 'Generated from cmg-seqviewer GO Cluster Dot plot (cluster representatives)',
+        }
 
     # ── Export ────────────────────────────────────────────────────────────────
 

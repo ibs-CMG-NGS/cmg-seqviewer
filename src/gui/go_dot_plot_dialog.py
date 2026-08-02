@@ -50,6 +50,16 @@ class GODotPlotDialog(BasePlotDialog):
         self.size_combo.currentTextChanged.connect(self._update_plot)
         settings_layout.addRow("Dot Size:", self.size_combo)
 
+        # 표시 순서 (선택은 항상 FDR 최소 Top N; 이 콤보는 순서만 결정)
+        self.sort_combo = QComboBox()
+        self.sort_combo.addItems(["FDR", "Gene Ratio", "Fold Enrichment", "Gene Count"])
+        self.sort_combo.setToolTip(
+            "Top N term 선택은 항상 FDR(유의성) 기준이며,\n"
+            "이 옵션은 뽑힌 term의 표시 순서만 바꿉니다."
+        )
+        self.sort_combo.currentTextChanged.connect(self._update_plot)
+        settings_layout.addRow("Sort by:", self.sort_combo)
+
         settings_group.setLayout(settings_layout)
         layout.addWidget(settings_group)
 
@@ -117,6 +127,35 @@ class GODotPlotDialog(BasePlotDialog):
     def _extra_buttons(self) -> list:
         return [("Export Data", self._export_data)]
 
+    # ── Bundle / params ────────────────────────────────────────────────────
+
+    def _plot_params(self) -> dict:
+        return {
+            'top_n': self.top_n_spin.value(),
+            'x_axis': self.x_axis_combo.currentText(),
+            'size_mode': self.size_combo.currentText(),
+            'sort_by': self.sort_combo.currentText(),
+            'palette': self.palette_combo.currentText(),
+            'color_min': self.color_min_spin.value(),
+            'color_max': self.color_max_spin.value(),
+            'xlabel_text': getattr(self, '_xlabel_text', self.x_axis_combo.currentText()),
+            'fig_width': self.width_spin.value(),
+            'fig_height': self.height_spin.value(),
+        }
+
+    def get_bundle_context(self) -> dict:
+        return {
+            'figure': self.figure,
+            'dataframe': self.df,
+            'plot_params': self._plot_params(),
+            'dataset_name': getattr(self.dataset, 'name', 'unknown'),
+            'plot_type': 'go_dot',
+            'figure_title': 'GO/KEGG Enrichment Dot Plot',
+            'figure_slug': 'go_dot_plot',
+            'source_stem': 'go_dot_plot',
+            'notes': 'Generated from cmg-seqviewer GO/KEGG dot plot',
+        }
+
     # ── Slots ─────────────────────────────────────────────────────────────
 
     def _on_x_axis_changed(self, text: str):
@@ -165,186 +204,38 @@ class GODotPlotDialog(BasePlotDialog):
     # ── Plot ──────────────────────────────────────────────────────────────
 
     def _do_plot(self):
+        """렌더는 순수 함수 src/plots/go_dot.py::render_go_dot 에 있으며 재현 번들과 공유한다.
+        여기서는 그 함수를 호출한 뒤 렌더러 기반 픽셀 여백 미세보정(Qt 전용)만 처리한다.
+        """
+        from plots.go_dot import render_go_dot
+
         self.figure.clear()
-
-        df = self._get_filtered_data()
-
-        if len(df) == 0:
-            ax = self.figure.add_subplot(111)
-            ax.text(0.5, 0.5, 'No data to display\nAdjust filters',
-                    ha='center', va='center', fontsize=14)
+        res = render_go_dot(self.figure, self._get_filtered_data(), self._plot_params())
+        if res is None:
             self.canvas.draw()
             return
+        df, sizes = res
 
-        required_cols = [StandardColumns.DESCRIPTION]
-        if StandardColumns.FDR in df.columns:
-            required_cols.append(StandardColumns.FDR)
-        if StandardColumns.GENE_COUNT in df.columns:
-            required_cols.append(StandardColumns.GENE_COUNT)
-
-        df = df.dropna(subset=required_cols)
-
-        if len(df) == 0:
-            ax = self.figure.add_subplot(111)
-            ax.text(0.5, 0.5, 'No valid data to display\n(NaN values removed)',
-                    ha='center', va='center', fontsize=14)
-            self.canvas.draw()
-            return
-
-        gene_ratios = self._calculate_gene_ratio(df)
-        df = df.copy()
-        df['_gene_ratio'] = gene_ratios
-
-        x_axis_type = self.x_axis_combo.currentText()
-        if x_axis_type == "Fold Enrichment" and StandardColumns.FOLD_ENRICHMENT in df.columns:
-            df['_x_val'] = pd.to_numeric(df[StandardColumns.FOLD_ENRICHMENT], errors='coerce').fillna(0)
-        else:
-            df['_x_val'] = df['_gene_ratio']
-
-        df = df.sort_values('_x_val', ascending=False)
-
-        top_n = self.top_n_spin.value()
-        df = df.head(top_n)
-        df = df.sort_values('_x_val', ascending=True)
-
-        x_data = df['_x_val']
-
-        if StandardColumns.DESCRIPTION in df.columns:
-            y_labels = df[StandardColumns.DESCRIPTION].to_list()
-        else:
-            y_labels = [f"Term {i+1}" for i in range(len(df))]
-
-        y_labels = [str(label)[:60] + '...' if len(str(label)) > 60 else str(label)
-                    for label in y_labels]
-
-        y_data = np.arange(len(y_labels))
-
-        if StandardColumns.FDR in df.columns:
-            colors = df[StandardColumns.FDR]
-            cmap = self.palette_combo.currentText()
-            color_label = "FDR"
-            vmin = self.color_min_spin.value()
-            vmax = self.color_max_spin.value()
-        else:
-            colors = 'steelblue'
-            cmap = None
-            color_label = None
-            vmin = None
-            vmax = None
-
-        size_mode = self.size_combo.currentText()
-        _SIZE_NORM = {
-            "Gene Count":      (100.0, [(10, "10 genes"), (30, "30 genes"), (80, "≥80 genes")]),
-            "Gene Ratio":      (0.40,  [(0.03, "0.03"),   (0.12, "0.12"),  (0.35, "≥0.35")]),
-            "Fold Enrichment": (20.0,  [(2.0,  "2×"),     (5.0,  "5×"),    (15.0, "≥15×")]),
-        }
-        _S_MIN, _S_MAX = 50, 500
-
-        if size_mode == "Gene Count" and StandardColumns.GENE_COUNT in df.columns:
-            raw_sizes = pd.to_numeric(df[StandardColumns.GENE_COUNT], errors='coerce').fillna(0)
-        elif size_mode == "Gene Ratio":
-            raw_sizes = pd.to_numeric(df['_gene_ratio'], errors='coerce').fillna(0)
-        elif size_mode == "Fold Enrichment" and StandardColumns.FOLD_ENRICHMENT in df.columns:
-            raw_sizes = pd.to_numeric(df[StandardColumns.FOLD_ENRICHMENT], errors='coerce').fillna(0)
-        else:
-            raw_sizes = None
-
-        if raw_sizes is not None and size_mode in _SIZE_NORM:
-            _norm_max, _size_rep = _SIZE_NORM[size_mode]
-            sizes = _S_MIN + np.clip(raw_sizes / _norm_max, 0, 1) * (_S_MAX - _S_MIN)
-        else:
-            _norm_max, _size_rep = None, None
-            sizes = pd.Series(100, index=df.index) if raw_sizes is None else raw_sizes * 0 + 100
-
-        ax = self.figure.add_subplot(111)
-
-        scatter = ax.scatter(x_data, y_data, c=colors, s=sizes,
-                             cmap=cmap, alpha=0.7, edgecolors='black', linewidth=0.5,
-                             vmin=vmin, vmax=vmax)
-
-        max_s = float(sizes.max() if hasattr(sizes, 'max') else sizes)
-        max_r_pt = np.sqrt(max_s) / 2
-        fig_w_pt = self.figure.get_size_inches()[0] * self.figure.dpi
-        fig_h_pt = self.figure.get_size_inches()[1] * self.figure.dpi
-        x_margin = max_r_pt / (fig_w_pt * 0.55) + 0.05
-        y_margin = max_r_pt / (fig_h_pt * 0.80) + 0.05
-        ax.margins(x=x_margin, y=y_margin)
-
-        n_terms = len(df)
-        if n_terms <= 10:
-            ylabel_fontsize = 9
-        elif n_terms <= 20:
-            ylabel_fontsize = 8
-        elif n_terms <= 30:
-            ylabel_fontsize = 7
-        else:
-            ylabel_fontsize = 6
-
-        ax.set_yticks(y_data)
-        ax.set_yticklabels(y_labels, fontsize=ylabel_fontsize)
-        ax.set_xlabel(self._xlabel_text, fontsize=11, fontweight='bold')
-        ax.set_ylabel("GO/KEGG Terms", fontsize=11, fontweight='bold')
-        ax.set_title("GO/KEGG Enrichment Dot Plot", fontsize=13, fontweight='bold')
-        ax.grid(axis='x', alpha=0.3, linestyle='--')
-
-        if cmap is not None and color_label is not None:
-            cbar = self.figure.colorbar(scatter, ax=ax, shrink=0.5, pad=0.02, anchor=(0, 1.0))
-            cbar.set_label(color_label, fontsize=10)
-
-        if _size_rep is not None and _norm_max is not None:
-            from matplotlib.lines import Line2D
-
-            _leg_fontsize = 8
-
-            def _legend_ms(val):
-                s = _S_MIN + np.clip(val / _norm_max, 0, 1) * (_S_MAX - _S_MIN)
-                return 2.0 * np.sqrt(s / np.pi)
-
-            _max_diam = max(_legend_ms(v) for v, _ in _size_rep)
-            _labelspacing = _max_diam / _leg_fontsize + 0.5
-
-            legend_elements = [
-                Line2D([0], [0], marker='o', color='none',
-                       markerfacecolor='#808080', markeredgecolor='#333333',
-                       markeredgewidth=0.8, markersize=_legend_ms(v), label=lbl)
-                for v, lbl in _size_rep
-            ]
-            leg = ax.legend(handles=legend_elements, title=size_mode,
-                            loc='upper left', fontsize=_leg_fontsize,
-                            title_fontsize=_leg_fontsize,
-                            labelspacing=_labelspacing,
-                            handlelength=0, handletextpad=1.2,
-                            borderpad=0.9, framealpha=0.95,
-                            edgecolor='#bbbbbb', fancybox=False,
-                            bbox_to_anchor=(1.02, 0.20))
-            leg.get_title().set_fontweight('bold')
-
+        # 렌더러 기반 픽셀 단위 여백 미세보정 (Qt 전용 — 번들에선 margins로 충분)
+        self.canvas.draw()
         try:
-            self.figure.tight_layout(rect=(0, 0, 0.85, 1))
+            ax = self.figure.axes[0]
+            x_data = df['_x_val']
+            y_data = np.arange(len(df))
+            renderer = self.figure.canvas.get_renderer()
+            bbox = ax.get_window_extent(renderer=renderer)
+            ax_w_px, ax_h_px = bbox.width, bbox.height
+            max_s = float(sizes.max() if hasattr(sizes, 'max') else sizes)
+            max_r_px = np.sqrt(max_s) / 2
+            x_range = float(x_data.max() - x_data.min()) if len(x_data) > 1 else 1.0
+            y_range = float(len(y_data) - 1) if len(y_data) > 1 else 1.0
+            x_pad = (max_r_px / ax_w_px) * x_range * 1.3 if ax_w_px > 0 else x_range * 0.05
+            y_pad = (max_r_px / ax_h_px) * y_range * 1.3 if ax_h_px > 0 else y_range * 0.05
+            ax.set_xlim(float(x_data.min()) - x_pad, float(x_data.max()) + x_pad)
+            ax.set_ylim(-0.5 - y_pad, float(len(y_data) - 1) + 0.5 + y_pad)
+            self.canvas.draw()
         except Exception:
-            if len(y_labels) > 0:
-                max_label_len = max(len(str(label)) for label in y_labels)
-                base_margin = 0.30
-                char_factor = max_label_len * 0.004
-                left_margin = min(0.50, base_margin + char_factor)
-            else:
-                left_margin = 0.30
-            self.figure.subplots_adjust(left=left_margin, right=0.85)
-
-        self.canvas.draw()
-        renderer = self.figure.canvas.get_renderer()
-        bbox = ax.get_window_extent(renderer=renderer)
-        ax_w_px = bbox.width
-        ax_h_px = bbox.height
-        max_s = float(sizes.max() if hasattr(sizes, 'max') else sizes)
-        max_r_px = np.sqrt(max_s) / 2
-        x_range = float(x_data.max() - x_data.min()) if len(x_data) > 1 else 1.0
-        y_range = float(len(y_data) - 1) if len(y_data) > 1 else 1.0
-        x_pad = (max_r_px / ax_w_px) * x_range * 1.3 if ax_w_px > 0 else x_range * 0.05
-        y_pad = (max_r_px / ax_h_px) * y_range * 1.3 if ax_h_px > 0 else y_range * 0.05
-        ax.set_xlim(float(x_data.min()) - x_pad, float(x_data.max()) + x_pad)
-        ax.set_ylim(-0.5 - y_pad, float(len(y_data) - 1) + 0.5 + y_pad)
-        self.canvas.draw()
+            pass
 
     # ── Export ────────────────────────────────────────────────────────────
 

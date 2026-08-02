@@ -17,6 +17,7 @@ a = Analysis(
     datas=[
         # Pre-loaded datasets 포함
         ('database', 'database'),
+        ('data/orthologs/ortholog_map.csv.gz', 'data/orthologs'),  # cross-species 메타(M2)
         # Include entire src package
         ('src', 'src'),
         # Logo image for About dialog
@@ -91,6 +92,7 @@ a = Analysis(
         'matplotlib.figure',
         'matplotlib.pyplot',
         'seaborn',
+        'adjustText',
         'matplotlib_venn',
         'networkx',
         'networkx.algorithms',
@@ -151,15 +153,15 @@ app = BUNDLE(
     name='CMG-SeqViewer.app',
     icon='cmg-seqviewer.icns',
     bundle_identifier='com.ibs.cmgseqviewer',
-    version='1.2.1',
+    version='1.2.7',
     info_plist={
         'NSPrincipalClass': 'NSApplication',
         'NSAppleScriptEnabled': False,
         'LSMinimumSystemVersion': '10.13.0',  # macOS 10.13 High Sierra minimum
         'NSHighResolutionCapable': True,
         'NSRequiresAquaSystemAppearance': False,
-        'CFBundleShortVersionString': '1.2.1',
-        'CFBundleVersion': '1.2.1',
+        'CFBundleShortVersionString': '1.2.7',
+        'CFBundleVersion': '1.2.7',
         'CFBundleName': 'CMG-SeqViewer',
         'CFBundleDisplayName': 'CMG-SeqViewer',
         'CFBundleExecutable': 'CMG-SeqViewer',

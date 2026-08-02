@@ -277,6 +277,7 @@ class FilterCriteria:
     # Statistical 모드용 (GO)
     fdr_max: float = 0.05
     fold_enrichment_min: float = 0.0
+    go_min_gene_count: int = 3  # term 에 걸린 내 유전자 수(Count) 최소값. 0 = 필터 안 함
     ontology: str = "All"  # "All", "BP", "MF", "CC", "KEGG"
     go_direction: str = "All"  # "All", "UP", "DOWN", "TOTAL"
 
@@ -304,6 +305,7 @@ class FilterCriteria:
             'term_id_list': self.term_id_list,
             'fdr_max': self.fdr_max,
             'fold_enrichment_min': self.fold_enrichment_min,
+            'go_min_gene_count': self.go_min_gene_count,
             'regulation_direction': self.regulation_direction,
             'ontology': self.ontology,
             'go_direction': self.go_direction,

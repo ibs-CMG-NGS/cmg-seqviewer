@@ -71,6 +71,31 @@ class GOBarChartDialog(BasePlotDialog):
     def _extra_buttons(self) -> list:
         return [("Export Data", self._export_data)]
 
+    # ── Bundle / params ────────────────────────────────────────────────────
+
+    def _plot_params(self) -> dict:
+        return {
+            'top_n': self.top_n_spin.value(),
+            'x_axis': self.x_axis_combo.currentText(),
+            'sort_by': self.sort_combo.currentText(),
+            'bar_color': self.bar_color.name(),
+            'horizontal': self.horizontal_check.isChecked(),
+            'xlabel_text': getattr(self, '_xlabel_text', self.x_axis_combo.currentText()),
+        }
+
+    def get_bundle_context(self) -> dict:
+        return {
+            'figure': self.figure,
+            'dataframe': self.df,
+            'plot_params': self._plot_params(),
+            'dataset_name': getattr(self.dataset, 'name', 'unknown'),
+            'plot_type': 'go_bar',
+            'figure_title': 'GO/KEGG Enrichment Bar Chart',
+            'figure_slug': 'go_bar_chart',
+            'source_stem': 'go_bar_chart',
+            'notes': 'Generated from cmg-seqviewer GO/KEGG bar chart',
+        }
+
     # ── Slots ─────────────────────────────────────────────────────────────
 
     def _on_x_axis_changed(self, text: str):
@@ -95,107 +120,12 @@ class GOBarChartDialog(BasePlotDialog):
     # ── Plot ──────────────────────────────────────────────────────────────
 
     def _do_plot(self):
+        """렌더는 순수 함수 src/plots/go_bar.py::render_go_bar 에 있으며 재현 번들과 공유한다."""
+        from plots.go_bar import render_go_bar
+
         self.figure.clear()
-
-        df = self._get_filtered_data()
-
-        if len(df) == 0:
-            ax = self.figure.add_subplot(111)
-            ax.text(0.5, 0.5, 'No data to display\nAdjust filters',
-                    ha='center', va='center')
-            self.canvas.draw()
-            return
-
-        required_cols = [StandardColumns.DESCRIPTION]
-        if StandardColumns.FDR in df.columns:
-            required_cols.append(StandardColumns.FDR)
-        if StandardColumns.GENE_COUNT in df.columns:
-            required_cols.append(StandardColumns.GENE_COUNT)
-
-        df = df.dropna(subset=required_cols)
-
-        if len(df) == 0:
-            ax = self.figure.add_subplot(111)
-            ax.text(0.5, 0.5, 'No valid data to display\n(NaN values removed)',
-                    ha='center', va='center')
-            self.canvas.draw()
-            return
-
-        sort_by = self.sort_combo.currentText()
-        if sort_by == "FDR (ascending)" and StandardColumns.FDR in df.columns:
-            df = df.sort_values(StandardColumns.FDR, ascending=True)
-        elif sort_by == "Gene Count (descending)" and StandardColumns.GENE_COUNT in df.columns:
-            df = df.sort_values(StandardColumns.GENE_COUNT, ascending=False)
-        elif sort_by == "Alphabetical" and StandardColumns.DESCRIPTION in df.columns:
-            df = df.sort_values(StandardColumns.DESCRIPTION, ascending=True)
-
-        top_n = self.top_n_spin.value()
-        df = df.head(top_n)
-
-        x_axis_type = self.x_axis_combo.currentText()
-        if x_axis_type == "-log10(FDR)":
-            if StandardColumns.FDR in df.columns:
-                x_data = -np.log10(df[StandardColumns.FDR].replace(0, 1e-300))
-            else:
-                x_data = pd.Series(1, index=df.index)
-        elif x_axis_type == "Gene Ratio":
-            if StandardColumns.GENE_RATIO in df.columns:
-                def _parse_ratio(r):
-                    try:
-                        if pd.isna(r):
-                            return 0.0
-                        if isinstance(r, (int, float)):
-                            return float(r)
-                        parts = str(r).split('/')
-                        return float(parts[0]) / float(parts[1]) if len(parts) == 2 and float(parts[1]) > 0 else 0.0
-                    except Exception:
-                        return 0.0
-                x_data = df[StandardColumns.GENE_RATIO].apply(_parse_ratio)
-            else:
-                x_data = pd.Series(1, index=df.index)
-        else:  # Fold Enrichment
-            if StandardColumns.FOLD_ENRICHMENT in df.columns:
-                x_data = pd.to_numeric(df[StandardColumns.FOLD_ENRICHMENT], errors='coerce').fillna(0)
-            else:
-                x_data = pd.Series(1, index=df.index)
-
-        if StandardColumns.DESCRIPTION in df.columns:
-            y_labels = df[StandardColumns.DESCRIPTION].to_list()
-        else:
-            y_labels = [f"Term {i+1}" for i in range(len(df))]
-
-        y_labels = [str(label)[:70] + '...' if len(str(label)) > 70 else str(label)
-                    for label in y_labels]
-
-        y_positions = np.arange(len(y_labels))
-        bar_color = self.bar_color.name()
-        horizontal = self.horizontal_check.isChecked()
-
         ax = self.figure.add_subplot(111)
-
-        xlabel_text = self._xlabel_text
-        ylabel_text = "GO/KEGG Terms"
-        if horizontal:
-            ax.barh(y_positions, x_data, color=bar_color, edgecolor='black', linewidth=0.5)
-            ax.set_yticks(y_positions)
-            ax.set_yticklabels(y_labels)
-            ax.set_xlabel(xlabel_text, fontweight='bold')
-            ax.set_ylabel(ylabel_text, fontweight='bold')
-            ax.invert_yaxis()
-        else:
-            ax.bar(y_positions, x_data, color=bar_color, edgecolor='black', linewidth=0.5)
-            ax.set_xticks(y_positions)
-            ax.set_xticklabels(y_labels, rotation=45, ha='right')
-            ax.set_ylabel(xlabel_text, fontweight='bold')
-            ax.set_xlabel(ylabel_text, fontweight='bold')
-
-        ax.set_title("GO/KEGG Enrichment Bar Chart", fontweight='bold')
-
-        if horizontal:
-            ax.grid(axis='x', alpha=0.3, linestyle='--')
-        else:
-            ax.grid(axis='y', alpha=0.3, linestyle='--')
-
+        render_go_bar(ax, self._get_filtered_data(), self._plot_params())
         self.figure.tight_layout()
         self.canvas.draw()
 

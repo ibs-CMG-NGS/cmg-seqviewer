@@ -25,9 +25,43 @@ import numpy as np
 
 from models.standard_columns import StandardColumns
 from utils import figure_theme, figure_export
+from utils.figure_bundle_export import export_figure_bundle
 from gui.widgets.figure_style_panel import FigureStylePanel
 from gui.widgets.plot_labels_panel import PlotLabelsPanel
 from gui.base_plot_dialog import BasePlotDialog
+
+
+def _fit_settings_scroll_width(scroll: QScrollArea, container: QWidget,
+                               min_w: int = 220, max_w: int = 600) -> None:
+    """설정 패널을 콘텐츠가 실제로 필요로 하는 폭에 맞춰 잡아 가로 스크롤을 없앤다.
+
+    기준은 sizeHint(선호 폭)가 아니라 minimumSizeHint(축소 불가능한 최소 폭)다.
+    가로 스크롤은 콘텐츠의 '최소' 폭이 뷰포트보다 클 때 생기므로, 긴 라벨(예:
+    "Show gene dendrogram (hierarchical)")처럼 줄일 수 없는 위젯이 정하는 최소 폭에만
+    맞추면 된다. QLineEdit 같은 축소 가능한 위젯의 넉넉한 선호 폭까지 반영하면 패널이
+    과하게 넓어지므로 사용하지 않는다. 로케일/폰트가 달라져도 매직 넘버 없이 자동 조정.
+    """
+    scrollbar_w = scroll.verticalScrollBar().sizeHint().width()
+    needed = container.minimumSizeHint().width() + scrollbar_w + 8
+    width = int(min(max_w, max(min_w, needed)))
+    scroll.setMinimumWidth(width)
+    scroll.setMaximumWidth(width + 40)   # 사용자가 splitter로 약간 넓힐 여지
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+
+def _prompt_bundle_path(parent, default_name: str) -> str:
+    """번들 폴더 경로를 Save 대화상자로 받는다(이름 편집 가능).
+
+    기본 이름은 {slug}_bundle 로 제안하되 사용자가 위치·폴더 이름을 바꿀 수 있다.
+    취소 시 빈 문자열 반환.
+    """
+    path, _ = QFileDialog.getSaveFileName(
+        parent,
+        "Export Figure Bundle — choose folder name",
+        default_name,
+        "Figure Bundle Folder (*)",
+    )
+    return path
 
 
 def create_plot_icon(emoji: str, bg_color: QColor = None) -> QIcon:
@@ -171,6 +205,40 @@ class VolcanoPlotWidget(QWidget):
     def get_settings_panel(self) -> 'QWidget | None':
         """설정 패널 반환 (embed_settings=False일 때 외부 배치용)."""
         return self._settings_panel
+
+    def get_bundle_context(self) -> dict:
+        """현재 그림 상태를 bundle exporter가 사용할 수 있는 형태로 반환."""
+        return {
+            'figure': self.figure,
+            'dataframe': self.dataframe,
+            'plot_params': self.get_plot_params(),
+            'dataset_name': getattr(self, 'dataset_name', 'unknown'),
+            'plot_type': 'volcano',
+            'figure_title': self.plot_title or 'Volcano Plot',
+            'figure_slug': 'volcano_plot',
+            'source_stem': 'volcano_plot',
+            'notes': 'Generated from cmg-seqviewer volcano plot',
+        }
+
+    def _export_figure_bundle(self):
+        """현재 volcano plot을 재현 가능한 bundle로 export."""
+        from PyQt6.QtWidgets import QMessageBox
+
+        path = _prompt_bundle_path(self, "volcano_plot_bundle")
+        if not path:
+            return
+
+        try:
+            bundle_dir = export_figure_bundle(
+                self.get_bundle_context(),
+                path,
+                "volcano_plot",
+                self.plot_title or "Volcano Plot",
+                "volcano",
+            )
+            QMessageBox.information(self, "Bundle exported", f"Bundle created at:\n{bundle_dir}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Bundle export failed", str(exc))
 
     def _on_pin_to_tab(self):
         """탭으로 고정 버튼 클릭 → pin_requested 시그널 발생."""
@@ -361,9 +429,7 @@ class VolcanoPlotWidget(QWidget):
         scroll = QScrollArea()
         scroll.setWidget(settings_container)
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setMinimumWidth(220)
-        scroll.setMaximumWidth(300)
+        _fit_settings_scroll_width(scroll, settings_container)
 
         if self._embed_settings:
             main_splitter.addWidget(scroll)
@@ -406,6 +472,10 @@ class VolcanoPlotWidget(QWidget):
             pin_btn.setToolTip("Pin this plot as a new tab")
             pin_btn.clicked.connect(self._on_pin_to_tab)
             button_layout.addWidget(pin_btn)
+
+        bundle_btn = QPushButton("Export Bundle")
+        bundle_btn.clicked.connect(self._export_figure_bundle)
+        button_layout.addWidget(bundle_btn)
 
         right_panel.addLayout(button_layout)
 
@@ -544,77 +614,40 @@ class VolcanoPlotWidget(QWidget):
             self._draw_plot()
 
     def _draw_plot(self):
-        """실제 matplotlib 그리기 (theme_context 안에서 호출)."""
+        """실제 matplotlib 그리기 (theme_context 안에서 호출).
+
+        렌더 로직은 순수 함수 src/plots/volcano.py::render_volcano 에 있으며
+        재현 번들 스크립트와 공유한다 (단일 진실 공급원). 여기서는 그 함수를 호출한 뒤
+        Qt 전용 요소(hover)와 PlotLabelsPanel 재적용만 처리한다.
+        """
+        from plots.volcano import render_volcano
+
         self.figure.clear()
         ax = self.figure.add_subplot(111)
 
-        # 데이터 준비
-        df = self.dataframe.copy()
-
-        # log2FC와 padj 컬럼 확인
-        if 'log2FC' not in df.columns or 'padj' not in df.columns:
+        if self.dataframe is None or 'log2FC' not in self.dataframe.columns \
+                or 'padj' not in self.dataframe.columns:
             ax.text(0.5, 0.5, 'Required columns not found:\nlog2FC and padj',
-                   ha='center', va='center', fontsize=14)
+                    ha='center', va='center', fontsize=14, transform=ax.transAxes)
             self.canvas.draw()
             return
 
-        # -log10(padj) 계산
-        df['-log10(padj)'] = -np.log10(df['padj'].replace(0, 1e-300))
-
-        # 분류: Up-regulated, Down-regulated, Not significant
-        df['regulation'] = 'ns'
-        df.loc[(df['log2FC'] >= self.log2fc_threshold) &
-               (df['padj'] <= self.padj_threshold), 'regulation'] = 'up'
-        df.loc[(df['log2FC'] <= -self.log2fc_threshold) &
-               (df['padj'] <= self.padj_threshold), 'regulation'] = 'down'
+        # 화면·번들이 공유하는 순수 렌더 (params = get_plot_params())
+        df = render_volcano(ax, self.dataframe, self.get_plot_params())
 
         # DEG 데이터 저장 (hover용)
         self.deg_data = df[df['regulation'].isin(['up', 'down'])].copy()
 
-        # 플롯
-        scatter_collections = []
-        for reg_type, color in [('ns', self.ns_color),
-                                ('down', self.down_color),
-                                ('up', self.up_color)]:
-            subset = df[df['regulation'] == reg_type]
-            sc = ax.scatter(subset['log2FC'], subset['-log10(padj)'],
-                      c=color.name(), s=self.dot_size, alpha=0.6,
-                      label=f'{reg_type.upper()} ({len(subset)})',
-                      picker=True if reg_type != 'ns' else False)  # NS는 picker 비활성화
-            if reg_type != 'ns':
-                scatter_collections.append((sc, subset))
-
-        # Threshold 선
-        ax.axhline(-np.log10(self.padj_threshold), color='black',
-                  linestyle='--', linewidth=1, alpha=0.5)
-        ax.axvline(self.log2fc_threshold, color='black',
-                  linestyle='--', linewidth=1, alpha=0.5)
-        ax.axvline(-self.log2fc_threshold, color='black',
-                  linestyle='--', linewidth=1, alpha=0.5)
-
-        # 축 범위 설정
-        if self.x_min is not None and self.x_max is not None:
-            ax.set_xlim(self.x_min, self.x_max)
-        if self.y_min is not None and self.y_max is not None:
-            ax.set_ylim(self.y_min, self.y_max)
-
-        ax.grid(True, alpha=0.3)
-
-        # Annotation 텍스트 (hover용) - zorder 높게 설정하여 최상위 레이어로
+        # Annotation 텍스트 (hover용) - zorder 높게
         self.annot = ax.annotate("", xy=(0, 0), xytext=(20, 20),
-                                textcoords="offset points",
-                                bbox=dict(boxstyle="round", fc="w", alpha=0.9),
-                                arrowprops=dict(arrowstyle="->"),
-                                zorder=1000)
+                                 textcoords="offset points",
+                                 bbox=dict(boxstyle="round", fc="w", alpha=0.9),
+                                 arrowprops=dict(arrowstyle="->"),
+                                 zorder=1000)
         self.annot.set_visible(False)
-
-        # ── Gene Name Annotation (label) ─────────────────────────────
-        self._draw_gene_labels(ax, df)
-
-        # Hover 이벤트 연결 (DEG만)
         self.figure.canvas.mpl_connect("motion_notify_event", self._on_hover)
 
-        # PlotLabelsPanel 적용 (title/xlabel/ylabel/ticks/legend)
+        # PlotLabelsPanel 재적용 (다이얼로그에선 패널이 최종 권한)
         if hasattr(self, '_labels'):
             self._labels.apply_to_axes(ax)
 
@@ -974,6 +1007,7 @@ class HeatmapWidget(QWidget):
         'normalization': 'z-score',
         'transpose': False,
         'sorting': 'padj',
+        'show_dendrogram': False,
         'colormap': 'RdBu_r',
         'colorbar_min': -3.0,
         'colorbar_max': 3.0,
@@ -1007,6 +1041,7 @@ class HeatmapWidget(QWidget):
         self.normalization = merged['normalization']
         self.transpose = merged['transpose']
         self.sorting = merged['sorting']
+        self.show_dendrogram = merged.get('show_dendrogram', False)
         self.colormap = merged['colormap']
         self.colorbar_min = merged['colorbar_min']
         self.colorbar_max = merged['colorbar_max']
@@ -1034,6 +1069,7 @@ class HeatmapWidget(QWidget):
             'normalization': self.normalization,
             'transpose': self.transpose,
             'sorting': self.sorting,
+            'show_dendrogram': self.show_dendrogram,
             'colormap': self.colormap,
             'colorbar_min': self.colorbar_min,
             'colorbar_max': self.colorbar_max,
@@ -1042,7 +1078,39 @@ class HeatmapWidget(QWidget):
             'fig_height': self.fig_height,
         }
         params.update(self._labels.get_params())
+        # colorbar 표시 여부는 self.show_legend (PlotLabelsPanel의 show_legend와 구분)
+        params['show_colorbar'] = self.show_legend
         return params
+
+    def get_bundle_context(self) -> dict:
+        """현재 heatmap 상태를 bundle exporter가 사용할 수 있는 형태로 반환."""
+        return {
+            'figure': self.figure,
+            'dataframe': self.dataframe,
+            'plot_params': self.get_plot_params(),
+            'dataset_name': getattr(self, 'dataset_name', 'unknown'),
+            'plot_type': 'heatmap',
+            'figure_title': (self._labels.get_params().get('labels_title') or 'Expression Heatmap'),
+            'figure_slug': 'heatmap',
+            'source_stem': 'heatmap',
+            'notes': 'Generated from cmg-seqviewer heatmap',
+        }
+
+    def _export_figure_bundle(self):
+        """현재 heatmap을 재현 가능한 bundle로 export."""
+        from PyQt6.QtWidgets import QMessageBox
+        path = _prompt_bundle_path(self, "heatmap_bundle")
+        if not path:
+            return
+        try:
+            bundle_dir = export_figure_bundle(
+                self.get_bundle_context(),
+                path,
+                "heatmap", "Expression Heatmap", "heatmap",
+            )
+            QMessageBox.information(self, "Bundle exported", f"Bundle created at:\n{bundle_dir}")
+        except Exception as exc:
+            QMessageBox.critical(self, "Bundle export failed", str(exc))
 
     def get_settings_panel(self) -> 'QWidget | None':
         """설정 패널 반환 (embed_settings=False일 때 외부 배치용)."""
@@ -1084,10 +1152,10 @@ class HeatmapWidget(QWidget):
         # Normalization 방법
         self.norm_combo = QComboBox()
         self.norm_combo.addItems([
-            "Z-score (row-wise)",
-            "Min-Max (0-1)",
-            "Log2 Transform",
-            "None (Raw values)"
+            "Z-score",
+            "Min-Max",
+            "Log2",
+            "None (raw)"
         ])
         norm_map = {'z-score': 0, 'minmax': 1, 'log2': 2, 'none': 3}
         self.norm_combo.setCurrentIndex(norm_map.get(self.normalization, 0))
@@ -1097,9 +1165,9 @@ class HeatmapWidget(QWidget):
         # Sorting 방법
         self.sort_combo = QComboBox()
         self.sort_combo.addItems([
-            "Padj (ascending)",
-            "Log2FC (absolute descending)",
-            "Hierarchical Clustering"
+            "Padj ↑",
+            "|Log2FC| ↓",
+            "Clustering"
         ])
         sort_map = {'padj': 0, 'log2fc': 1, 'clustering': 2}
         self.sort_combo.setCurrentIndex(sort_map.get(self.sorting, 0))
@@ -1109,7 +1177,7 @@ class HeatmapWidget(QWidget):
         # Colormap 선택
         self.colormap_combo = QComboBox()
         self.colormap_combo.addItems([
-            "RdBu_r (Red-Blue)",
+            "RdBu_r",
             "viridis",
             "plasma",
             "coolwarm",
@@ -1143,11 +1211,23 @@ class HeatmapWidget(QWidget):
         colorbar_layout.addWidget(self.colorbar_max_spin)
         settings_layout.addRow("Colorbar Range:", colorbar_layout)
 
-        # Transpose
-        self.transpose_check = QCheckBox("Transpose (Swap Genes ↔ Samples)")
+        # Transpose (행 전체를 차지하도록 단일 인자 addRow — 라벨 컬럼 폭 낭비 방지)
+        self.transpose_check = QCheckBox("Transpose (genes ↔ samples)")
         self.transpose_check.setChecked(self.transpose)
+        self.transpose_check.setToolTip("유전자와 샘플 축을 서로 바꿉니다.")
         self.transpose_check.stateChanged.connect(self._on_settings_changed)
-        settings_layout.addRow("", self.transpose_check)
+        settings_layout.addRow(self.transpose_check)
+
+        # 유전자 덴드로그램 (계층적 클러스터링). 켜면 정렬은 clustering으로 강제됨.
+        self.dendro_check = QCheckBox("Show gene dendrogram")
+        self.dendro_check.setChecked(self.show_dendrogram)
+        self.dendro_check.setToolTip(
+            "히트맵 왼쪽에 유전자 계층적 클러스터링 덴드로그램을 표시합니다.\n"
+            "켜면 Gene Sorting이 자동으로 클러스터링 순서로 정렬됩니다.\n"
+            "(Transpose 상태에서는 표시되지 않습니다.)"
+        )
+        self.dendro_check.stateChanged.connect(self._on_settings_changed)
+        settings_layout.addRow(self.dendro_check)
 
         settings_group.setLayout(settings_layout)
         left_panel.addWidget(settings_group)
@@ -1188,9 +1268,7 @@ class HeatmapWidget(QWidget):
         scroll = QScrollArea()
         scroll.setWidget(settings_container)
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setMinimumWidth(220)
-        scroll.setMaximumWidth(300)
+        _fit_settings_scroll_width(scroll, settings_container)
 
         if self._embed_settings:
             main_splitter.addWidget(scroll)
@@ -1223,6 +1301,11 @@ class HeatmapWidget(QWidget):
         export_btn = QPushButton("Export Data")
         export_btn.clicked.connect(self._export_heatmap_data)
         button_layout.addWidget(export_btn)
+
+        bundle_btn = QPushButton("Export Bundle")
+        bundle_btn.setToolTip("재현 가능한 figure 번들(데이터+스크립트+메타)로 export")
+        bundle_btn.clicked.connect(self._export_figure_bundle)
+        button_layout.addWidget(bundle_btn)
 
         if self._show_pin_button:
             pin_btn = QPushButton("📌 Pin to Tab")
@@ -1266,6 +1349,7 @@ class HeatmapWidget(QWidget):
         self.colorbar_min = self.colorbar_min_spin.value()
         self.colorbar_max = self.colorbar_max_spin.value()
         self.transpose = self.transpose_check.isChecked()
+        self.show_dendrogram = self.dendro_check.isChecked()
         self.show_legend = self.legend_check.isChecked()
 
         self.__class__._saved_settings.update({
@@ -1273,6 +1357,7 @@ class HeatmapWidget(QWidget):
             'normalization': self.normalization,
             'transpose': self.transpose,
             'sorting': self.sorting,
+            'show_dendrogram': self.show_dendrogram,
             'colormap': self.colormap,
             'colorbar_min': self.colorbar_min,
             'colorbar_max': self.colorbar_max,
@@ -1286,139 +1371,63 @@ class HeatmapWidget(QWidget):
             self._draw_heatmap()
 
     def _draw_heatmap(self):
-        """Heatmap 그리기"""
+        """Heatmap 그리기.
+
+        렌더 로직은 순수 함수 src/plots/heatmap.py::render_heatmap 에 있으며 재현 번들
+        스크립트와 공유한다. 여기서는 그 함수를 호출한 뒤 Qt 전용 요소(hover)와
+        PlotLabelsPanel 재적용만 처리한다.
+        """
+        from plots.heatmap import render_heatmap
+
         self.figure.clear()
-        ax = self.figure.add_subplot(111)
-
-        df = self.dataframe.copy()
-
-        exclude_patterns = [
-            'basemean', 'base_mean', 'log2fold', 'log2fc', 'logfc', 'foldchange',
-            'lfcse', 'stat', 'statistic', 'pval', 'padj', 'fdr', 'qvalue',
-            'gene_id', 'gene', 'symbol', 'dataset', 'description', 'name'
-        ]
-
-        sample_cols = []
-        for col in df.columns:
-            col_lower = col.lower()
-            is_excluded = any(pattern in col_lower for pattern in exclude_patterns)
-            if not is_excluded and pd.api.types.is_numeric_dtype(df[col]):
-                sample_cols.append(col)
-
-        if not sample_cols:
-            ax.text(0.5, 0.5, 'No sample expression columns found.\n'
-                   'Heatmap requires sample count data.',
-                   ha='center', va='center', fontsize=14)
+        try:
+            result = render_heatmap(self.figure, self.dataframe, self.get_plot_params())
+        except Exception as e:
+            # 렌더 실패는 앱을 종료시키지 않는다 — figure에 안내만 표시
+            import logging
+            logging.getLogger(__name__).warning(f"Heatmap render failed: {e}", exc_info=True)
+            self.figure.clear()
+            ax = self.figure.add_subplot(111)
+            ax.text(0.5, 0.5, f"Could not draw heatmap:\n{e}",
+                    ha='center', va='center', fontsize=11, color='#a00',
+                    transform=ax.transAxes, wrap=True)
+            ax.axis('off')
             self.canvas.draw()
             return
-
-        expr_data = df[sample_cols].copy()
-        expr_data = expr_data.dropna()
-
-        if len(expr_data) == 0:
-            ax.text(0.5, 0.5, 'No valid data after removing NaN values',
-                   ha='center', va='center', fontsize=14)
+        if result is None:
             self.canvas.draw()
             return
+        heatmap_data, gene_labels = result
 
-        if 'padj' in df.columns:
-            df_with_padj = df.loc[expr_data.index].copy()
-            valid_padj = df_with_padj['padj'].dropna()
-            if len(valid_padj) > 0:
-                top_genes_idx = valid_padj.nsmallest(min(self.n_genes, len(valid_padj))).index
-            else:
-                variances = expr_data.var(axis=1)
-                top_genes_idx = variances.nlargest(min(self.n_genes, len(expr_data))).index
-        else:
-            variances = expr_data.var(axis=1)
-            top_genes_idx = variances.nlargest(min(self.n_genes, len(expr_data))).index
-
-        if 'symbol' in df.columns:
-            gene_labels = df.loc[top_genes_idx, 'symbol'].tolist()
-        elif 'gene_id' in df.columns:
-            gene_labels = df.loc[top_genes_idx, 'gene_id'].tolist()
-        else:
-            gene_labels = top_genes_idx.tolist()
-
-        expr_data = expr_data.loc[top_genes_idx]
-
-        if self.normalization == 'z-score':
-            heatmap_data = expr_data.apply(lambda x: (x - x.mean()) / (x.std() + 1e-10), axis=1)
-            cbar_label = 'Z-score'
-        elif self.normalization == 'minmax':
-            heatmap_data = expr_data.apply(lambda x: (x - x.min()) / (x.max() - x.min() + 1e-10), axis=1)
-            cbar_label = 'Normalized (0-1)'
-        elif self.normalization == 'log2':
-            heatmap_data = np.log2(expr_data + 1)
-            cbar_label = 'Log2(count + 1)'
-        else:
-            heatmap_data = expr_data
-            cbar_label = 'Raw count'
-
-        if self.sorting == 'padj' and 'padj' in df.columns:
-            df_with_padj = df.loc[heatmap_data.index].copy()
-            sort_order = df_with_padj['padj'].argsort()
-            heatmap_data = heatmap_data.iloc[sort_order]
-            gene_labels = [gene_labels[i] for i in sort_order]
-        elif self.sorting == 'log2fc' and 'log2FC' in df.columns:
-            df_with_log2fc = df.loc[heatmap_data.index].copy()
-            sort_order = df_with_log2fc['log2FC'].abs().argsort()[::-1]
-            heatmap_data = heatmap_data.iloc[sort_order]
-            gene_labels = [gene_labels[i] for i in sort_order]
-        elif self.sorting == 'clustering':
-            try:
-                from scipy.cluster.hierarchy import linkage, dendrogram
-                from scipy.spatial.distance import pdist
-                linkage_matrix = linkage(pdist(heatmap_data, metric='euclidean'), method='average')
-                dendro = dendrogram(linkage_matrix, no_plot=True)
-                order = dendro['leaves']
-                heatmap_data = heatmap_data.iloc[order]
-                gene_labels = [gene_labels[i] for i in order]
-            except ImportError:
-                pass
-
-        if self.transpose:
-            heatmap_data = heatmap_data.T
-
-        im = ax.imshow(heatmap_data, cmap=self.colormap, aspect='auto',
-                      interpolation='nearest', vmin=self.colorbar_min, vmax=self.colorbar_max)
-
+        # 상태 저장 (hover / export 용)
         self.current_heatmap_data = heatmap_data
         self.current_gene_labels = gene_labels
-
-        if self.transpose:
-            if len(heatmap_data.index) <= 50:
-                ax.set_yticks(range(len(heatmap_data.index)))
-                ax.set_yticklabels(heatmap_data.index, fontsize=8)
-            if len(gene_labels) <= 20:
-                ax.set_xticks(range(len(gene_labels)))
-                ax.set_xticklabels(gene_labels, rotation=90, fontsize=8, ha='right')
-        else:
-            if len(heatmap_data.columns) <= 50:
-                ax.set_xticks(range(len(heatmap_data.columns)))
-                ax.set_xticklabels(heatmap_data.columns, rotation=90, fontsize=8)
-            if len(gene_labels) <= 20:
-                ax.set_yticks(range(len(gene_labels)))
-                ax.set_yticklabels(gene_labels, fontsize=8)
-
-        self._labels.apply_to_axes(ax)
-
-        if self.show_legend:
-            cbar = self.figure.colorbar(im, ax=ax)
-            cbar.set_label(cbar_label, fontsize=10)
-
         self.heatmap_data = heatmap_data
         self.gene_labels = gene_labels
-        self.figure.canvas.mpl_connect("motion_notify_event", self._on_hover)
 
+        # 덴드로그램/colorbar 축이 아니라 히트맵 본체 축을 찾는다 (render가 gid로 표시)
+        ax = next((a for a in self.figure.axes if a.get_gid() == 'heatmap_main'),
+                  self.figure.axes[0])
+        # PlotLabelsPanel 재적용 (다이얼로그에선 패널이 최종 권한)
+        self._labels.apply_to_axes(ax)
+        # 덴드로그램이 켜지면 유전자 라벨은 render가 오른쪽에 둔다. PlotLabelsPanel이 왼쪽
+        # tick label/축 제목을 다시 켜서 좌우 중복이 생기므로, 좌측을 자동 비활성화한다.
+        if self.show_dendrogram and not self.transpose:
+            ax.tick_params(axis='y', labelleft=False, labelright=True)
+            ax.set_ylabel('')
+
+        # Hover (Qt 전용)
+        self.figure.canvas.mpl_connect("motion_notify_event", self._on_hover)
         self.annot = ax.annotate("", xy=(0, 0), xytext=(20, 20),
-                                textcoords="offset points",
-                                bbox=dict(boxstyle="round", fc="w", alpha=0.9),
-                                arrowprops=dict(arrowstyle="->"),
-                                zorder=1000)
+                                 textcoords="offset points",
+                                 bbox=dict(boxstyle="round", fc="w", alpha=0.9),
+                                 arrowprops=dict(arrowstyle="->"),
+                                 zorder=1000)
         self.annot.set_visible(False)
 
-        self.figure.tight_layout()
+        # 덴드로그램은 gridspec 레이아웃이라 tight_layout과 호환되지 않음(경고 방지)
+        if not (self.show_dendrogram and not self.transpose):
+            self.figure.tight_layout()
         self.canvas.draw()
 
     def _save_figure(self):
@@ -1480,9 +1489,11 @@ class HeatmapWidget(QWidget):
 
     def _on_hover(self, event):
         """마우스 오버 시 셀 정보 표시"""
-        if event.inaxes is None:
-            self.annot.set_visible(False)
-            self.canvas.draw_idle()
+        # 덴드로그램/colorbar 축 위에서는 셀 정보를 계산하지 않는다
+        if event.inaxes is None or event.inaxes.get_gid() != 'heatmap_main':
+            if getattr(self, 'annot', None) is not None and self.annot.get_visible():
+                self.annot.set_visible(False)
+                self.canvas.draw_idle()
             return
 
         x, y = int(event.xdata + 0.5), int(event.ydata + 0.5)

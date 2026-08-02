@@ -16,6 +16,7 @@ from PyQt6.QtGui import QAction, QIcon, QFont, QActionGroup, QPixmap
 import logging
 from pathlib import Path
 from typing import Optional, List, Dict
+import numpy as np
 import pandas as pd
 
 from core.fsm import FSM, State, Event
@@ -24,6 +25,7 @@ from gui.filter_panel import FilterPanel
 from gui.dataset_tree_panel import DatasetTreePanel
 from gui.comparison_panel import ComparisonPanel
 from gui.visualization_dialog import VolcanoPlotWidget, VolcanoPlotDialog, HeatmapWidget, HeatmapDialog, PadjHistogramDialog, DotPlotDialog
+from utils.figure_bundle_export import export_figure_bundle
 from gui.pca_dialog import PCADialog
 from gui.venn_dialog import VennDiagramDialog
 from gui.venn_dialog_comparison import VennDiagramFromComparisonDialog
@@ -392,6 +394,10 @@ class MainWindow(QMainWindow):
         # 항상 활성화
         file_menu.addAction(self.export_action)
 
+        self.export_bundle_action = QAction("Export Figure Bundle...", self)
+        self.export_bundle_action.triggered.connect(self._on_export_figure_bundle)
+        file_menu.addAction(self.export_bundle_action)
+
         self.export_multi_omics_action = QAction("Export Multi-Omics Results (Excel)...", self)
         self.export_multi_omics_action.triggered.connect(self._on_export_multi_omics)
         file_menu.addAction(self.export_multi_omics_action)
@@ -641,6 +647,10 @@ class MainWindow(QMainWindow):
         self.annotation_compare_action.triggered.connect(self._on_annotation_comparison_requested)
         cross_menu.addAction(self.annotation_compare_action)
 
+        self.meta_volcano_action = QAction("🌋 Meta Volcano Plot (Comparison sheet)", self)
+        self.meta_volcano_action.triggered.connect(self._on_meta_volcano_requested)
+        cross_menu.addAction(self.meta_volcano_action)
+
         viz_menu.addSeparator()
 
         # RNA-ATAC Integration 서브메뉴 (구 Multi-Omics; MULTI_OMICS 탭 활성 시에만 활성화)
@@ -805,9 +815,18 @@ class MainWindow(QMainWindow):
                 'filter_params': None,
                 'comparison_params': None,
             }
+            # 재생성 레시피 stamp: comparison/clustered/integration 시트는 프로젝트 저장 시
+            # 이 레시피로 복원(replay)된다. 생성 핸들러가 _pending_sheet_recipe 를 설정해 둔다.
+            if sheet_type in ('comparison', 'clustered', 'integration'):
+                recipe = getattr(self, '_pending_sheet_recipe', None)
+                if recipe:
+                    self.tab_data[new_idx]['comparison_params'] = dict(recipe)
         # 비-whole 시트는 parent_dataset이 있으면 즉시 트리에 등록
         if parent_dataset and sheet_type != 'whole':
             self.dataset_manager.add_sheet(parent_dataset, new_idx, tab_name, sheet_type)
+        # 단일 부모가 없는 결과 시트(비교/클러스터)는 'Cross-Dataset Results' 그룹에 등록
+        elif not parent_dataset and sheet_type in ('comparison', 'clustered'):
+            self.dataset_manager.add_result_sheet(new_idx, tab_name, sheet_type)
 
         return table
 
@@ -829,9 +848,11 @@ class MainWindow(QMainWindow):
             if tab_index in self.tab_data:
                 self.tab_data[tab_index]['dataframe'] = dataframe
                 self.tab_data[tab_index]['dataset'] = dataset
-                # 'whole' 시트: parent_dataset이 아직 None이면 dataset.name으로 채움
+                # 'whole' 시트("Whole Dataset" 탭)는 데이터셋을 전환하며 재사용되므로,
+                # parent_dataset 을 '지금 표시 중인 데이터셋'으로 항상 동기화한다.
+                # (예전엔 None 일 때만 채워서 처음 로드한 데이터셋 이름이 계속 남았고,
+                #  그 결과 다른 데이터셋에서 만든 필터/플롯이 엉뚱한 부모로 저장됐다.)
                 if (dataset is not None
-                        and self.tab_data[tab_index].get('parent_dataset') is None
                         and self.tab_data[tab_index].get('sheet_type') == 'whole'):
                     self.tab_data[tab_index]['parent_dataset'] = dataset.name
             else:
@@ -862,7 +883,14 @@ class MainWindow(QMainWindow):
             StandardColumns.PVALUE, StandardColumns.PVALUE_GO,
             StandardColumns.QVALUE
         }
-        scientific_col_names = {col for col in columns if col in scientific_columns}
+        # p-value 계열은 매우 작은 값이 많아 scientific notation으로 표시.
+        # Comparison 시트의 {DS}_padj / meta_pvalue_* 컬럼도 포함.
+        scientific_col_names = {
+            col for col in columns
+            if col in scientific_columns
+            or col.startswith('meta_pvalue') or col.startswith('meta_fdr')
+            or col.endswith('_padj') or col.endswith('_pvalue') or col.endswith('_fdr')
+        }
 
         # 모델 세팅 — 셀 객체를 만들지 않고 DataFrame을 직접 백엔드로 사용 (가상화)
         model = DataFrameTableModel(filtered_df, self.decimal_precision, scientific_col_names)
@@ -1470,7 +1498,13 @@ class MainWindow(QMainWindow):
                     if fe_min > 0 and StandardColumns.FOLD_ENRICHMENT in filtered_df.columns:
                         fe_values = pd.to_numeric(filtered_df[StandardColumns.FOLD_ENRICHMENT], errors='coerce')
                         filtered_df = filtered_df[fe_values >= fe_min]
-                    
+
+                    # Count(내 리스트 ∩ term) 최소값 필터
+                    min_count = getattr(criteria, 'go_min_gene_count', 0)
+                    if min_count > 0 and StandardColumns.GENE_COUNT in filtered_df.columns:
+                        gc_values = pd.to_numeric(filtered_df[StandardColumns.GENE_COUNT], errors='coerce')
+                        filtered_df = filtered_df[gc_values >= min_count]
+
                     # Ontology 필터
                     if criteria.ontology != "All" and StandardColumns.ONTOLOGY in filtered_df.columns:
                         filtered_df = filtered_df[filtered_df[StandardColumns.ONTOLOGY] == criteria.ontology]
@@ -1496,6 +1530,9 @@ class MainWindow(QMainWindow):
                     fe_min = getattr(criteria, 'fold_enrichment_min', 0.0)
                     if fe_min > 0:
                         filters.append(f"FE≥{fe_min:.1f}")
+                    min_count = getattr(criteria, 'go_min_gene_count', 0)
+                    if min_count > 0:
+                        filters.append(f"Count≥{min_count}")
                     if criteria.ontology != "All":
                         filters.append(criteria.ontology)
                     if criteria.go_direction != "All":
@@ -1592,9 +1629,99 @@ class MainWindow(QMainWindow):
             comparison_type: 비교 타입 ("gene_list", "statistics", "venn", "scatter", "heatmap", "correlation")
         """
         self.logger.info(f"Comparison requested: {comparison_type} for {len(dataset_names)} datasets")
-        
+
         # 직접 비교 수행 (Presenter는 단일 데이터셋 처리만 담당)
         self._perform_basic_comparison(dataset_names, comparison_type)
+
+    def _replay_comparison(self, dataset_names, comparison_type):
+        """프로젝트 복원 시 저장된 레시피로 비교 시트를 재생성."""
+        self._perform_basic_comparison(list(dataset_names), comparison_type)
+
+    def _replay_dataset_sheets(self, loaded_ds_name, sheets):
+        """프로젝트 복원: 한 데이터셋의 filtered/plot 하위 시트를 재현한다."""
+        from models.data_models import FilterCriteria
+        for sheet in sheets:
+            stype = sheet.get("type")
+
+            if stype == "filtered":
+                fp_dict = sheet.get("filter_params")
+                if not fp_dict:
+                    continue
+                try:
+                    criteria = FilterCriteria.from_dict(fp_dict)
+                    self.presenter.switch_dataset(loaded_ds_name)
+                    self.presenter.apply_filter(criteria)
+                except Exception as e:
+                    self.logger.warning(f"Failed to replay filter for sheet '{sheet.get('label')}': {e}")
+
+            elif stype == "plot":
+                plot_type = sheet.get("plot_type", "")
+                plot_params = sheet.get("plot_params") or {}
+                label_str = sheet.get("label", "Plot")
+                src_filter = sheet.get("source_filter_params")
+                try:
+                    target_ds = self.presenter.datasets.get(loaded_ds_name)
+                    if target_ds is None:
+                        raise ValueError(f"Dataset '{loaded_ds_name}' not found")
+                    base_df = target_ds.dataframe
+                    # plot이 filtered 시트에서 만들어졌으면 그 filter를 재적용해 동일 부분집합 위에 그린다
+                    if src_filter:
+                        try:
+                            criteria = FilterCriteria.from_dict(src_filter)
+                            self.presenter.switch_dataset(loaded_ds_name)
+                            fdf = self.presenter.compute_filtered_df(criteria)
+                            if fdf is not None and not fdf.empty:
+                                base_df = fdf
+                            else:
+                                self.logger.warning(
+                                    f"Plot '{label_str}': source filter yielded no rows; using full dataset")
+                        except Exception as e:
+                            self.logger.warning(
+                                f"Plot '{label_str}': failed to reapply source filter ({e}); using full dataset")
+                    # Rename standardized columns to visualization names
+                    from models.standard_columns import StandardColumns
+                    _rename_map = {
+                        StandardColumns.LOG2FC: 'log2FC',
+                        StandardColumns.ADJ_PVALUE: 'padj',
+                        StandardColumns.PVALUE: 'pvalue',
+                    }
+                    df = base_df.rename(columns=_rename_map)
+                    if plot_type == "volcano":
+                        widget = VolcanoPlotWidget(
+                            df, plot_params=plot_params,
+                            show_pin_button=False, embed_settings=False
+                        )
+                        self._pin_plot_to_tab(widget, label_str, "volcano", plot_params,
+                                              loaded_ds_name, src_filter)
+                    elif plot_type == "heatmap":
+                        widget = HeatmapWidget(
+                            df, plot_params=plot_params,
+                            show_pin_button=False, embed_settings=False
+                        )
+                        self._pin_plot_to_tab(widget, label_str, "heatmap", plot_params,
+                                              loaded_ds_name, src_filter)
+                    else:
+                        # 그 외 pinned 플롯: 레지스트리로 재렌더한다. 단, df 가 별도로
+                        # 가공된 표(멤버십·비교 결과 등)인 플롯은 부모 데이터셋만으로
+                        # 복원할 수 없으므로 건너뛰고 알린다.
+                        from plots.registry import is_supported, restorable_from_dataset
+                        if not is_supported(plot_type):
+                            self.logger.warning(
+                                f"Plot '{label_str}': unknown plot type '{plot_type}'; skipped.")
+                        elif not restorable_from_dataset(plot_type):
+                            self.logger.warning(
+                                f"Plot '{label_str}' ({plot_type}) uses a derived table; "
+                                "cannot be rebuilt from the parent dataset — skipped.")
+                        else:
+                            from gui.pinned_plot_widget import PinnedPlotWidget
+                            widget = PinnedPlotWidget(
+                                plot_type, df, plot_params, figure_title=label_str,
+                                dataset_name=loaded_ds_name,
+                            )
+                            self._pin_plot_to_tab(widget, label_str, plot_type, plot_params,
+                                                  loaded_ds_name, src_filter)
+                except Exception as e:
+                    self.logger.warning(f"Failed to restore plot '{label_str}': {e}")
     
     def _perform_basic_comparison(self, dataset_names: List[str], comparison_type: str):
         """
@@ -1612,24 +1739,33 @@ class MainWindow(QMainWindow):
                     datasets.append(self.presenter.datasets[name])
                 else:
                     self.logger.warning(f"Dataset not found: {name}")
-            
+
             if len(datasets) < 2:
-                QMessageBox.warning(self, "Comparison Error", 
+                QMessageBox.warning(self, "Comparison Error",
                                   "At least 2 valid datasets are required for comparison.")
                 return
-            
-            # 비교 타입별 처리
-            if comparison_type == "gene_list":
-                self._compare_gene_list(datasets)
-            elif comparison_type == "statistics":
-                self._compare_statistics(datasets)
-            elif comparison_type == "go_term":
-                self._compare_go_terms(datasets)
-            else:
-                QMessageBox.information(self, "Feature Moved", 
-                                      "Visualization features (Venn, Scatter, Heatmap, Correlation) "
-                                      "have been moved to the Visualization menu.")
-        
+
+            # 재생성 레시피: 이 비교로 만들어지는 comparison 탭에 stamp 되어 프로젝트에 저장된다.
+            self._pending_sheet_recipe = {
+                'kind': 'comparison',
+                'dataset_names': list(dataset_names),
+                'comparison_type': comparison_type,
+            }
+            try:
+                # 비교 타입별 처리
+                if comparison_type == "gene_list":
+                    self._compare_gene_list(datasets)
+                elif comparison_type == "statistics":
+                    self._compare_statistics(datasets)
+                elif comparison_type == "go_term":
+                    self._compare_go_terms(datasets)
+                else:
+                    QMessageBox.information(self, "Feature Moved",
+                                          "Visualization features (Venn, Scatter, Heatmap, Correlation) "
+                                          "have been moved to the Visualization menu.")
+            finally:
+                self._pending_sheet_recipe = None
+
         except Exception as e:
             self.logger.error(f"Comparison failed: {e}")
             QMessageBox.critical(self, "Comparison Error", f"Failed to compare datasets:\n{str(e)}")
@@ -1938,11 +2074,16 @@ class MainWindow(QMainWindow):
                                     "No GO/KEGG terms found in selected datasets.")
             return
 
+        # 메타 결합엔 raw enrichment p-value 사용, 방향(부호)은 log2(fold enrichment)
+        pval_col = StandardColumns.PVALUE
+        from utils.meta_stats import combine_pvalues, benjamini_hochberg
+
         # Wide-format DataFrame 조립
         rows = []
         for tid, meta in term_meta.items():
             row = {'term_id': tid, 'description': meta['description'],
                    'ontology': meta['ontology']}
+            m_pvals, m_effects = [], []   # term 수준 late aggregation 입력
             for ds, safe in zip(datasets, safe_names):
                 df = ds.dataframe
                 if df is None or tid_col not in df.columns:
@@ -1957,19 +2098,42 @@ class MainWindow(QMainWindow):
                     row[f"{safe}_gene_count"] = None
                 else:
                     first = match.iloc[0]
-                    row[f"{safe}_fe"]         = first[fe_col]  if fe_col  in df.columns else None
+                    fe_v = first[fe_col] if fe_col in df.columns else None
+                    row[f"{safe}_fe"]         = fe_v
                     row[f"{safe}_fdr"]        = first[fdr_col] if fdr_col in df.columns else None
                     row[f"{safe}_gene_count"] = first[gc_col]  if gc_col  in df.columns else None
+                    # 이 term이 검정된 데이터셋의 raw p + log2(FE) 수집
+                    if pval_col in df.columns:
+                        p_v = pd.to_numeric(first[pval_col], errors='coerce')
+                        fe_num = pd.to_numeric(fe_v, errors='coerce')
+                        eff = float(np.log2(fe_num)) if (np.isfinite(fe_num) and fe_num > 0) else np.nan
+                        m_pvals.append(p_v)
+                        m_effects.append(eff)
+
+            meta_res = combine_pvalues(m_pvals, m_effects)
+            if meta_res:
+                row['meta_pvalue_fisher']   = meta_res['meta_pvalue_fisher']
+                row['meta_pvalue_stouffer'] = meta_res['meta_pvalue_stouffer']
+                row['meta_log2fe_mean']     = meta_res['meta_log2fc_mean']
+                row['meta_direction']       = meta_res['meta_direction']
+                row['meta_found_in']        = f"{meta_res['meta_found_in']}/{len(datasets)}"
             rows.append(row)
 
         result_df = pd.DataFrame(rows)
 
-        # 컬럼 순서 정렬
+        # 메타 FDR: Fisher 결합 p를 term 전체에 대해 BH 보정
+        if 'meta_pvalue_fisher' in result_df.columns:
+            result_df['meta_fdr_fisher'] = benjamini_hochberg(
+                pd.to_numeric(result_df['meta_pvalue_fisher'], errors='coerce').to_numpy())
+
+        # 컬럼 순서 정렬: term 정보 → 메타 통계 → 데이터셋별 지표
         base_cols = ['term_id', 'description', 'ontology']
+        meta_cols = ['meta_pvalue_fisher', 'meta_fdr_fisher', 'meta_pvalue_stouffer',
+                     'meta_log2fe_mean', 'meta_direction', 'meta_found_in']
         ds_cols   = []
         for safe in safe_names:
             ds_cols += [f"{safe}_fe", f"{safe}_fdr", f"{safe}_gene_count"]
-        result_df = result_df[[c for c in base_cols + ds_cols if c in result_df.columns]]
+        result_df = result_df[[c for c in base_cols + meta_cols + ds_cols if c in result_df.columns]]
 
         # Dataset 객체 생성 (is_go_comparison 플래그)
         tab_name = f"Comparison: GO Terms ({len(datasets)} datasets)"
@@ -1998,12 +2162,111 @@ class MainWindow(QMainWindow):
             f"GO term comparison: {len(result_df)} terms across {len(datasets)} datasets"
         )
 
+    def _full_gene_stats(self, df) -> dict:
+        """필터 이전 전체 df에서 유전자 식별자 → (log2fc, pvalue, lfcSE) 조회표.
+
+        메타 분석은 '유의한 데이터셋'만이 아니라 유전자가 검정된 모든 데이터셋의
+        통계를 결합해야 편향이 없으므로, 필터링 이전 전체 데이터를 사용한다.
+        Fisher/Stouffer 결합은 study 내에서 보정된 padj가 아니라 raw p-value로 하는
+        것이 정석이므로 raw pvalue를 우선 사용(없으면 padj로 폴백)한다.
+        SE(lfcSE)는 random-effects 효과크기 결합(M5)용이며, 없으면 NaN(해당 연구 제외).
+        symbol과 gene_id 양쪽을 키로 등록(첫 등장 우선)해 데이터셋 간 식별자
+        표기가 달라도 매칭되도록 한다.
+        """
+        if df is None or df.empty:
+            return {}
+        lfc_col = next((c for c in ('log2FC', 'log2fc', 'log2FoldChange', 'Log2FoldChange')
+                        if c in df.columns), None)
+        # raw p-value 우선, 없으면 adjusted p-value 폴백
+        p_col = next((c for c in ('pvalue', 'p_value', 'pval', 'PValue', 'P.Value',
+                                  'padj', 'adj_pvalue', 'Padj') if c in df.columns), None)
+        if lfc_col is None or p_col is None:
+            return {}
+        se_col = next((c for c in ('lfcse', 'lfcSE', 'lfc_se', 'stderr', 'se', 'SE')
+                       if c in df.columns), None)
+        lfc = pd.to_numeric(df[lfc_col], errors='coerce').to_numpy()
+        padj = pd.to_numeric(df[p_col], errors='coerce').to_numpy()
+        n = len(df)
+        se = (pd.to_numeric(df[se_col], errors='coerce').to_numpy()
+              if se_col else np.full(n, np.nan))
+        sym = df['symbol'].astype(str).to_numpy() if 'symbol' in df.columns else np.full(n, '')
+        gid = df['gene_id'].astype(str).to_numpy() if 'gene_id' in df.columns else np.full(n, '')
+        out = {}
+        for s, g, a, b, c in zip(sym, gid, lfc, padj, se):
+            for key in (s, g):
+                if key and key != 'nan' and key not in out:
+                    out[key] = (a, b, c)
+        return out
+
+    def _harmonize_cross_species(self, datasets):
+        """비인간 데이터셋을 human ortholog 심볼로 통일 (M2). 실패 시 None/원본 반환.
+
+        각 데이터셋의 종을 감지해 비인간이면 gene_id/symbol을 human으로 remap한 사본으로
+        교체한다. 매핑 결과 요약(실패 개수 포함)을 안내 다이얼로그로 보여준다.
+        """
+        import dataclasses
+        from utils.ortholog_mapper import OrthologMapper
+
+        mapper = OrthologMapper()
+        if not mapper.available():
+            QMessageBox.warning(
+                self, "Ortholog Map Missing",
+                "Cross-species 통일에 필요한 ortholog 테이블이 없습니다:\n"
+                f"{mapper._path}\n\n"
+                "scripts/build_ortholog_table.py 로 생성하거나 이 옵션을 끄세요.")
+            return None
+
+        eff, lines, any_mapped = [], [], False
+        for ds in datasets:
+            org = OrthologMapper.detect_organism(ds.dataframe, ds.metadata)
+            if org and org != 'human':
+                try:
+                    mdf, stat = mapper.map_to_human(ds.dataframe, org)
+                except Exception as e:
+                    self.logger.error(f"Ortholog mapping failed for {ds.name}: {e}")
+                    QMessageBox.critical(self, "Ortholog Mapping Error",
+                                         f"{ds.name} 매핑 실패:\n{e}")
+                    return None
+                eff.append(dataclasses.replace(ds, dataframe=mdf,
+                                               metadata=dict(ds.metadata)))
+                lines.append(f"• {ds.name}: {org} → human  "
+                             f"{stat['mapped']:,}/{stat['n_in']:,} mapped "
+                             f"({stat['unmapped']:,} dropped)")
+                any_mapped = True
+            else:
+                eff.append(ds)
+                lines.append(f"• {ds.name}: {org or 'unknown'} (no remap)")
+
+        self.logger.info("Cross-species harmonization:\n  " + "\n  ".join(lines))
+        if any_mapped:
+            QMessageBox.information(
+                self, "Cross-species Harmonization",
+                "비인간 데이터셋을 human ortholog로 통일했습니다:\n\n" + "\n".join(lines))
+        else:
+            QMessageBox.warning(
+                self, "Cross-species Harmonization",
+                "human 이외의 종이 감지되지 않아 remap이 일어나지 않았습니다.\n"
+                "(gene_id가 Ensembl ID(ENSMUSG 등)인지 확인)\n\n" + "\n".join(lines))
+        return eff
+
     def _compare_statistics(self, datasets):
         """Statistics 필터링 비교 - Common/Unique 표시"""
+        from utils.meta_stats import combine_pvalues, benjamini_hochberg, random_effects
         criteria = self.filter_panel.get_filter_criteria()
-        
+
         self.logger.info(f"Statistics comparison: log2FC >= {criteria.log2fc_min}, padj <= {criteria.adj_pvalue_max}")
-        
+
+        # ── M2: Cross-species 상동 유전자 통일 (합치기 직전 선행 정렬) ──────────
+        # 비인간 데이터셋을 human 심볼 공간으로 remap → 이후 결합 로직은 그대로.
+        if getattr(self.comparison_panel, 'cross_species_check', None) is not None \
+                and self.comparison_panel.cross_species_check.isChecked():
+            datasets = self._harmonize_cross_species(datasets)
+            if not datasets:
+                return
+
+        # 메타 통계용: 필터 이전 전체 데이터셋의 유전자별 (log2fc, padj) 조회표
+        full_lookup = {ds.name: self._full_gene_stats(ds.dataframe) for ds in datasets}
+
         # 각 데이터셋에 통계 필터 적용
         dataset_dfs = {}
         dataset_genes = {}
@@ -2192,13 +2455,51 @@ class MainWindow(QMainWindow):
                 else:
                     row[f'{dataset_name}_log2FC'] = None
                     row[f'{dataset_name}_padj'] = None
-            
+
+            # 메타 통계: 유전자가 검정된 모든 데이터셋의 (log2fc, pvalue, SE)를 결합
+            gm = gene_mapping[identifier]
+            m_pvals, m_lfcs, m_ses = [], [], []
+            for ds in datasets:
+                stats = full_lookup.get(ds.name, {})
+                v = stats.get(gm['symbol']) or stats.get(gm['gene_id'])
+                if v is not None:
+                    lfc_v, padj_v, se_v = v
+                    m_pvals.append(padj_v)
+                    m_lfcs.append(lfc_v)
+                    m_ses.append(se_v)
+            # ① p-value 결합 (Fisher/Stouffer)
+            meta = combine_pvalues(m_pvals, m_lfcs)
+            if meta:
+                row['meta_pvalue_fisher'] = meta['meta_pvalue_fisher']
+                row['meta_pvalue_stouffer'] = meta['meta_pvalue_stouffer']
+                row['meta_log2fc_mean'] = meta['meta_log2fc_mean']
+                row['meta_direction'] = meta['meta_direction']
+                row['meta_found_in'] = f"{meta['meta_found_in']}/{len(datasets)}"
+            # ② 효과크기 결합 (random-effects, lfcSE 있을 때만)
+            re_res = random_effects(m_lfcs, m_ses)
+            if re_res:
+                row['meta_effect_log2fc'] = re_res['meta_effect_log2fc']
+                row['meta_effect_se']     = re_res['meta_effect_se']
+                row['meta_ci_low']        = re_res['meta_ci_low']
+                row['meta_ci_high']       = re_res['meta_ci_high']
+                row['meta_pvalue_re']     = re_res['meta_pvalue_re']
+                row['meta_i2']            = re_res['meta_i2']
+
             result_rows.append(row)
-        
+
         result_df = pd.DataFrame(result_rows)
-        
-        # 컬럼 순서 정렬: gene_id, symbol, Status, Found_in, D1_log2FC, D1_padj, ...
-        ordered_columns = ['gene_id', 'symbol', 'Status', 'Found_in']
+
+        # 메타 FDR: Fisher 결합 p-value를 유전자 전체에 대해 BH 보정
+        if 'meta_pvalue_fisher' in result_df.columns:
+            result_df['meta_fdr_fisher'] = benjamini_hochberg(
+                pd.to_numeric(result_df['meta_pvalue_fisher'], errors='coerce').to_numpy())
+
+        # 컬럼 순서 정렬: gene_id, symbol, Status, Found_in, 메타 통계, D1_log2FC, D1_padj, ...
+        ordered_columns = ['gene_id', 'symbol', 'Status', 'Found_in',
+                           'meta_pvalue_fisher', 'meta_fdr_fisher', 'meta_pvalue_stouffer',
+                           'meta_log2fc_mean', 'meta_direction', 'meta_found_in',
+                           'meta_effect_log2fc', 'meta_effect_se', 'meta_ci_low', 'meta_ci_high',
+                           'meta_pvalue_re', 'meta_i2']
         dataset_names = list(dataset_dfs.keys())
         for dataset_name in dataset_names:
             ordered_columns.append(f'{dataset_name}_log2FC')
@@ -2274,6 +2575,38 @@ class MainWindow(QMainWindow):
             current_tab = self.data_tabs.currentWidget()
             if isinstance(current_tab, QTableView):
                 self.presenter.export_data(Path(file_path), current_tab)
+
+    def _on_export_figure_bundle(self):
+        """현재 plot 탭을 figure-atlas bundle로 export."""
+        current_tab = self.data_tabs.currentWidget()
+        if current_tab is None:
+            QMessageBox.information(self, "No plot selected", "Open a plot tab first.")
+            return
+
+        if hasattr(current_tab, 'get_bundle_context'):
+            context = current_tab.get_bundle_context()
+            slug = context.get('figure_slug', 'figure_bundle')
+            # 기본 이름 {slug}_bundle 제안, 사용자가 위치·이름 변경 가능
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Export Figure Bundle — choose folder name",
+                f"{slug}_bundle", "Figure Bundle Folder (*)",
+            )
+            if not path:
+                return
+            try:
+                bundle_dir = export_figure_bundle(
+                    context,
+                    path,
+                    slug,
+                    context.get('figure_title', 'Figure'),
+                    context.get('plot_type', 'plot'),
+                )
+                QMessageBox.information(self, "Bundle exported", f"Bundle created at:\n{bundle_dir}")
+            except Exception as exc:
+                QMessageBox.critical(self, "Bundle export failed", str(exc))
+            return
+
+        QMessageBox.information(self, "Unsupported tab", "The current tab does not expose a bundle export context.")
     
     def _remove_tab_safely(self, index: int):
         """
@@ -2303,9 +2636,36 @@ class MainWindow(QMainWindow):
         # 4. 실제 탭 제거 (currentChanged 신호 발화)
         self.data_tabs.removeTab(index)
 
+    def pin_plot_from_context(self, context: dict):
+        """BasePlotDialog 계열이 호출: get_bundle_context() 로 범용 pinned 탭을 만든다.
+
+        각 플롯 다이얼로그를 임베드 위젯으로 리팩터하지 않고도 plot_type + df + params
+        만으로 재렌더되는 스냅샷 탭을 만든다(src/plots/registry.py).
+        """
+        from gui.pinned_plot_widget import PinnedPlotWidget
+
+        cur = self.tab_data.get(self.data_tabs.currentIndex(), {})
+        parent_ds = cur.get('parent_dataset')
+        src_filter = (cur.get('filter_params')
+                      if cur.get('sheet_type') == 'filtered' else None)
+
+        plot_type = context.get('plot_type', '')
+        params = context.get('plot_params') or {}
+        label = context.get('figure_title') or context.get('figure_slug') or 'Plot'
+        widget = PinnedPlotWidget(
+            plot_type, context.get('dataframe'), params,
+            figure_title=label, dataset_name=context.get('dataset_name', ''),
+        )
+        self._pin_plot_to_tab(widget, label, plot_type, params, parent_ds, src_filter)
+
     def _pin_plot_to_tab(self, widget, label: str, plot_type: str,
-                          plot_params: dict, parent_dataset: str = None):
-        """Plot widget을 새 탭으로 고정"""
+                          plot_params: dict, parent_dataset: str = None,
+                          source_filter_params: dict = None):
+        """Plot widget을 새 탭으로 고정.
+
+        source_filter_params: plot이 filtered 시트에서 만들어졌으면 그 filter (복원 시
+        부모 데이터셋에 재적용해 동일한 부분집합 위에 plot을 다시 그린다).
+        """
         tab_index = self.data_tabs.addTab(widget, f"📈 {label}")
         # tab_data를 setCurrentIndex 전에 설정해야 _on_tab_changed에서 dock을 바로 업데이트할 수 있음
         self.tab_data[tab_index] = {
@@ -2318,6 +2678,7 @@ class MainWindow(QMainWindow):
             'comparison_params': None,
             'plot_type': plot_type,
             'plot_params': plot_params,
+            'source_filter_params': source_filter_params,
             'plot_widget': widget,
         }
         self.data_tabs.setCurrentIndex(tab_index)
@@ -2711,7 +3072,7 @@ class MainWindow(QMainWindow):
 
         title_label = QLabel(
             "<h2 style='margin:0;'>CMG-SeqViewer</h2>"
-            "<p style='margin:2px 0;'><b>Version 1.2.1</b></p>"
+            "<p style='margin:2px 0;'><b>Version 1.2.7</b></p>"
             "<p style='margin:2px 0; color:#555;'>RNA-Seq Data Analysis &amp; Visualization</p>"
         )
         title_label.setWordWrap(True)
@@ -2850,12 +3211,18 @@ class MainWindow(QMainWindow):
                                       "This dataset may not support this visualization.")
                     return
             
+            # 현재 탭이 filtered 시트이면 그 filter 를 plot 원본으로 기록(복원 시 재적용)
+            _cur_entry = self.tab_data.get(self.data_tabs.currentIndex(), {})
+            _parent_ds = _cur_entry.get('parent_dataset')
+            _src_filter = (_cur_entry.get('filter_params')
+                           if _cur_entry.get('sheet_type') == 'filtered' else None)
+
             # 시각화 다이얼로그 열기
             if viz_type == "volcano":
                 dialog = VolcanoPlotDialog(df, self)
-                _parent_ds = self.tab_data.get(self.data_tabs.currentIndex(), {}).get('parent_dataset')
                 dialog.plot_pinned.connect(
-                    lambda w, lbl, pt, pp, _pd=_parent_ds: self._pin_plot_to_tab(w, lbl, pt, pp, _pd)
+                    lambda w, lbl, pt, pp, _pd=_parent_ds, _sf=_src_filter:
+                        self._pin_plot_to_tab(w, lbl, pt, pp, _pd, _sf)
                 )
                 dialog.exec()
             elif viz_type == "histogram":
@@ -2863,9 +3230,9 @@ class MainWindow(QMainWindow):
                 dialog.exec()
             elif viz_type == "heatmap":
                 dialog = HeatmapDialog(df, self)
-                _parent_ds = self.tab_data.get(self.data_tabs.currentIndex(), {}).get('parent_dataset')
                 dialog.plot_pinned.connect(
-                    lambda w, lbl, pt, pp, _pd=_parent_ds: self._pin_plot_to_tab(w, lbl, pt, pp, _pd)
+                    lambda w, lbl, pt, pp, _pd=_parent_ds, _sf=_src_filter:
+                        self._pin_plot_to_tab(w, lbl, pt, pp, _pd, _sf)
                 )
                 dialog.exec()
             
@@ -3190,6 +3557,26 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Annotation Comparison Error",
                                f"Failed to create annotation comparison:\n{str(e)}")
 
+    def _on_meta_volcano_requested(self):
+        """현재 Comparison: Statistics 시트의 메타 통계로 Meta Volcano 생성."""
+        current = self.data_tabs.currentWidget()
+        model = current.model() if isinstance(current, QTableView) else None
+        df = model.dataframe() if isinstance(model, DataFrameTableModel) else None
+        if df is None or 'meta_pvalue_fisher' not in df.columns:
+            QMessageBox.warning(
+                self, "No Meta-Analysis Data",
+                "Meta Volcano는 메타 통계 컬럼이 있는 'Comparison: Statistics' 시트에서 실행합니다.\n"
+                "먼저 Compare → Statistics Filtering으로 2개 이상 데이터셋을 비교하세요."
+            )
+            return
+        try:
+            from gui.meta_volcano_dialog import MetaVolcanoDialog
+            MetaVolcanoDialog(df, self).exec()
+        except Exception as e:
+            self.logger.error(f"Failed to create meta volcano plot: {e}", exc_info=True)
+            QMessageBox.critical(self, "Meta Volcano Error",
+                               f"Failed to create meta volcano:\n{str(e)}")
+
     def _create_venn_from_comparison_sheet(self):
         """Comparison sheet에서 Venn diagram 생성"""
         try:
@@ -3490,15 +3877,22 @@ class MainWindow(QMainWindow):
             # 데이터셋 파일 경로 / 타입 맵 구성
             dataset_file_map: dict = {}
             dataset_type_map: dict = {}
-            dataset_source_map: dict = {}  # "file" or "database"
+            dataset_source_map: dict = {}  # "file" | "database" | "integration"
             dataset_db_id_map: dict = {}   # db_dataset_id (database source 전용)
+            dataset_integration_map: dict = {}  # integration_recipe (integration source 전용)
             for name, ds in self.presenter.datasets.items():
                 fp = getattr(ds, "file_path", None) or ""
                 dataset_file_map[name] = str(fp)
                 dt = getattr(ds, "dataset_type", None)
                 dataset_type_map[name] = dt.value if dt else ""
-                db_id = ds.metadata.get("db_dataset_id", "") if hasattr(ds, "metadata") else ""
-                if db_id:
+                meta = ds.metadata if hasattr(ds, "metadata") and ds.metadata else {}
+                db_id = meta.get("db_dataset_id", "")
+                integ = meta.get("integration_recipe")
+                if integ:
+                    # 파일 없는 통합 결과 — 복원 시 레시피로 replay
+                    dataset_source_map[name] = "integration"
+                    dataset_integration_map[name] = integ
+                elif db_id:
                     dataset_source_map[name] = "database"
                     dataset_db_id_map[name] = db_id
                 else:
@@ -3528,7 +3922,10 @@ class MainWindow(QMainWindow):
                 ds_name = ds_spec.get("name", "")
                 source = dataset_source_map.get(ds_name, "file")
                 ds_spec["source"] = source
-                if source == "database":
+                if source == "integration":
+                    ds_spec["integration_recipe"] = dataset_integration_map.get(ds_name, {})
+                    ds_spec["file_path"] = ""  # 파일 없음 — 레시피로 재생성
+                elif source == "database":
                     ds_spec["db_dataset_id"] = dataset_db_id_map.get(ds_name, "")
                     ds_spec["file_path"] = ""  # 파일 경로 불필요
                 else:
@@ -3581,7 +3978,9 @@ class MainWindow(QMainWindow):
             return
 
         missing_files: list = []
+        unrestorable_generated: list = []  # 레시피 없는 생성 결과(클러스터링 등)
         loaded_count = 0
+        deferred_integration: list = []  # 파일 없는 통합 결과 — 소스 로드 후 replay
 
         for ds_spec in spec.get("datasets", []):
             ds_name = ds_spec.get("name", "")
@@ -3590,6 +3989,11 @@ class MainWindow(QMainWindow):
             source = ds_spec.get("source", "file")
             sheets = ds_spec.get("sheets", [])
             loaded_ds_name = ds_name  # 실제 presenter.datasets 키 (unique_name 적용 시 갱신)
+
+            # ── 통합 결과 소스: 소스 RNA/ATAC 로드 후 replay 하도록 뒤로 미룸 ──
+            if source == "integration":
+                deferred_integration.append(ds_spec)
+                continue
 
             # ── 데이터베이스 소스 ──
             if source == "database":
@@ -3653,6 +4057,12 @@ class MainWindow(QMainWindow):
                             self.logger.warning(f"DB fallback failed for '{ds_name}': {e}")
                             missing_files.append(ds_name)
                             continue
+                    elif not ds_file:
+                        # 파일 경로가 애초에 없음 = 앱에서 생성된 파생 결과
+                        # (예: GO 클러스터링, cross-species harmonized, meta 결과).
+                        # 아직 재생성 레시피가 없어 자동 복원 불가 — 명시적으로 안내한다.
+                        unrestorable_generated.append(ds_name)
+                        continue
                     else:
                         missing_files.append(ds_file or ds_name)
                         continue
@@ -3669,51 +4079,49 @@ class MainWindow(QMainWindow):
                         continue
 
             # sheets 재현 (filtered + plot)
-            for sheet in sheets:
-                stype = sheet.get("type")
+            self._replay_dataset_sheets(loaded_ds_name, sheets)
 
-                if stype == "filtered":
-                    fp_dict = sheet.get("filter_params")
-                    if not fp_dict:
-                        continue
-                    try:
-                        criteria = FilterCriteria.from_dict(fp_dict)
-                        self.presenter.switch_dataset(loaded_ds_name)
-                        self.presenter.apply_filter(criteria)
-                    except Exception as e:
-                        self.logger.warning(f"Failed to replay filter for sheet '{sheet.get('label')}': {e}")
+        # ── 통합 결과 재생성 (소스 데이터셋 로드 후) ──
+        for ds_spec in deferred_integration:
+            recipe = ds_spec.get("integration_recipe") or {}
+            rna = recipe.get("rna_name")
+            atac = recipe.get("atac_name")
+            ds_label = ds_spec.get("name", "integration")
+            if not recipe or rna not in self.presenter.datasets or atac not in self.presenter.datasets:
+                miss = [n for n in (rna, atac) if n not in self.presenter.datasets]
+                self.logger.warning(
+                    f"Integration '{ds_label}' skipped — source datasets not loaded: {miss}")
+                missing_files.append(ds_label)
+                continue
+            try:
+                self.presenter.integrate_datasets(**recipe)
+                loaded_count += 1
+                # 통합 결과의 실제 이름(현재 current_dataset)으로 하위 시트 replay
+                integ_name = getattr(self.presenter.current_dataset, "name", ds_label)
+                self._replay_dataset_sheets(integ_name, ds_spec.get("sheets", []))
+            except Exception as e:
+                self.logger.warning(f"Failed to replay integration '{ds_label}': {e}")
 
-                elif stype == "plot":
-                    plot_type = sheet.get("plot_type", "")
-                    plot_params = sheet.get("plot_params") or {}
-                    label_str = sheet.get("label", "Plot")
-                    try:
-                        target_ds = self.presenter.datasets.get(loaded_ds_name)
-                        if target_ds is None:
-                            raise ValueError(f"Dataset '{loaded_ds_name}' not found")
-                        df = target_ds.dataframe
-                        # Rename standardized columns to visualization names
-                        from models.standard_columns import StandardColumns
-                        _rename_map = {
-                            StandardColumns.LOG2FC: 'log2FC',
-                            StandardColumns.ADJ_PVALUE: 'padj',
-                            StandardColumns.PVALUE: 'pvalue',
-                        }
-                        df = df.rename(columns=_rename_map)
-                        if plot_type == "volcano":
-                            widget = VolcanoPlotWidget(
-                                df, plot_params=plot_params,
-                                show_pin_button=False, embed_settings=False
-                            )
-                            self._pin_plot_to_tab(widget, label_str, "volcano", plot_params, loaded_ds_name)
-                        elif plot_type == "heatmap":
-                            widget = HeatmapWidget(
-                                df, plot_params=plot_params,
-                                show_pin_button=False, embed_settings=False
-                            )
-                            self._pin_plot_to_tab(widget, label_str, "heatmap", plot_params, loaded_ds_name)
-                    except Exception as e:
-                        self.logger.warning(f"Failed to restore plot '{label_str}': {e}")
+        # ── 파생 결과 시트 재생성 (모든 소스 데이터셋 로드 후) ──
+        # comparison: 저장된 레시피(dataset_names + comparison_type)로 재실행
+        for comp in spec.get("comparisons", []):
+            recipe = comp.get("comparison_params") or {}
+            names = recipe.get("dataset_names") or []
+            ctype = recipe.get("comparison_type")
+            label = comp.get("label", "Comparison")
+            if not names or not ctype:
+                self.logger.warning(
+                    f"Comparison '{label}' has no replay recipe (older project?); skipped.")
+                continue
+            missing = [n for n in names if n not in self.presenter.datasets]
+            if missing:
+                self.logger.warning(
+                    f"Comparison '{label}' skipped — source datasets not loaded: {missing}")
+                continue
+            try:
+                self._replay_comparison(names, ctype)
+            except Exception as e:
+                self.logger.warning(f"Failed to replay comparison '{label}': {e}")
 
         # 마지막 활성 탭 복원
         ui_state = spec.get("ui_state", {})
@@ -3723,18 +4131,25 @@ class MainWindow(QMainWindow):
 
         self._add_recent_project(path)
 
-        # 누락 파일 경고
+        # 복원 경고: 누락 파일 + 재생성 불가한 파생 결과를 구분해 안내
+        warn_parts = []
         if missing_files:
-            files_list = "\n".join(missing_files[:10])
-            QMessageBox.warning(
-                self,
-                "Missing Files",
-                f"The following files could not be found and were skipped:\n{files_list}",
-            )
+            warn_parts.append(
+                "Source files not found (skipped):\n  " + "\n  ".join(missing_files[:10]))
+        if unrestorable_generated:
+            warn_parts.append(
+                "Generated results that must be recreated manually\n"
+                "(GO clustering / cross-species / meta results are not yet auto-restored):\n  "
+                + "\n  ".join(unrestorable_generated[:10]))
+        if warn_parts:
+            QMessageBox.warning(self, "Project Restore — Partial",
+                                "\n\n".join(warn_parts))
 
         msg = f"Project opened: {loaded_count} dataset(s) loaded."
         if missing_files:
             msg += f" {len(missing_files)} file(s) skipped."
+        if unrestorable_generated:
+            msg += f" {len(unrestorable_generated)} generated result(s) not restored."
         self.logger.info(msg)
 
     def _set_window_icon(self):

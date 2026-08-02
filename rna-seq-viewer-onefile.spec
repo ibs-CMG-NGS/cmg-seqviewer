@@ -10,6 +10,7 @@ a = Analysis(
     datas=[
         # Pre-loaded datasets 포함
         ('database', 'database'),
+        ('data/orthologs/ortholog_map.csv.gz', 'data/orthologs'),  # cross-species 메타(M2)
     ],
     hiddenimports=[
         'PyQt6',
@@ -26,6 +27,7 @@ a = Analysis(
         'matplotlib',
         'matplotlib.backends.backend_qt5agg',
         'seaborn',
+        'adjustText',
     ],
     hookspath=[],
     hooksconfig={},

@@ -11,8 +11,6 @@ Y축: -log10(RNA padj)
 """
 
 import logging
-import numpy as np
-import matplotlib.patches as mpatches
 
 from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QPushButton,
@@ -22,7 +20,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 import pandas as pd
 
-from models.multi_omics_dataset import ConcordanceCategory, IntegratedColumns
+from models.multi_omics_dataset import IntegratedColumns
 from gui.base_plot_dialog import BasePlotDialog
 
 
@@ -89,61 +87,24 @@ class IntegratedVolcanoDialog(BasePlotDialog):
 
     # ── Plot ──────────────────────────────────────────────────────────────
 
+    def _plot_params(self) -> dict:
+        return {
+            'padj_threshold': self.padj_spin.value(),
+            'log2fc_threshold': self.lfc_spin.value(),
+            'base_size': self.base_size_spin.value(),
+            'scale_by_peak': self.scale_by_peak_cb.isChecked(),
+            'title': self.plot_title,
+        }
+
     def _do_plot(self):
+        """렌더는 순수 함수 src/plots/integrated_volcano.py 에 있으며 번들과 공유한다.
+        hover 툴팁(Qt 전용)은 render 반환 scatter_data 를 재사용한다."""
+        from plots.integrated_volcano import render_integrated_volcano
+
         self.figure.clear()
-        self._scatter_data = []
         ax = self.figure.add_subplot(111)
         self._ax = ax
-
-        col_sym  = IntegratedColumns.GENE_SYMBOL
-        col_lfc  = IntegratedColumns.RNA_LOG2FC
-        col_padj = IntegratedColumns.RNA_PADJ
-        col_cat  = IntegratedColumns.CONCORDANCE
-        col_peak = IntegratedColumns.PEAK_COUNT
-
-        padj_thr = self.padj_spin.value()
-        lfc_thr  = self.lfc_spin.value()
-        base_sz  = self.base_size_spin.value()
-        scale_by_peak = self.scale_by_peak_cb.isChecked()
-
-        df = self.df.dropna(subset=[col_lfc, col_padj]).copy()
-        df['_neg_log10_padj'] = -np.log10(df[col_padj].clip(lower=1e-300))
-
-        colors = ConcordanceCategory.COLORS
-
-        for cat in ConcordanceCategory.ALL:
-            sub = df[df[col_cat] == cat]
-            if sub.empty:
-                continue
-
-            if scale_by_peak and col_peak in sub.columns:
-                peak_cnt = sub[col_peak].fillna(1).clip(lower=1)
-                sizes = base_sz * (1 + np.log1p(peak_cnt) * 0.8)
-            else:
-                sizes = base_sz
-
-            sc = ax.scatter(
-                sub[col_lfc], sub['_neg_log10_padj'],
-                c=colors.get(cat, "#CCCCCC"),
-                s=sizes, alpha=0.75, linewidths=0.3,
-                edgecolors="white",
-                label=f"{cat.replace('_', ' ')} (n={len(sub)})",
-                zorder=3,
-            )
-            self._scatter_data.append((sc, sub))
-
-        ax.axhline(-np.log10(padj_thr), color="black",
-                   linestyle="--", linewidth=0.8, alpha=0.6)
-        ax.axvline( lfc_thr, color="black", linestyle="--", linewidth=0.8, alpha=0.6)
-        ax.axvline(-lfc_thr, color="black", linestyle="--", linewidth=0.8, alpha=0.6)
-
-        ax.set_xlabel("RNA-seq log2FC", fontsize=11)
-        ax.set_ylabel("-log10(RNA padj)", fontsize=11)
-        ax.set_title(self.plot_title, fontsize=13, fontweight="bold")
-        ax.grid(True, alpha=0.25)
-
-        ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left",
-                  fontsize=7.5, framealpha=0.7)
+        self._scatter_data = render_integrated_volcano(ax, self.df, self._plot_params())
 
         # Hover annotation
         self._annot = ax.annotate(
@@ -199,4 +160,19 @@ class IntegratedVolcanoDialog(BasePlotDialog):
         if not found and hasattr(self, '_annot') and self._annot.get_visible():
             self._annot.set_visible(False)
             self.figure.canvas.draw_idle()
+
+    # ── Bundle export ─────────────────────────────────────────────────────
+
+    def get_bundle_context(self) -> dict:
+        return {
+            'figure': self.figure,
+            'dataframe': self.df,
+            'plot_params': self._plot_params(),
+            'dataset_name': self.plot_title,
+            'plot_type': 'integrated_volcano',
+            'figure_title': self.plot_title,
+            'figure_slug': 'integrated_volcano',
+            'source_stem': 'integrated_volcano',
+            'notes': 'Generated from cmg-seqviewer Integrated Volcano plot',
+        }
 

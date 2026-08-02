@@ -22,6 +22,7 @@ seaborn>=0.12.0
 matplotlib-venn>=0.11.0  # Venn diagrams
 upsetplot>=0.8.0         # UpSet plots
 networkx>=3.6.1         # Network graphs
+adjustText>=1.0          # Auto label placement (non-overlapping gene labels)
 
 # Utilities
 python-dateutil>=2.8.0

@@ -22,15 +22,6 @@ from PyQt6.QtWidgets import (
 from models.data_models import Dataset
 from models.standard_columns import StandardColumns
 from gui.base_plot_dialog import BasePlotDialog
-from utils.annotation_categories import (
-    normalize_annotation, order_categories, color_for_category,
-)
-
-# 데이터셋 구분용 팔레트 (enrichment 그룹 막대에서 데이터셋별 색)
-_DATASET_COLORS = [
-    '#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f',
-    '#edc948', '#b07aa1', '#ff9da7', '#9c755f', '#bab0ac',
-]
 
 
 class AnnotationComparisonDialog(BasePlotDialog):
@@ -129,133 +120,76 @@ class AnnotationComparisonDialog(BasePlotDialog):
 
     # ── 집계 ────────────────────────────────────────────────────────────────
 
-    def _annotation_counts(self, ds: Dataset, significant: bool) -> pd.Series:
-        """데이터셋의 annotation 카테고리 개수. significant=True면 유의 peak만."""
-        df = ds.dataframe
+    def _build_long_df(self):
+        """데이터셋들을 long-format(dataset/annotation/log2fc/adj_pvalue)으로 병합.
+        (df, order) 반환."""
         ann_col = StandardColumns.ANNOTATION
-        if df is None or ann_col not in df.columns:
-            return pd.Series(dtype=float)
-        sub = df
-        if significant:
-            lfc_col, padj_col = StandardColumns.LOG2FC, StandardColumns.ADJ_PVALUE
-            if lfc_col not in df.columns or padj_col not in df.columns:
-                return pd.Series(dtype=float)
-            sub = df[(df[padj_col] <= self._fdr_spin.value())
-                     & (df[lfc_col].abs() >= self._lfc_spin.value())]
-        return sub[ann_col].dropna().map(normalize_annotation).value_counts()
+        lfc_col, padj_col = StandardColumns.LOG2FC, StandardColumns.ADJ_PVALUE
+        frames, order = [], []
+        for ds in self.datasets:
+            label = ds.metadata.get('experiment_condition') or ds.name
+            order.append(label)
+            df = ds.dataframe
+            if df is None or ann_col not in df.columns:
+                continue
+            n = len(df)
+            frames.append(pd.DataFrame({
+                'dataset': label,
+                'annotation': df[ann_col].values,
+                'log2fc': (pd.to_numeric(df[lfc_col], errors='coerce').values
+                           if lfc_col in df.columns else np.full(n, np.nan)),
+                'adj_pvalue': (pd.to_numeric(df[padj_col], errors='coerce').values
+                               if padj_col in df.columns else np.full(n, np.nan)),
+            }))
+        long_df = pd.concat(frames, ignore_index=True) if frames else \
+            pd.DataFrame(columns=['dataset', 'annotation', 'log2fc', 'adj_pvalue'])
+        return long_df, order
+
+    def _plot_params(self, order=None) -> dict:
+        if order is None:
+            order = [ds.metadata.get('experiment_condition') or ds.name for ds in self.datasets]
+        if self._enr_radio.isChecked():
+            display = 'enrichment'
+        elif self._prop_radio.isChecked():
+            display = 'proportion'
+        else:
+            display = 'counts'
+        return {
+            'peak_set': 'significant' if self._sig_radio.isChecked() else 'all',
+            'display': display,
+            'fdr_max': self._fdr_spin.value(),
+            'lfc_min': self._lfc_spin.value(),
+            'order': order,
+        }
 
     # ── Plot ──────────────────────────────────────────────────────────────
 
     def _do_plot(self):
+        """렌더는 순수 함수 src/plots/annotation_comparison.py 에 있으며 번들과 공유한다."""
+        from plots.annotation_comparison import render_annotation_comparison
+
         self.figure.clear()
         ax = self.figure.add_subplot(111)
-        if self._enr_radio.isChecked():
-            self._plot_enrichment(ax)
-        else:
-            self._plot_stacked(ax)
+        long_df, order = self._build_long_df()
+        self._matrix_df = render_annotation_comparison(ax, long_df, self._plot_params(order))
         self.figure.tight_layout()
         self.canvas.draw()
 
-    def _plot_stacked(self, ax):
-        labels = [ds.metadata.get('experiment_condition') or ds.name for ds in self.datasets]
-        significant = self._sig_radio.isChecked()
-        per_ds = [self._annotation_counts(ds, significant) for ds in self.datasets]
+    # ── Bundle export ─────────────────────────────────────────────────────
 
-        all_cats = set()
-        for s in per_ds:
-            all_cats.update(s.index.tolist())
-        ordered = order_categories(all_cats)
-        if not ordered:
-            self._empty(ax)
-            return
-
-        matrix = pd.DataFrame(
-            {lbl: {cat: float(s.get(cat, 0)) for cat in ordered}
-             for lbl, s in zip(labels, per_ds)}
-        ).reindex(ordered)
-        self._matrix_df = matrix
-
-        plot_mat = matrix.copy()
-        as_prop = self._prop_radio.isChecked()
-        if as_prop:
-            col_sums = plot_mat.sum(axis=0).replace(0, np.nan)
-            plot_mat = plot_mat.divide(col_sums, axis=1).fillna(0.0) * 100.0
-
-        x = list(range(len(labels)))
-        bottom = np.zeros(len(labels))
-        for i, cat in enumerate(ordered):
-            vals = plot_mat.loc[cat].to_numpy()
-            ax.bar(x, vals, bottom=bottom, color=color_for_category(cat, i),
-                   label=cat, edgecolor='white', linewidth=0.4)
-            bottom += vals
-
-        ax.set_xticks(x)
-        ax.set_xticklabels(labels, rotation=30, ha='right', fontsize=8)
-        ax.set_ylabel("Proportion (%)" if as_prop else "Peak number")
-        mode_txt = "significant peaks" if significant else "all peaks"
-        ax.set_title(f"Genomic annotation distribution ({mode_txt})",
-                     fontsize=12, fontweight='bold')
-        ax.legend(title="Annotation")
-
-    def _plot_enrichment(self, ax):
-        """배경(전체 peak) 대비 유의 peak의 feature별 log2 enrichment.
-
-        pseudocount 0.5로 0-division/log(0)을 피한다:
-            prop = (count + 0.5) / (total + 0.5*K)
-            enr  = log2(sig_prop / all_prop)
-        """
-        labels = [ds.metadata.get('experiment_condition') or ds.name for ds in self.datasets]
-        all_series = [self._annotation_counts(ds, False) for ds in self.datasets]
-        sig_series = [self._annotation_counts(ds, True) for ds in self.datasets]
-
-        # 카테고리 축 = 배경(전체) 카테고리 합집합
-        all_cats = set()
-        for s in all_series:
-            all_cats.update(s.index.tolist())
-        ordered = order_categories(all_cats)
-        if not ordered:
-            self._empty(ax)
-            return
-
-        K = len(ordered)
-        enr = {}  # label -> [log2 enrichment per category]
-        for lbl, allc, sigc in zip(labels, all_series, sig_series):
-            all_tot = float(allc.sum())
-            sig_tot = float(sigc.sum())
-            if sig_tot == 0 or all_tot == 0:
-                enr[lbl] = [np.nan] * K  # 유의 peak 없음 → 그리지 않음
-                continue
-            row = []
-            for cat in ordered:
-                all_p = (float(allc.get(cat, 0)) + 0.5) / (all_tot + 0.5 * K)
-                sig_p = (float(sigc.get(cat, 0)) + 0.5) / (sig_tot + 0.5 * K)
-                row.append(float(np.log2(sig_p / all_p)))
-            enr[lbl] = row
-
-        self._matrix_df = pd.DataFrame(enr, index=ordered)
-
-        n = len(labels)
-        width = 0.8 / max(n, 1)
-        xbase = np.arange(K)
-        for j, lbl in enumerate(labels):
-            offset = (j - (n - 1) / 2) * width
-            vals = np.array(enr[lbl], dtype=float)
-            ax.bar(xbase + offset, vals, width=width,
-                   color=_DATASET_COLORS[j % len(_DATASET_COLORS)],
-                   label=lbl, edgecolor='white', linewidth=0.3)
-
-        ax.axhline(0, color='#333333', linewidth=0.8)
-        ax.set_xticks(xbase)
-        ax.set_xticklabels(ordered, rotation=30, ha='right', fontsize=8)
-        ax.set_ylabel("log2( significant / all )")
-        ax.set_title("Genomic annotation enrichment (significant vs background)",
-                     fontsize=12, fontweight='bold')
-        ax.legend(title="Dataset")
-
-    def _empty(self, ax):
-        ax.text(0.5, 0.5, "No annotation data in the selected datasets.",
-                ha='center', va='center', transform=ax.transAxes, color='#888888')
-        self._matrix_df = None
+    def get_bundle_context(self) -> dict:
+        long_df, order = self._build_long_df()
+        return {
+            'figure': self.figure,
+            'dataframe': long_df,
+            'plot_params': self._plot_params(order),
+            'dataset_name': 'annotation_comparison',
+            'plot_type': 'annotation_comparison',
+            'figure_title': 'Genomic Annotation Comparison',
+            'figure_slug': 'annotation_comparison',
+            'source_stem': 'annotation_comparison',
+            'notes': 'Generated from cmg-seqviewer Genomic Annotation Comparison (long-format input)',
+        }
 
     # ── Export ────────────────────────────────────────────────────────────
 
