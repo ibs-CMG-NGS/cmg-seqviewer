@@ -224,10 +224,31 @@ def _render_source(module_name: str, *func_names: str) -> str | None:
     try:
         return "\n\n".join(inspect.getsource(getattr(mod, n)) for n in func_names)
     except (OSError, TypeError):
+        # frozen(PyInstaller)에선 inspect가 소스를 못 읽는다 → 번들에 포함된 실제 .py 파일을
+        # 찾아 통째로 읽는다(그 안에 대상 함수가 들어 있음).
+        return _read_plots_module_source(module_name, mod)
+
+
+def _read_plots_module_source(module_name: str, mod) -> str | None:
+    """plots/{module}.py 소스 텍스트를 dev/frozen 여러 위치에서 찾아 반환."""
+    import sys
+    candidates = []
+    base = getattr(sys, "_MEIPASS", None)
+    if base:
+        # rna-seq-viewer.spec / macOS spec 은 datas 에 ('src','src') 를 포함한다
+        candidates.append(Path(base) / "src" / "plots" / f"{module_name}.py")
+        candidates.append(Path(base) / "plots" / f"{module_name}.py")
+    f = getattr(mod, "__file__", None)
+    if f:
+        p = Path(f)
+        candidates.append(p if p.suffix == ".py" else p.with_suffix(".py"))
+    for c in candidates:
         try:
-            return Path(mod.__file__).read_text(encoding="utf-8")
+            if c.exists():
+                return c.read_text(encoding="utf-8")
         except Exception:
-            return None
+            continue
+    return None
 
 
 def _build_volcano_plot_script(source_stem: str, params_repr: str) -> str:

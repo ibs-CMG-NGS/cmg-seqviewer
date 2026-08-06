@@ -10,6 +10,7 @@ a = Analysis(
     datas=[
         # Pre-loaded datasets 포함
         ('database', 'database'),
+        ('src', 'src'),  # 번들 export 재현 스크립트가 render 소스를 inline 하려면 필요
         ('data/orthologs/ortholog_map.csv.gz', 'data/orthologs'),  # cross-species 메타(M2)
     ],
     hiddenimports=[
