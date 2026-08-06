@@ -3165,18 +3165,25 @@ class MainWindow(QMainWindow):
             elif viz_type == "heatmap":
                 required_cols = []  # Heatmap은 샘플 발현 데이터 자동 탐지
             elif viz_type == "pca":
-                # PCA: DE 데이터셋만 허용, 컬럼 검사는 다이얼로그 내부에서 수행
-                if dataset.dataset_type.value != "DE":
-                    from models.data_models import DatasetType as _DT
-                    if dataset.dataset_type != _DT.DIFFERENTIAL_EXPRESSION:
-                        QMessageBox.warning(
-                            self, "PCA — DE Dataset Required",
-                            "PCA Plot is only available for Differential Expression datasets.\n"
-                            "Please select a DE dataset tab."
-                        )
-                        return
+                # PCA: per-sample 발현 컬럼이 있는 데이터셋이면 가능(DE + Multi-Group).
+                # Multi-Group 은 metadata 의 sample_columns/sample_groups 를 넘겨
+                # authoritative 샘플 선택 + 그룹별 색상을 쓴다.
+                from models.data_models import DatasetType as _DT
+                meta = getattr(dataset, 'metadata', {}) or {}
+                allowed = dataset.dataset_type in (_DT.DIFFERENTIAL_EXPRESSION, _DT.MULTI_GROUP)
+                if not allowed:
+                    QMessageBox.warning(
+                        self, "PCA — Unsupported Dataset",
+                        "PCA Plot needs per-sample expression data.\n"
+                        "Use a Differential Expression or Multi-Group dataset."
+                    )
+                    return
                 dataset_name = dataset.name if hasattr(dataset, 'name') else ""
-                dialog = PCADialog(dataframe, dataset_name=dataset_name, parent=self)
+                dialog = PCADialog(
+                    dataframe, dataset_name=dataset_name, parent=self,
+                    sample_columns=meta.get('sample_columns'),
+                    sample_groups=meta.get('sample_groups'),
+                )
                 dialog.exec()
                 self.logger.info("Visualization opened: pca")
                 return

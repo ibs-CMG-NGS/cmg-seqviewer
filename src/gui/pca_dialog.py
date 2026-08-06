@@ -92,13 +92,17 @@ class PCADialog(BasePlotDialog):
         'fig_height': 6,
     }
 
-    def __init__(self, dataframe: pd.DataFrame, dataset_name: str = "", parent=None):
+    def __init__(self, dataframe: pd.DataFrame, dataset_name: str = "", parent=None,
+                 sample_columns: list = None, sample_groups: dict = None):
         self.logger = logging.getLogger(__name__)
         self.dataframe = dataframe
         self.dataset_name = dataset_name
+        # Multi-Group 등: metadata 로 넘어온 authoritative 샘플 컬럼/그룹(있으면 우선)
+        self.sample_groups = sample_groups or {}
 
-        # 샘플 컬럼 감지
-        self.sample_cols = detect_sample_columns(dataframe)
+        # 샘플 컬럼: 명시(metadata) 우선, 없으면 자동 감지
+        explicit = [c for c in (sample_columns or []) if c in dataframe.columns]
+        self.sample_cols = explicit if explicit else detect_sample_columns(dataframe)
 
         # 설정 복원
         s = self._saved_settings
@@ -211,6 +215,8 @@ class PCADialog(BasePlotDialog):
             'point_size': self.point_size,
             'show_labels': self.show_labels,
             'title': self.plot_title,
+            'sample_columns': list(self.sample_cols),
+            'sample_groups': {g: list(cols) for g, cols in self.sample_groups.items()},
         }
 
     def get_bundle_context(self) -> dict:
