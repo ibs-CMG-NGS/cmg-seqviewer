@@ -56,6 +56,30 @@ _STANDARD_DE_COLS = set(StandardColumns.get_de_all()) | {
 }
 
 
+def auto_group_samples(sample_cols: list) -> dict:
+    """샘플 컬럼명에서 조건(그룹)을 추출해 복제(replicate)를 하나로 묶는다.
+
+    끝의 전역 인덱스(_S20 등)와 복제 번호를 제거해 조건명을 얻는다.
+      JHL_Con1_S20 / JHL_Con2_S21 / JHL_Con3_S22 -> 'JHL_Con'
+      JHL_1D_1_S23 / JHL_1D_2_S24 / JHL_1D_3_S25 -> 'JHL_1D'
+      JHL_24h_1_S26 -> 'JHL_24h'
+    """
+    import re
+    groups: dict = {}
+    for c in sample_cols:
+        g = re.sub(r'[_\-.]?[Ss]\d+$', '', str(c))   # 전역 인덱스 (_S20)
+        g = re.sub(r'[_\-.]?\d+$', '', g)             # 복제 번호
+        g = g.strip('_-. ') or str(c)
+        groups.setdefault(g, []).append(c)
+    return groups
+
+
+def _useful_grouping(groups: dict, n_samples: int) -> bool:
+    """복제를 실제로 묶는 유효한 그룹핑인가 (그룹 1개도, 샘플당 1개도 아님)."""
+    k = len(groups)
+    return bool(groups) and 1 < k < n_samples and any(len(v) > 1 for v in groups.values())
+
+
 def detect_sample_columns(df: pd.DataFrame) -> list:
     result = []
     for col in df.columns:
@@ -97,12 +121,20 @@ class PCADialog(BasePlotDialog):
         self.logger = logging.getLogger(__name__)
         self.dataframe = dataframe
         self.dataset_name = dataset_name
-        # Multi-Group 등: metadata 로 넘어온 authoritative 샘플 컬럼/그룹(있으면 우선)
-        self.sample_groups = sample_groups or {}
 
         # 샘플 컬럼: 명시(metadata) 우선, 없으면 자동 감지
         explicit = [c for c in (sample_columns or []) if c in dataframe.columns]
         self.sample_cols = explicit if explicit else detect_sample_columns(dataframe)
+
+        # 그룹핑: metadata 의 그룹이 복제를 제대로 묶으면 사용, 아니면(예: 샘플당 1개로
+        # 쪼개진 경우) 샘플명에서 조건을 추출해 자동 그룹핑. 둘 다 안 되면 그룹 없음.
+        n = len(self.sample_cols)
+        meta_groups = sample_groups or {}
+        if _useful_grouping(meta_groups, n):
+            self.sample_groups = meta_groups
+        else:
+            auto = auto_group_samples(self.sample_cols)
+            self.sample_groups = auto if _useful_grouping(auto, n) else {}
 
         # 설정 복원
         s = self._saved_settings
@@ -192,6 +224,20 @@ class PCADialog(BasePlotDialog):
         self.point_spin.setSingleStep(10)
         disp_layout.addRow("Point size:", self.point_spin)
 
+        # 색상 기준: 그룹(복제를 조건으로 묶어 색칠 + 범례) vs 샘플(각 샘플 개별 색)
+        self.color_by_combo = QComboBox()
+        if self.sample_groups:
+            n_grp = len(self.sample_groups)
+            self.color_by_combo.addItem(f"Group ({n_grp})", "group")
+            self.color_by_combo.addItem("Sample", "sample")
+        else:
+            # 유효 그룹이 없으면 그룹 옵션 비활성(샘플만)
+            self.color_by_combo.addItem("Sample", "sample")
+            self.color_by_combo.setToolTip(
+                "샘플명에서 조건 그룹을 찾지 못했습니다. 각 샘플을 개별 색으로 표시합니다.")
+        self.color_by_combo.currentIndexChanged.connect(self._update_plot)
+        disp_layout.addRow("Color by:", self.color_by_combo)
+
         self.label_check = QCheckBox("Show sample labels")
         self.label_check.setChecked(self.show_labels)
         disp_layout.addRow("", self.label_check)
@@ -214,8 +260,16 @@ class PCADialog(BasePlotDialog):
             'show_labels': self.show_labels,
             'title': self.plot_title,
             'sample_columns': list(self.sample_cols),
-            'sample_groups': {g: list(cols) for g, cols in self.sample_groups.items()},
+            'sample_groups': (
+                {g: list(cols) for g, cols in self.sample_groups.items()}
+                if self._color_mode() == 'group' else {}
+            ),
         }
+
+    def _color_mode(self) -> str:
+        cb = getattr(self, 'color_by_combo', None)
+        return cb.currentData() if cb is not None and cb.currentData() else (
+            'group' if self.sample_groups else 'sample')
 
     def get_bundle_context(self) -> dict:
         return {
