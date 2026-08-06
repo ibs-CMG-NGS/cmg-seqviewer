@@ -155,20 +155,18 @@ class PCADialog(BasePlotDialog):
         pca_layout.addRow("Top genes (variance):", self.gene_spin)
 
         self.transform_combo = QComboBox()
-        self.transform_combo.addItems([
-            "log2(x + 1)",
-            "log1p  (natural log)",
-            "None (raw values)",
-        ])
+        self.transform_combo.addItems(["log2(x+1)", "log1p", "None"])
+        self.transform_combo.setItemData(0, "log2(x + 1)", 3)      # tooltip
+        self.transform_combo.setItemData(1, "log1p (natural log)", 3)
+        self.transform_combo.setItemData(2, "None (raw values)", 3)
         transform_map = {'log2': 0, 'log1p': 1, 'none': 2}
         self.transform_combo.setCurrentIndex(transform_map.get(self.transform, 0))
         pca_layout.addRow("Transformation:", self.transform_combo)
 
         self.scaling_combo = QComboBox()
-        self.scaling_combo.addItems([
-            "StandardScaler  (mean=0, std=1)",
-            "None (no scaling)",
-        ])
+        self.scaling_combo.addItems(["StandardScaler", "None"])
+        self.scaling_combo.setItemData(0, "StandardScaler (mean=0, std=1)", 3)
+        self.scaling_combo.setItemData(1, "None (no scaling)", 3)
         self.scaling_combo.setCurrentIndex(0 if self.scaling == 'standard' else 1)
         pca_layout.addRow("Feature scaling:", self.scaling_combo)
 
