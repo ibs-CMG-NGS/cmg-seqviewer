@@ -10,6 +10,29 @@ import matplotlib
 matplotlib.use("Agg")
 import pandas as pd
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def _save_figure_formats(fig, stem: Path) -> list[str]:
+    """PNG(필수) + PDF/SVG(best-effort)로 저장. 저장된 확장자 목록 반환.
+
+    frozen(PyInstaller) 빌드에 특정 matplotlib 백엔드가 누락돼도 번들 export 전체가
+    실패하지 않도록 포맷별로 개별 저장한다. PNG 실패는 치명적이라 예외를 그대로 올린다.
+    """
+    stem = Path(stem)
+    fig.savefig(stem.with_suffix(".png"), dpi=300, bbox_inches="tight")  # 필수
+    saved = ["png"]
+    for ext in ("pdf", "svg"):
+        try:
+            fig.savefig(stem.with_suffix(f".{ext}"), bbox_inches="tight")
+            saved.append(ext)
+        except Exception as e:  # noqa: BLE001 — 백엔드 누락 등은 건너뛴다
+            logger.warning("Bundle: could not write %s (%s); skipping that format.",
+                           ext, e)
+    return saved
+
 
 def export_figure_bundle(
     context: Mapping[str, Any],
@@ -63,14 +86,9 @@ def export_figure_bundle(
             pd.DataFrame(optional_stats).to_csv(bundle_dir / "inputs" / "statistics.csv", index=False)
 
     output_stem = bundle_dir / "outputs" / "figure"
-    fig.savefig(output_stem.with_suffix(".png"), dpi=300, bbox_inches="tight")
-    fig.savefig(output_stem.with_suffix(".pdf"), bbox_inches="tight")
-    fig.savefig(output_stem.with_suffix(".svg"), bbox_inches="tight")
-
+    _save_figure_formats(fig, output_stem)
     if source_stem != "figure":
-        fig.savefig(bundle_dir / "outputs" / f"{source_stem}.png", dpi=300, bbox_inches="tight")
-        fig.savefig(bundle_dir / "outputs" / f"{source_stem}.pdf", bbox_inches="tight")
-        fig.savefig(bundle_dir / "outputs" / f"{source_stem}.svg", bbox_inches="tight")
+        _save_figure_formats(fig, bundle_dir / "outputs" / source_stem)
 
     script_path = bundle_dir / "scripts" / "figure.py"
     script_path.write_text(_build_regeneration_script(source_stem, plot_type, plot_params), encoding="utf-8")
@@ -89,6 +107,12 @@ def export_figure_bundle(
         encoding="utf-8",
     )
 
+    saved_outputs = [
+        str((bundle_dir / "outputs" / f"{source_stem}.{ext}").relative_to(bundle_dir))
+        for ext in ("png", "pdf", "svg")
+        if (bundle_dir / "outputs" / f"{source_stem}.{ext}").exists()
+    ]
+
     manifest = {
         "status": "ok",
         "figure_slug": figure_slug,
@@ -99,9 +123,7 @@ def export_figure_bundle(
             str(data_path.relative_to(bundle_dir)),
             str(script_path.relative_to(bundle_dir)),
             str(metadata_path.relative_to(bundle_dir)),
-            str((bundle_dir / "outputs" / f"{source_stem}.png").relative_to(bundle_dir)),
-            str((bundle_dir / "outputs" / f"{source_stem}.pdf").relative_to(bundle_dir)),
-            str((bundle_dir / "outputs" / f"{source_stem}.svg").relative_to(bundle_dir)),
+            *saved_outputs,
         ],
     }
     (bundle_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
