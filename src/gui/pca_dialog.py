@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QPushButton,
     QLabel, QFormLayout, QGroupBox, QSpinBox, QComboBox,
     QCheckBox, QMessageBox, QFileDialog,
+    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
 )
 from PyQt6.QtGui import QColor, QIcon, QPixmap, QPainter, QFont
 from PyQt6.QtCore import Qt
@@ -128,13 +129,20 @@ class PCADialog(BasePlotDialog):
 
         # 그룹핑: metadata 의 그룹이 복제를 제대로 묶으면 사용, 아니면(예: 샘플당 1개로
         # 쪼개진 경우) 샘플명에서 조건을 추출해 자동 그룹핑. 둘 다 안 되면 그룹 없음.
+        # 어느 쪽이든 이 그룹은 '초기값'일 뿐이고, 사용자가 아래 테이블에서 직접 지정할 수 있다.
         n = len(self.sample_cols)
         meta_groups = sample_groups or {}
+        auto = auto_group_samples(self.sample_cols)
         if _useful_grouping(meta_groups, n):
             self.sample_groups = meta_groups
+        elif _useful_grouping(auto, n):
+            self.sample_groups = auto
         else:
-            auto = auto_group_samples(self.sample_cols)
-            self.sample_groups = auto if _useful_grouping(auto, n) else {}
+            self.sample_groups = {}
+        # 편집 테이블 초기값: 확정 그룹이 있으면 그 라벨, 없으면 자동 추론 라벨을 미리 채운다
+        seed = self.sample_groups or auto
+        inv = {c: g for g, cols in seed.items() for c in cols}
+        self._sample_to_group = {c: inv.get(c, str(c)) for c in self.sample_cols}
 
         # 설정 복원
         s = self._saved_settings
@@ -244,6 +252,29 @@ class PCADialog(BasePlotDialog):
 
         layout.addWidget(disp_group)
 
+        # ── Sample Groups (editable) ──
+        # 이름 추론에만 의존하지 않고, 사용자가 샘플별 그룹을 직접 지정할 수 있다.
+        grp_box = QGroupBox("Sample Groups (editable)")
+        grp_v = QVBoxLayout(grp_box)
+        grp_v.addWidget(QLabel("Edit the group per sample, then Apply.\n"
+                               "Same group = same color. Blank = exclude from grouping."))
+        self.group_table = QTableWidget()
+        self.group_table.setColumnCount(2)
+        self.group_table.setHorizontalHeaderLabels(["Sample", "Group"])
+        self.group_table.verticalHeader().setVisible(False)
+        self.group_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.DoubleClicked
+            | QAbstractItemView.EditTrigger.SelectedClicked)
+        self.group_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.group_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.group_table.setMaximumHeight(200)
+        self._populate_group_table()
+        grp_v.addWidget(self.group_table)
+        apply_btn = QPushButton("Apply Groups")
+        apply_btn.clicked.connect(self._apply_group_table)
+        grp_v.addWidget(apply_btn)
+        layout.addWidget(grp_box)
+
     def _extra_buttons(self) -> list:
         return [("Export PCA Scores (CSV)", self._export_csv)]
 
@@ -270,6 +301,36 @@ class PCADialog(BasePlotDialog):
         cb = getattr(self, 'color_by_combo', None)
         return cb.currentData() if cb is not None and cb.currentData() else (
             'group' if self.sample_groups else 'sample')
+
+    # ── Editable sample groups ─────────────────────────────────────────────
+
+    def _populate_group_table(self):
+        self.group_table.setRowCount(len(self.sample_cols))
+        for r, col in enumerate(self.sample_cols):
+            sample_item = QTableWidgetItem(str(col))
+            sample_item.setFlags(sample_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.group_table.setItem(r, 0, sample_item)
+            self.group_table.setItem(r, 1, QTableWidgetItem(str(self._sample_to_group.get(col, ''))))
+
+    def _apply_group_table(self):
+        """테이블의 샘플→그룹 지정을 읽어 그룹핑을 갱신하고 다시 그린다."""
+        mapping, groups = {}, {}
+        for r, col in enumerate(self.sample_cols):
+            item = self.group_table.item(r, 1)
+            g = (item.text().strip() if item else '')
+            mapping[col] = g
+            if g:
+                groups.setdefault(g, []).append(col)
+        self._sample_to_group = mapping
+        self.sample_groups = groups  # 전부 blank면 {} → 샘플 색; 지정하면 그룹 색
+        # Color by 콤보를 현재 그룹 상태에 맞춰 갱신
+        self.color_by_combo.blockSignals(True)
+        self.color_by_combo.clear()
+        if self.sample_groups:
+            self.color_by_combo.addItem(f"Group ({len(self.sample_groups)})", "group")
+        self.color_by_combo.addItem("Sample", "sample")
+        self.color_by_combo.blockSignals(False)
+        self._update_plot()
 
     def get_bundle_context(self) -> dict:
         return {
