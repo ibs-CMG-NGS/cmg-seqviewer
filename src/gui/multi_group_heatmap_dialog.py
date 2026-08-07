@@ -27,7 +27,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QGroupBox,
     QLabel, QSpinBox, QDoubleSpinBox, QComboBox, QPushButton,
     QCheckBox, QMessageBox, QFormLayout, QFileDialog,
-    QWidget, QGridLayout
+    QWidget, QGridLayout,
+    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
 )
 from PyQt6.QtCore import Qt
 
@@ -74,11 +75,21 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
                 if c.lower() not in _stat_lower
                 and pd.api.types.is_numeric_dtype(self.df[c])
             ]
-        # 그룹핑: metadata 의 그룹이 복제를 제대로 묶으면 사용, 아니면(비어 있거나 샘플당
-        # 1개로 쪼개진 경우) 공용 규칙으로 조건을 추출해 복제를 묶는다 (PCA와 동일 규칙).
+        # 그룹핑은 '추천 기본값'일 뿐이다: metadata 의 그룹이 복제를 제대로 묶으면 그대로,
+        # 아니면(비어 있거나 샘플당 1개로 쪼개진 경우) 공용 규칙으로 조건을 추출해 복제를
+        # 묶는다 (PCA와 동일 규칙). 어떤 경우든 아래 편집 테이블에서 사용자가 고칠 수 있어,
+        # 이 네이밍 규칙이 안 맞는 다른 데이터셋에서도 그룹을 직접 지정할 수 있다.
         from utils.sample_grouping import auto_group_samples, useful_grouping
         if self.sample_columns and not useful_grouping(self.sample_groups, len(self.sample_columns)):
             self.sample_groups = auto_group_samples(self.sample_columns)
+
+        # 샘플 → 그룹 역맵 (편집 테이블 초기값). 그룹에 없는 샘플은 빈 문자열(미지정).
+        self._sample_to_group: dict = {}
+        for _g, _cols in self.sample_groups.items():
+            for _c in _cols:
+                self._sample_to_group[_c] = _g
+        for _c in self.sample_columns:
+            self._sample_to_group.setdefault(_c, '')
 
         # 이미 gene-list 필터링된 child sheet 여부 감지
         self._is_prefiltered: bool = dataset.name.startswith('Filtered:')
@@ -182,6 +193,31 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
         cluster_group.setLayout(cluster_grid)
         layout.addWidget(cluster_group)
 
+        # Sample Groups (editable) — auto 추론은 추천 기본값일 뿐, 사용자가 직접 고칠 수 있다.
+        grp_box = QGroupBox("Sample Groups (editable)")
+        grp_v = QVBoxLayout(grp_box)
+        _grp_hint = QLabel("Edit each sample's group, then Apply. "
+                           "Same label = same color; blank = ungrouped.")
+        _grp_hint.setWordWrap(True)
+        grp_v.addWidget(_grp_hint)
+        self.group_table = QTableWidget()
+        self.group_table.setColumnCount(2)
+        self.group_table.setHorizontalHeaderLabels(["Sample", "Group"])
+        self.group_table.verticalHeader().setVisible(False)
+        self.group_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.DoubleClicked
+            | QAbstractItemView.EditTrigger.SelectedClicked)
+        self.group_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.group_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.group_table.setMaximumHeight(200)
+        self._populate_group_table()
+        grp_v.addWidget(self.group_table)
+        apply_btn = QPushButton("Apply Groups")
+        apply_btn.setToolTip("샘플→그룹 지정을 적용하고 히트맵을 다시 그립니다.")
+        apply_btn.clicked.connect(self._apply_group_table)
+        grp_v.addWidget(apply_btn)
+        layout.addWidget(grp_box)
+
         # Gene Clusters
         cut_group = QGroupBox("Gene Clusters")
         cut_grid = QGridLayout()
@@ -232,47 +268,13 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
         self.cmap_combo.addItems(["RdBu_r", "coolwarm", "bwr", "PiYG", "vlag", "seismic"])
         display_form.addRow("Color map:", self.cmap_combo)
 
-        if self.sample_groups:
-            group_names = list(self.sample_groups.keys())
-            swatch_grid = QGridLayout()
-            swatch_grid.setSpacing(4)
-            for i, gname in enumerate(group_names):
-                row, col = divmod(i, 2)
-                cell = QWidget()
-                cell_hbox = QHBoxLayout(cell)
-                cell_hbox.setContentsMargins(0, 0, 0, 0)
-                cell_hbox.setSpacing(3)
-                name_lbl = QLabel(gname)
-                name_lbl.setMaximumWidth(55)
-                swatch_btn = QPushButton()
-                swatch_btn.setFixedSize(22, 22)
-                swatch_btn.setToolTip(f"Click to change color for {gname}")
-                hex_color = self._group_colors[gname]
-                swatch_btn.setStyleSheet(
-                    f"QPushButton {{ background-color: {hex_color}; "
-                    f"border: 1px solid #888; border-radius: 3px; }}"
-                )
-
-                def _make_picker(btn, name):
-                    def _pick():
-                        from PyQt6.QtWidgets import QColorDialog
-                        from PyQt6.QtGui import QColor
-                        old = QColor(self._group_colors.get(name, '#cccccc'))
-                        color = QColorDialog.getColor(old, self, f"Color for {name}")
-                        if color.isValid():
-                            h = color.name()
-                            self._group_colors[name] = h
-                            btn.setStyleSheet(
-                                f"QPushButton {{ background-color: {h}; "
-                                f"border: 1px solid #888; border-radius: 3px; }}"
-                            )
-                    return _pick
-
-                swatch_btn.clicked.connect(_make_picker(swatch_btn, gname))
-                cell_hbox.addWidget(name_lbl)
-                cell_hbox.addWidget(swatch_btn)
-                swatch_grid.addWidget(cell, row, col)
-            display_form.addRow("Groups:", swatch_grid)
+        # 그룹 색 swatches — Apply Groups 시 재구성되도록 영속 컨테이너에 담는다.
+        self._swatch_container = QWidget()
+        self._swatch_layout = QGridLayout(self._swatch_container)
+        self._swatch_layout.setContentsMargins(0, 0, 0, 0)
+        self._swatch_layout.setSpacing(4)
+        self._rebuild_group_swatches()
+        display_form.addRow("Groups:", self._swatch_container)
 
         self.show_gene_labels_check = QCheckBox("Show gene labels")
         self.show_gene_labels_check.setChecked(True)
@@ -362,6 +364,84 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
             ("Export CSV", self._export_csv),
             ("Export Parquet", self._export_parquet),
         ]
+
+    # ── Editable sample groups ─────────────────────────────────────────────
+
+    def _recompute_group_colors(self):
+        """현재 그룹 집합에 맞춰 색상 맵을 재구성한다(기존 색은 최대한 보존)."""
+        new = {}
+        for i, g in enumerate(self.sample_groups.keys()):
+            new[g] = self._group_colors.get(g, _GROUP_PALETTE[i % len(_GROUP_PALETTE)])
+        self._group_colors = new
+
+    def _rebuild_group_swatches(self):
+        """그룹 색 swatch 그리드를 현재 그룹/색상 상태로 다시 그린다."""
+        layout = self._swatch_layout
+        while layout.count():
+            item = layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        for i, gname in enumerate(self.sample_groups.keys()):
+            row, col = divmod(i, 2)
+            cell = QWidget()
+            cell_hbox = QHBoxLayout(cell)
+            cell_hbox.setContentsMargins(0, 0, 0, 0)
+            cell_hbox.setSpacing(3)
+            name_lbl = QLabel(gname)
+            name_lbl.setMaximumWidth(55)
+            swatch_btn = QPushButton()
+            swatch_btn.setFixedSize(22, 22)
+            swatch_btn.setToolTip(f"Click to change color for {gname}")
+            hex_color = self._group_colors[gname]
+            swatch_btn.setStyleSheet(
+                f"QPushButton {{ background-color: {hex_color}; "
+                f"border: 1px solid #888; border-radius: 3px; }}"
+            )
+
+            def _make_picker(btn, name):
+                def _pick():
+                    from PyQt6.QtWidgets import QColorDialog
+                    from PyQt6.QtGui import QColor
+                    old = QColor(self._group_colors.get(name, '#cccccc'))
+                    color = QColorDialog.getColor(old, self, f"Color for {name}")
+                    if color.isValid():
+                        h = color.name()
+                        self._group_colors[name] = h
+                        btn.setStyleSheet(
+                            f"QPushButton {{ background-color: {h}; "
+                            f"border: 1px solid #888; border-radius: 3px; }}"
+                        )
+                return _pick
+
+            swatch_btn.clicked.connect(_make_picker(swatch_btn, gname))
+            cell_hbox.addWidget(name_lbl)
+            cell_hbox.addWidget(swatch_btn)
+            layout.addWidget(cell, row, col)
+
+    def _populate_group_table(self):
+        self.group_table.setRowCount(len(self.sample_columns))
+        for r, col in enumerate(self.sample_columns):
+            sample_item = QTableWidgetItem(str(col))
+            sample_item.setFlags(sample_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.group_table.setItem(r, 0, sample_item)
+            self.group_table.setItem(
+                r, 1, QTableWidgetItem(str(self._sample_to_group.get(col, ''))))
+
+    def _apply_group_table(self):
+        """테이블의 샘플→그룹 지정을 읽어 그룹핑/색상/swatch 를 갱신하고 다시 그린다."""
+        mapping, groups = {}, {}
+        for r, col in enumerate(self.sample_columns):
+            item = self.group_table.item(r, 1)
+            g = (item.text().strip() if item else '')
+            mapping[col] = g
+            if g:
+                groups.setdefault(g, []).append(col)
+        self._sample_to_group = mapping
+        self.sample_groups = groups   # 전부 blank면 {} → 그룹 color bar 없음
+        self._recompute_group_colors()
+        self._rebuild_group_swatches()
+        self._update_plot()
 
     # ── Data ──────────────────────────────────────────────────────────────
 
