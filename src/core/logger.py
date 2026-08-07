@@ -200,9 +200,14 @@ def setup_logger(log_dir: Optional[Path] = None) -> logging.Logger:
     )
     file_handler.setFormatter(file_formatter)
     logger.addHandler(file_handler)
-    
+
+    # 시끄러운 서드파티 로거 억제 (예: adjustText가 라벨 배치 iteration마다 DEBUG로
+    # 0,1,2,… 를 찍어 로그를 뒤덮는다). WARNING 이상만 남긴다.
+    for noisy in ("adjustText", "matplotlib", "PIL", "fontTools"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
     logger.info(f"Logger initialized. Log file: {log_file}")
-    
+
     return logger
 
 

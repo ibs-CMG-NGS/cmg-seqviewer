@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QGroupBox, QScrollArea, QMessageBox, QFileDialog,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 
 from utils import figure_theme, figure_export
 from gui.widgets.figure_style_panel import FigureStylePanel
@@ -57,6 +57,48 @@ class BasePlotDialog(QDialog):
 
     # ── 레이아웃 ──────────────────────────────────────────────────────────────
 
+    def showEvent(self, event):
+        """다이얼로그가 처음 표시되면 레이아웃이 정착된 실제 minimumSizeHint 로 좌측
+        패널 폭을 한 번 더 맞춘다(구성 시점 힌트는 미정착이라 부정확할 수 있음)."""
+        super().showEvent(event)
+        if not getattr(self, '_settings_width_fitted', False):
+            self._settings_width_fitted = True
+            scroll = getattr(self, '_settings_scroll', None)
+            cont = getattr(self, '_settings_container', None)
+            if scroll is not None and cont is not None:
+                QTimer.singleShot(0, lambda: self._fit_settings_scroll_width(scroll, cont))
+
+    @staticmethod
+    def _fit_settings_scroll_width(scroll: QScrollArea, container: QWidget,
+                                   min_w: int = 260, max_w: int = 680) -> None:
+        """좌측 설정 패널을 콘텐츠 폭에 맞춰 잡아 짤림/가로 스크롤을 없앤다.
+
+        긴 항목을 가진 콤보박스는 기본적으로 항목 전체 폭을 최소폭으로 강제해 패널을
+        과도하게 넓히거나 짤림을 유발한다. 먼저 콤보를 '축소 가능'하게 바꿔(접힌 박스는
+        좁게, 드롭다운/툴팁은 전체 표시) 그 원인을 제거한 뒤, 남은 콘텐츠의 minimumSizeHint
+        에 맞춰 스크롤 폭을 정한다."""
+        from PyQt6.QtWidgets import QComboBox, QSizePolicy, QAbstractItemView
+        for cb in container.findChildren(QComboBox):
+            # QComboBox 는 가장 긴 항목 폭을 minimumSizeHint 로 강제해 패널을 넓히거나
+            # 짤림을 유발한다. 가로 정책을 Ignored 로 바꾸면 레이아웃이 그 힌트를 무시하고
+            # 콤보는 배정된 폭 안에서 줄어든다(현재 값은 "…"로 elide, 드롭다운/툴팁은 전체).
+            cb.setSizePolicy(QSizePolicy.Policy.Ignored, cb.sizePolicy().verticalPolicy())
+            cb.setMinimumWidth(110)
+            if not cb.toolTip():
+                cb.setToolTip(cb.currentText())
+        # 설정 패널 안의 표(예: PCA 편집 그룹 테이블)도 넓은 최소폭으로 패널을 강제하지 않게
+        for tbl in container.findChildren(QAbstractItemView):
+            tbl.setSizePolicy(QSizePolicy.Policy.Ignored, tbl.sizePolicy().verticalPolicy())
+            tbl.setMinimumWidth(150)
+        container.adjustSize()
+
+        scrollbar_w = scroll.verticalScrollBar().sizeHint().width()
+        needed = container.minimumSizeHint().width() + scrollbar_w + 8
+        width = int(min(max_w, max(min_w, needed)))
+        scroll.setMinimumWidth(width)
+        scroll.setMaximumWidth(width + 40)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
     def _init_layout(self):
         main = QHBoxLayout(self)
         main.setContentsMargins(4, 4, 4, 4)
@@ -85,9 +127,9 @@ class BasePlotDialog(QDialog):
         scroll = QScrollArea()
         scroll.setWidget(left_container)
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setMinimumWidth(220)
-        scroll.setMaximumWidth(300)
+        self._settings_scroll = scroll
+        self._settings_container = left_container
+        self._fit_settings_scroll_width(scroll, left_container)
         main.addWidget(scroll)
 
         # 우측: 툴바 + 캔버스 + 버튼 바

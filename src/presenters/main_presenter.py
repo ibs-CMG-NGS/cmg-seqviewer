@@ -273,6 +273,39 @@ class MainPresenter(QObject):
         else:
             self.logger.warning(f"Dataset not found: {dataset_name}")
     
+    def _keyword_search_column(self) -> str:
+        """현재 데이터셋에서 키워드 검색 대상 식별자 컬럼을 고른다.
+
+        GO/KEGG → description(+term_id), 그 외 → symbol → gene_id 순.
+        """
+        if self.current_dataset is None or self.current_dataset.dataframe is None:
+            return ""
+        cols = list(self.current_dataset.dataframe.columns)
+        dt = self.current_dataset.dataset_type
+        # 심볼 컬럼은 데이터셋마다 'symbol' 또는 'gene_symbol'/'gene_name' 등으로 다르다.
+        if dt == DatasetType.GO_ANALYSIS:
+            order = [StandardColumns.DESCRIPTION, StandardColumns.TERM_ID, 'description', 'term_id']
+        else:
+            order = [StandardColumns.SYMBOL, 'symbol', 'gene_symbol', 'gene_name',
+                     StandardColumns.GENE_ID, 'gene_id',
+                     StandardColumns.DESCRIPTION, 'description']
+        for c in order:
+            if c in cols:
+                return c
+        # fallback: 첫 문자열 컬럼
+        for c in cols:
+            if self.current_dataset.dataframe[c].dtype == object:
+                return c
+        return cols[0] if cols else ""
+
+    def _filter_by_keyword(self, keyword: str, column: str) -> pd.DataFrame:
+        """current_dataset 을 지정 컬럼의 부분문자열(대소문자 무시)로 필터."""
+        df = self.current_dataset.dataframe
+        if column not in df.columns:
+            return df.iloc[0:0]
+        mask = df[column].astype(str).str.contains(keyword, case=False, na=False, regex=False)
+        return df[mask]
+
     def compute_filtered_df(self, criteria: FilterCriteria):
         """탭/시그널 없이 current_dataset 에 필터를 적용한 DataFrame 만 반환한다.
 
@@ -282,6 +315,12 @@ class MainPresenter(QObject):
         """
         if self.current_dataset is None:
             return None
+        if criteria.mode == FilterMode.KEYWORD:
+            kw = (criteria.search_keyword or "").strip()
+            if not kw:
+                return None
+            col = criteria.search_column or self._keyword_search_column()
+            return self._filter_by_keyword(kw, col)
         if criteria.mode == FilterMode.GENE_LIST:
             if criteria.term_id_list:
                 return self._filter_go_by_term_ids(criteria.term_id_list)
@@ -341,7 +380,18 @@ class MainPresenter(QObject):
         
         try:
             # 필터링 모드에 따라 다르게 처리
-            if criteria.mode == FilterMode.GENE_LIST:
+            if criteria.mode == FilterMode.KEYWORD:
+                kw = (criteria.search_keyword or "").strip()
+                if not kw:
+                    self.error_occurred.emit("Search keyword is empty")
+                    self.fsm.trigger(Event.FILTER_FAILED)
+                    return
+                col = criteria.search_column or self._keyword_search_column()
+                filtered_df = self._filter_by_keyword(kw, col)
+                where = f" in {col}" if col else ""
+                tab_name = f"Search: \"{kw}\"{where} ({len(filtered_df)})"
+
+            elif criteria.mode == FilterMode.GENE_LIST:
                 # GO Term ID 모드 (term_id_list가 있을 때)
                 if criteria.term_id_list:
                     filtered_df = self._filter_go_by_term_ids(criteria.term_id_list)

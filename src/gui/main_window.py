@@ -11,8 +11,8 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QProgressBar, QInputDialog, QLineEdit, QHeaderView,
                             QSizePolicy, QDialog, QToolButton, QFrame,
                             QDockWidget, QScrollArea)
-from PyQt6.QtCore import Qt, pyqtSignal, QThread
-from PyQt6.QtGui import QAction, QIcon, QFont, QActionGroup, QPixmap
+from PyQt6.QtCore import Qt, pyqtSignal, QThread, QSortFilterProxyModel, QTimer
+from PyQt6.QtGui import QAction, QIcon, QFont, QActionGroup, QPixmap, QShortcut, QKeySequence
 import logging
 from pathlib import Path
 from typing import Optional, List, Dict
@@ -220,7 +220,16 @@ class MainWindow(QMainWindow):
         self.data_tabs.setAcceptDrops(True)
         self.data_tabs.dragEnterEvent = self._data_tabs_drag_enter
         self.data_tabs.dropEvent = self._data_tabs_drop
-        self.main_splitter.addWidget(self.data_tabs)
+
+        # 컴팩트 키워드 검색: 탭 바 우측 돋보기 + Ctrl+F 로 아래 검색 바 토글
+        self._build_search_bar()
+        data_container = QWidget()
+        dc = QVBoxLayout(data_container)
+        dc.setContentsMargins(0, 0, 0, 0)
+        dc.setSpacing(0)
+        dc.addWidget(self._search_bar)   # 숨김 상태로 시작, 토글 시 탭 위에 펼쳐짐
+        dc.addWidget(self.data_tabs)
+        self.main_splitter.addWidget(data_container)
 
         # splitter 스트레치 / collapsible 설정
         self.main_splitter.setStretchFactor(0, 0)
@@ -2692,8 +2701,158 @@ class MainWindow(QMainWindow):
             self._remove_tab_safely(index)
             self._update_menu_states(self.presenter.fsm.current_state)
     
+    # ── Keyword search (compact find bar) ──────────────────────────────────
+
+    def _build_search_bar(self):
+        """탭 바 우측 돋보기 + 접히는 라이브 키워드 검색 바를 구성한다."""
+        self._search_bar = QFrame()
+        self._search_bar.setFrameShape(QFrame.Shape.StyledPanel)
+        self._search_bar.setVisible(False)
+        h = QHBoxLayout(self._search_bar)
+        h.setContentsMargins(6, 3, 6, 3)
+        h.setSpacing(6)
+        h.addWidget(QLabel("🔍"))
+        self._search_input = QLineEdit()
+        self._search_input.setPlaceholderText(
+            "Find in this sheet — symbol / description…  (substring, case-insensitive)")
+        self._search_input.setClearButtonEnabled(True)
+        self._search_input.textChanged.connect(lambda _t: self._search_debounce.start())
+        h.addWidget(self._search_input, 1)
+        self._search_count = QLabel("")
+        self._search_count.setStyleSheet("color:#666;")
+        h.addWidget(self._search_count)
+        self._search_to_sheet_btn = QPushButton("→ Sheet")
+        self._search_to_sheet_btn.setToolTip("Create a child sheet from the current matches")
+        self._search_to_sheet_btn.clicked.connect(self._on_search_to_sheet)
+        h.addWidget(self._search_to_sheet_btn)
+        close_btn = QToolButton()
+        close_btn.setText("✕")
+        close_btn.setToolTip("Close (Esc)")
+        close_btn.clicked.connect(self._close_search)
+        h.addWidget(close_btn)
+
+        self._search_hidden_table = None   # 현재 행 숨김이 적용된 QTableView
+        self._search_debounce = QTimer(self)
+        self._search_debounce.setSingleShot(True)
+        self._search_debounce.setInterval(150)
+        self._search_debounce.timeout.connect(self._apply_live_search)
+
+        self._search_toggle_btn = QToolButton()
+        self._search_toggle_btn.setText("🔍")
+        self._search_toggle_btn.setCheckable(True)
+        self._search_toggle_btn.setToolTip("Find in this sheet (Ctrl+F)")
+        self._search_toggle_btn.clicked.connect(lambda: self._toggle_search())
+        self.data_tabs.setCornerWidget(self._search_toggle_btn, Qt.Corner.TopRightCorner)
+
+        find_sc = QShortcut(QKeySequence.StandardKey.Find, self)
+        find_sc.activated.connect(lambda: self._toggle_search(True))
+        esc_sc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self._search_input)
+        esc_sc.activated.connect(self._close_search)
+
+    def _search_table_and_col(self):
+        """활성 탭이 데이터 테이블이면 (table, model, dataframe, 검색컬럼명), 아니면 None."""
+        w = self.data_tabs.currentWidget()
+        if not isinstance(w, QTableView):
+            return None
+        model = w.model()
+        if model is None or not hasattr(model, 'dataframe'):
+            return None
+        df = model.dataframe()
+        if df is None or df.shape[1] == 0:
+            return None
+        cols = list(df.columns)
+        # 데이터셋 타입에 맞춘 검색 대상 컬럼 (프리젠터 _keyword_search_column 과 동일 방침):
+        # GO/KEGG → term description, 그 외(DE·ATAC) → gene symbol 이 실용적 (gene_id 보다 우선).
+        dt = getattr(self.presenter.current_dataset, 'dataset_type', None)
+        # 심볼 컬럼은 데이터셋마다 'symbol' 또는 'gene_symbol'/'gene_name' 등으로 다르다.
+        if dt == DatasetType.GO_ANALYSIS:
+            prefer = ('description', 'term_id', 'symbol', 'gene_symbol', 'gene_name', 'gene_id')
+        else:
+            prefer = ('symbol', 'gene_symbol', 'gene_name', 'gene_id', 'description', 'term_id')
+        col = next((c for c in prefer if c in cols), None)
+        if col is None:
+            col = next((c for c in cols if df[c].dtype == object), cols[0])
+        return (w, model, df, col)
+
+    def _toggle_search(self, show=None):
+        want = (not self._search_bar.isVisible()) if show is None else bool(show)
+        (self._open_search if want else self._close_search)()
+
+    def _open_search(self):
+        self._search_bar.setVisible(True)
+        self._search_toggle_btn.setChecked(True)
+        self._search_input.setFocus()
+        self._search_input.selectAll()
+        self._apply_live_search()
+
+    def _close_search(self):
+        self._reset_hidden_rows()
+        self._search_bar.setVisible(False)
+        self._search_toggle_btn.setChecked(False)
+
+    def _reset_hidden_rows(self):
+        t = self._search_hidden_table
+        if isinstance(t, QTableView) and t.model() is not None:
+            t.setUpdatesEnabled(False)
+            for r in range(t.model().rowCount()):
+                if t.isRowHidden(r):
+                    t.setRowHidden(r, False)
+            t.setUpdatesEnabled(True)
+        self._search_hidden_table = None
+
+    def _apply_live_search(self):
+        """활성 테이블에서 검색어에 맞지 않는 행을 숨긴다(모델은 그대로 유지)."""
+        if not self._search_bar.isVisible():
+            return
+        target = self._search_table_and_col()
+        if target is None:
+            self._reset_hidden_rows()
+            self._search_count.setText("(not a table)")
+            self._search_to_sheet_btn.setEnabled(False)
+            return
+        table, model, df, col = target
+        if self._search_hidden_table is not None and self._search_hidden_table is not table:
+            self._reset_hidden_rows()
+        text = self._search_input.text().strip()
+        total = len(df)
+        table.setUpdatesEnabled(False)
+        if not text:
+            for r in range(total):
+                if table.isRowHidden(r):
+                    table.setRowHidden(r, False)
+            n = total
+        else:
+            mask = df[col].astype(str).str.contains(
+                text, case=False, na=False, regex=False).to_numpy()
+            for r in range(total):
+                table.setRowHidden(r, not mask[r])
+            n = int(mask.sum())
+        table.setUpdatesEnabled(True)
+        self._search_hidden_table = table
+        self._search_count.setText(f"{n:,} / {total:,}  ·  {col}")
+        self._search_to_sheet_btn.setEnabled(bool(text) and n > 0)
+
+    def _on_search_to_sheet(self):
+        """현재 검색 결과를 keyword 레시피로 child sheet 생성(프로젝트 복원 지원)."""
+        target = self._search_table_and_col()
+        kw = self._search_input.text().strip()
+        if target is None or not kw:
+            return
+        _t, _m, _df, col = target
+        from models.data_models import FilterCriteria, FilterMode
+        try:
+            self.presenter.apply_filter(
+                FilterCriteria(mode=FilterMode.KEYWORD, search_keyword=kw, search_column=col))
+            self._close_search()  # 새 시트 탭으로 전환됨
+        except Exception as e:
+            QMessageBox.critical(self, "Search", f"Failed to create sheet:\n{e}")
+
     def _on_tab_changed(self, index: int):
         """탭 변경 시 메뉴 상태 및 current_dataset 업데이트"""
+        # 검색 바가 열려 있으면 이전 탭의 행 숨김을 해제하고 닫는다 (탭마다 별도 검색)
+        if getattr(self, '_search_bar', None) is not None and self._search_bar.isVisible():
+            self._close_search()
+
         # 메뉴가 생성되었는지 확인
         if not hasattr(self, 'export_action'):
             return
@@ -3072,7 +3231,7 @@ class MainWindow(QMainWindow):
 
         title_label = QLabel(
             "<h2 style='margin:0;'>CMG-SeqViewer</h2>"
-            "<p style='margin:2px 0;'><b>Version 1.2.8</b></p>"
+            "<p style='margin:2px 0;'><b>Version 1.2.9</b></p>"
             "<p style='margin:2px 0; color:#555;'>RNA-Seq Data Analysis &amp; Visualization</p>"
         )
         title_label.setWordWrap(True)
@@ -3165,18 +3324,25 @@ class MainWindow(QMainWindow):
             elif viz_type == "heatmap":
                 required_cols = []  # Heatmap은 샘플 발현 데이터 자동 탐지
             elif viz_type == "pca":
-                # PCA: DE 데이터셋만 허용, 컬럼 검사는 다이얼로그 내부에서 수행
-                if dataset.dataset_type.value != "DE":
-                    from models.data_models import DatasetType as _DT
-                    if dataset.dataset_type != _DT.DIFFERENTIAL_EXPRESSION:
-                        QMessageBox.warning(
-                            self, "PCA — DE Dataset Required",
-                            "PCA Plot is only available for Differential Expression datasets.\n"
-                            "Please select a DE dataset tab."
-                        )
-                        return
+                # PCA: per-sample 발현 컬럼이 있는 데이터셋이면 가능(DE + Multi-Group).
+                # Multi-Group 은 metadata 의 sample_columns/sample_groups 를 넘겨
+                # authoritative 샘플 선택 + 그룹별 색상을 쓴다.
+                from models.data_models import DatasetType as _DT
+                meta = getattr(dataset, 'metadata', {}) or {}
+                allowed = dataset.dataset_type in (_DT.DIFFERENTIAL_EXPRESSION, _DT.MULTI_GROUP)
+                if not allowed:
+                    QMessageBox.warning(
+                        self, "PCA — Unsupported Dataset",
+                        "PCA Plot needs per-sample expression data.\n"
+                        "Use a Differential Expression or Multi-Group dataset."
+                    )
+                    return
                 dataset_name = dataset.name if hasattr(dataset, 'name') else ""
-                dialog = PCADialog(dataframe, dataset_name=dataset_name, parent=self)
+                dialog = PCADialog(
+                    dataframe, dataset_name=dataset_name, parent=self,
+                    sample_columns=meta.get('sample_columns'),
+                    sample_groups=meta.get('sample_groups'),
+                )
                 dialog.exec()
                 self.logger.info("Visualization opened: pca")
                 return

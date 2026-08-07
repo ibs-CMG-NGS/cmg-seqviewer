@@ -12,7 +12,9 @@ def render_pca(fig, df, params):
     """PCA plot을 fig에 그린다. (scores_df, explained_ratio) 반환. 샘플 없으면 None.
 
     params: n_genes, transform('log2'|'log1p'|'none'), scaling('standard'|'none'),
-            x_pc(1-base), y_pc(1-base), point_size, show_labels(bool), title
+            x_pc(1-base), y_pc(1-base), point_size, show_labels(bool), title,
+            sample_columns(list, 명시 시 자동감지 대신 사용 — Multi-Group 등),
+            sample_groups(dict {group: [cols]}, 주면 점을 그룹별 색으로 칠하고 범례 추가)
     """
     exclude = {
         'basemean', 'base_mean', 'log2fold', 'log2fc', 'logfc', 'foldchange',
@@ -23,9 +25,15 @@ def render_pca(fig, df, params):
     ax = fig.add_subplot(111)
     df = df.copy() if df is not None else pd.DataFrame()
 
-    sample_cols = [c for c in df.columns
-                   if not any(p in c.lower() for p in exclude)
-                   and pd.api.types.is_numeric_dtype(df[c])]
+    # 샘플 컬럼: 명시(metadata sample_columns) 우선, 없으면 자동 감지
+    explicit = params.get('sample_columns')
+    if explicit:
+        sample_cols = [c for c in explicit
+                       if c in df.columns and pd.api.types.is_numeric_dtype(df[c])]
+    else:
+        sample_cols = [c for c in df.columns
+                       if not any(p in c.lower() for p in exclude)
+                       and pd.api.types.is_numeric_dtype(df[c])]
     if not sample_cols:
         ax.text(0.5, 0.5, 'No sample expression columns found.\n'
                 'PCA requires per-sample count data.',
@@ -69,11 +77,27 @@ def render_pca(fig, df, params):
 
     import matplotlib
     xs, ys = scores[:, xi], scores[:, yi]
-    cmap = matplotlib.colormaps.get_cmap('tab10')
-    colors = [cmap(i % 10) for i in range(len(sample_cols))]
+    tab10 = matplotlib.colormaps.get_cmap('tab10')
+
+    # 그룹 색상: sample_groups 가 주어지면 그룹별 색 + 범례, 아니면 샘플별 색
+    groups = params.get('sample_groups') or {}
+    col_to_group = {c: g for g, cols in groups.items() for c in cols}
+    by_group = bool(col_to_group) and any(c in col_to_group for c in sample_cols)
+    if by_group:
+        uniq_groups = list(dict.fromkeys(col_to_group.get(c, 'Other') for c in sample_cols))
+        group_color = {g: tab10(i % 10) for i, g in enumerate(uniq_groups)}
+        colors = [group_color[col_to_group.get(c, 'Other')] for c in sample_cols]
+    else:
+        colors = [tab10(i % 10) for i in range(len(sample_cols))]
 
     ax.scatter(xs, ys, s=int(params.get('point_size', 80)), c=colors, alpha=0.85,
                edgecolors='white', linewidths=0.8, zorder=3)
+    if by_group:
+        from matplotlib.lines import Line2D
+        handles = [Line2D([0], [0], marker='o', color='none', markerfacecolor=group_color[g],
+                          markeredgecolor='white', markersize=8, label=str(g))
+                   for g in uniq_groups]
+        ax.legend(handles=handles, title='Group', fontsize=8, loc='best', framealpha=0.9)
     if params.get('show_labels', True):
         # 샘플이 모이면 라벨이 겹치므로 adjustText로 자동 배치 + 리더선
         texts = [ax.text(x, y, lbl, fontsize=8, color='#222', ha='center', va='center',

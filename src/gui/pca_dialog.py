@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QPushButton,
     QLabel, QFormLayout, QGroupBox, QSpinBox, QComboBox,
     QCheckBox, QMessageBox, QFileDialog,
+    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
 )
 from PyQt6.QtGui import QColor, QIcon, QPixmap, QPainter, QFont
 from PyQt6.QtCore import Qt
@@ -56,6 +57,9 @@ _STANDARD_DE_COLS = set(StandardColumns.get_de_all()) | {
 }
 
 
+from utils.sample_grouping import auto_group_samples, useful_grouping as _useful_grouping  # noqa: F401
+
+
 def detect_sample_columns(df: pd.DataFrame) -> list:
     result = []
     for col in df.columns:
@@ -92,13 +96,32 @@ class PCADialog(BasePlotDialog):
         'fig_height': 6,
     }
 
-    def __init__(self, dataframe: pd.DataFrame, dataset_name: str = "", parent=None):
+    def __init__(self, dataframe: pd.DataFrame, dataset_name: str = "", parent=None,
+                 sample_columns: list = None, sample_groups: dict = None):
         self.logger = logging.getLogger(__name__)
         self.dataframe = dataframe
         self.dataset_name = dataset_name
 
-        # 샘플 컬럼 감지
-        self.sample_cols = detect_sample_columns(dataframe)
+        # 샘플 컬럼: 명시(metadata) 우선, 없으면 자동 감지
+        explicit = [c for c in (sample_columns or []) if c in dataframe.columns]
+        self.sample_cols = explicit if explicit else detect_sample_columns(dataframe)
+
+        # 그룹핑: metadata 의 그룹이 복제를 제대로 묶으면 사용, 아니면(예: 샘플당 1개로
+        # 쪼개진 경우) 샘플명에서 조건을 추출해 자동 그룹핑. 둘 다 안 되면 그룹 없음.
+        # 어느 쪽이든 이 그룹은 '초기값'일 뿐이고, 사용자가 아래 테이블에서 직접 지정할 수 있다.
+        n = len(self.sample_cols)
+        meta_groups = sample_groups or {}
+        auto = auto_group_samples(self.sample_cols)
+        if _useful_grouping(meta_groups, n):
+            self.sample_groups = meta_groups
+        elif _useful_grouping(auto, n):
+            self.sample_groups = auto
+        else:
+            self.sample_groups = {}
+        # 편집 테이블 초기값: 확정 그룹이 있으면 그 라벨, 없으면 자동 추론 라벨을 미리 채운다
+        seed = self.sample_groups or auto
+        inv = {c: g for g, cols in seed.items() for c in cols}
+        self._sample_to_group = {c: inv.get(c, str(c)) for c in self.sample_cols}
 
         # 설정 복원
         s = self._saved_settings
@@ -151,20 +174,18 @@ class PCADialog(BasePlotDialog):
         pca_layout.addRow("Top genes (variance):", self.gene_spin)
 
         self.transform_combo = QComboBox()
-        self.transform_combo.addItems([
-            "log2(x + 1)",
-            "log1p  (natural log)",
-            "None (raw values)",
-        ])
+        self.transform_combo.addItems(["log2(x+1)", "log1p", "None"])
+        self.transform_combo.setItemData(0, "log2(x + 1)", 3)      # tooltip
+        self.transform_combo.setItemData(1, "log1p (natural log)", 3)
+        self.transform_combo.setItemData(2, "None (raw values)", 3)
         transform_map = {'log2': 0, 'log1p': 1, 'none': 2}
         self.transform_combo.setCurrentIndex(transform_map.get(self.transform, 0))
         pca_layout.addRow("Transformation:", self.transform_combo)
 
         self.scaling_combo = QComboBox()
-        self.scaling_combo.addItems([
-            "StandardScaler  (mean=0, std=1)",
-            "None (no scaling)",
-        ])
+        self.scaling_combo.addItems(["StandardScaler", "None"])
+        self.scaling_combo.setItemData(0, "StandardScaler (mean=0, std=1)", 3)
+        self.scaling_combo.setItemData(1, "None (no scaling)", 3)
         self.scaling_combo.setCurrentIndex(0 if self.scaling == 'standard' else 1)
         pca_layout.addRow("Feature scaling:", self.scaling_combo)
 
@@ -190,11 +211,50 @@ class PCADialog(BasePlotDialog):
         self.point_spin.setSingleStep(10)
         disp_layout.addRow("Point size:", self.point_spin)
 
+        # 색상 기준: 그룹(복제를 조건으로 묶어 색칠 + 범례) vs 샘플(각 샘플 개별 색)
+        self.color_by_combo = QComboBox()
+        if self.sample_groups:
+            n_grp = len(self.sample_groups)
+            self.color_by_combo.addItem(f"Group ({n_grp})", "group")
+            self.color_by_combo.addItem("Sample", "sample")
+        else:
+            # 유효 그룹이 없으면 그룹 옵션 비활성(샘플만)
+            self.color_by_combo.addItem("Sample", "sample")
+            self.color_by_combo.setToolTip(
+                "샘플명에서 조건 그룹을 찾지 못했습니다. 각 샘플을 개별 색으로 표시합니다.")
+        self.color_by_combo.currentIndexChanged.connect(self._update_plot)
+        disp_layout.addRow("Color by:", self.color_by_combo)
+
         self.label_check = QCheckBox("Show sample labels")
         self.label_check.setChecked(self.show_labels)
         disp_layout.addRow("", self.label_check)
 
         layout.addWidget(disp_group)
+
+        # ── Sample Groups (editable) ──
+        # 이름 추론에만 의존하지 않고, 사용자가 샘플별 그룹을 직접 지정할 수 있다.
+        grp_box = QGroupBox("Sample Groups (editable)")
+        grp_v = QVBoxLayout(grp_box)
+        _grp_hint = QLabel("Edit each sample's group, then Apply. "
+                           "Same label = same color; blank = ungrouped.")
+        _grp_hint.setWordWrap(True)
+        grp_v.addWidget(_grp_hint)
+        self.group_table = QTableWidget()
+        self.group_table.setColumnCount(2)
+        self.group_table.setHorizontalHeaderLabels(["Sample", "Group"])
+        self.group_table.verticalHeader().setVisible(False)
+        self.group_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.DoubleClicked
+            | QAbstractItemView.EditTrigger.SelectedClicked)
+        self.group_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.group_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.group_table.setMaximumHeight(200)
+        self._populate_group_table()
+        grp_v.addWidget(self.group_table)
+        apply_btn = QPushButton("Apply Groups")
+        apply_btn.clicked.connect(self._apply_group_table)
+        grp_v.addWidget(apply_btn)
+        layout.addWidget(grp_box)
 
     def _extra_buttons(self) -> list:
         return [("Export PCA Scores (CSV)", self._export_csv)]
@@ -211,7 +271,47 @@ class PCADialog(BasePlotDialog):
             'point_size': self.point_size,
             'show_labels': self.show_labels,
             'title': self.plot_title,
+            'sample_columns': list(self.sample_cols),
+            'sample_groups': (
+                {g: list(cols) for g, cols in self.sample_groups.items()}
+                if self._color_mode() == 'group' else {}
+            ),
         }
+
+    def _color_mode(self) -> str:
+        cb = getattr(self, 'color_by_combo', None)
+        return cb.currentData() if cb is not None and cb.currentData() else (
+            'group' if self.sample_groups else 'sample')
+
+    # ── Editable sample groups ─────────────────────────────────────────────
+
+    def _populate_group_table(self):
+        self.group_table.setRowCount(len(self.sample_cols))
+        for r, col in enumerate(self.sample_cols):
+            sample_item = QTableWidgetItem(str(col))
+            sample_item.setFlags(sample_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.group_table.setItem(r, 0, sample_item)
+            self.group_table.setItem(r, 1, QTableWidgetItem(str(self._sample_to_group.get(col, ''))))
+
+    def _apply_group_table(self):
+        """테이블의 샘플→그룹 지정을 읽어 그룹핑을 갱신하고 다시 그린다."""
+        mapping, groups = {}, {}
+        for r, col in enumerate(self.sample_cols):
+            item = self.group_table.item(r, 1)
+            g = (item.text().strip() if item else '')
+            mapping[col] = g
+            if g:
+                groups.setdefault(g, []).append(col)
+        self._sample_to_group = mapping
+        self.sample_groups = groups  # 전부 blank면 {} → 샘플 색; 지정하면 그룹 색
+        # Color by 콤보를 현재 그룹 상태에 맞춰 갱신
+        self.color_by_combo.blockSignals(True)
+        self.color_by_combo.clear()
+        if self.sample_groups:
+            self.color_by_combo.addItem(f"Group ({len(self.sample_groups)})", "group")
+        self.color_by_combo.addItem("Sample", "sample")
+        self.color_by_combo.blockSignals(False)
+        self._update_plot()
 
     def get_bundle_context(self) -> dict:
         return {
