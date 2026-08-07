@@ -2764,10 +2764,11 @@ class MainWindow(QMainWindow):
         # 데이터셋 타입에 맞춘 검색 대상 컬럼 (프리젠터 _keyword_search_column 과 동일 방침):
         # GO/KEGG → term description, 그 외(DE·ATAC) → gene symbol 이 실용적 (gene_id 보다 우선).
         dt = getattr(self.presenter.current_dataset, 'dataset_type', None)
+        # 심볼 컬럼은 데이터셋마다 'symbol' 또는 'gene_symbol'/'gene_name' 등으로 다르다.
         if dt == DatasetType.GO_ANALYSIS:
-            prefer = ('description', 'term_id', 'symbol', 'gene_id')
+            prefer = ('description', 'term_id', 'symbol', 'gene_symbol', 'gene_name', 'gene_id')
         else:
-            prefer = ('symbol', 'gene_id', 'description', 'term_id')
+            prefer = ('symbol', 'gene_symbol', 'gene_name', 'gene_id', 'description', 'term_id')
         col = next((c for c in prefer if c in cols), None)
         if col is None:
             col = next((c for c in cols if df[c].dtype == object), cols[0])

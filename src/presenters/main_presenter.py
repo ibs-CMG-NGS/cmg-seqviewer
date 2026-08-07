@@ -282,10 +282,12 @@ class MainPresenter(QObject):
             return ""
         cols = list(self.current_dataset.dataframe.columns)
         dt = self.current_dataset.dataset_type
+        # 심볼 컬럼은 데이터셋마다 'symbol' 또는 'gene_symbol'/'gene_name' 등으로 다르다.
         if dt == DatasetType.GO_ANALYSIS:
             order = [StandardColumns.DESCRIPTION, StandardColumns.TERM_ID, 'description', 'term_id']
         else:
-            order = [StandardColumns.SYMBOL, 'symbol', StandardColumns.GENE_ID, 'gene_id',
+            order = [StandardColumns.SYMBOL, 'symbol', 'gene_symbol', 'gene_name',
+                     StandardColumns.GENE_ID, 'gene_id',
                      StandardColumns.DESCRIPTION, 'description']
         for c in order:
             if c in cols:
