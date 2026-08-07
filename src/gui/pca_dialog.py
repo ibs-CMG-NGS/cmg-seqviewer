@@ -57,28 +57,7 @@ _STANDARD_DE_COLS = set(StandardColumns.get_de_all()) | {
 }
 
 
-def auto_group_samples(sample_cols: list) -> dict:
-    """샘플 컬럼명에서 조건(그룹)을 추출해 복제(replicate)를 하나로 묶는다.
-
-    끝의 전역 인덱스(_S20 등)와 복제 번호를 제거해 조건명을 얻는다.
-      JHL_Con1_S20 / JHL_Con2_S21 / JHL_Con3_S22 -> 'JHL_Con'
-      JHL_1D_1_S23 / JHL_1D_2_S24 / JHL_1D_3_S25 -> 'JHL_1D'
-      JHL_24h_1_S26 -> 'JHL_24h'
-    """
-    import re
-    groups: dict = {}
-    for c in sample_cols:
-        g = re.sub(r'[_\-.]?[Ss]\d+$', '', str(c))   # 전역 인덱스 (_S20)
-        g = re.sub(r'[_\-.]?\d+$', '', g)             # 복제 번호
-        g = g.strip('_-. ') or str(c)
-        groups.setdefault(g, []).append(c)
-    return groups
-
-
-def _useful_grouping(groups: dict, n_samples: int) -> bool:
-    """복제를 실제로 묶는 유효한 그룹핑인가 (그룹 1개도, 샘플당 1개도 아님)."""
-    k = len(groups)
-    return bool(groups) and 1 < k < n_samples and any(len(v) > 1 for v in groups.values())
+from utils.sample_grouping import auto_group_samples, useful_grouping as _useful_grouping  # noqa: F401
 
 
 def detect_sample_columns(df: pd.DataFrame) -> list:
@@ -256,8 +235,10 @@ class PCADialog(BasePlotDialog):
         # 이름 추론에만 의존하지 않고, 사용자가 샘플별 그룹을 직접 지정할 수 있다.
         grp_box = QGroupBox("Sample Groups (editable)")
         grp_v = QVBoxLayout(grp_box)
-        grp_v.addWidget(QLabel("Edit the group per sample, then Apply.\n"
-                               "Same group = same color. Blank = exclude from grouping."))
+        _grp_hint = QLabel("Edit each sample's group, then Apply. "
+                           "Same label = same color; blank = ungrouped.")
+        _grp_hint.setWordWrap(True)
+        grp_v.addWidget(_grp_hint)
         self.group_table = QTableWidget()
         self.group_table.setColumnCount(2)
         self.group_table.setHorizontalHeaderLabels(["Sample", "Group"])

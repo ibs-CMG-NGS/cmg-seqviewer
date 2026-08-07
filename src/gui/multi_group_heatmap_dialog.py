@@ -74,14 +74,11 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
                 if c.lower() not in _stat_lower
                 and pd.api.types.is_numeric_dtype(self.df[c])
             ]
-        if not self.sample_groups and self.sample_columns:
-            import re as _re
-            _groups: dict = {}
-            for col in self.sample_columns:
-                m = _re.match(r'(.+?)\d+$', col)
-                grp = m.group(1) if m else col
-                _groups.setdefault(grp, []).append(col)
-            self.sample_groups = _groups
+        # 그룹핑: metadata 의 그룹이 복제를 제대로 묶으면 사용, 아니면(비어 있거나 샘플당
+        # 1개로 쪼개진 경우) 공용 규칙으로 조건을 추출해 복제를 묶는다 (PCA와 동일 규칙).
+        from utils.sample_grouping import auto_group_samples, useful_grouping
+        if self.sample_columns and not useful_grouping(self.sample_groups, len(self.sample_columns)):
+            self.sample_groups = auto_group_samples(self.sample_columns)
 
         # 이미 gene-list 필터링된 child sheet 여부 감지
         self._is_prefiltered: bool = dataset.name.startswith('Filtered:')
