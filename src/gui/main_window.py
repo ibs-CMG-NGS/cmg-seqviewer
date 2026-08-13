@@ -4064,6 +4064,39 @@ class MainWindow(QMainWindow):
                 else:
                     dataset_source_map[name] = "file"
 
+            # ── 앱에서 생성된 파생 데이터셋(원본 파일 없음: GO 클러스터링 / cross-species
+            #    harmonized / meta 결과 등)은 프로젝트 옆 사이드카 폴더에 parquet로 저장한다.
+            #    이래야 복원 시 그 데이터셋 자체는 물론, 그것을 부모로 하는 하위 시트(이후에
+            #    만든 필터/플롯 '일반 탭')까지 함께 복원된다. 저장 실패해도 기존 동작으로 폴백. ──
+            import re as _re
+            from pathlib import Path as _Path
+            assets_dir = _Path(str(_Path(path).with_suffix("")) + "_assets")
+            for name, ds in self.presenter.datasets.items():
+                if dataset_source_map.get(name) != "file":
+                    continue
+                fp = dataset_file_map.get(name, "")
+                if fp and os.path.exists(fp):
+                    continue  # 원본 파일이 이미 있으면 사이드카 불필요
+                df = getattr(ds, "dataframe", None)
+                if df is None or getattr(df, "empty", True):
+                    continue
+                try:
+                    assets_dir.mkdir(exist_ok=True)
+                    safe = _re.sub(r"[^A-Za-z0-9._-]+", "_", name)[:80] or "dataset"
+                    out = assets_dir / f"{safe}.parquet"
+                    df_save = df.copy()
+                    # set/frozenset 셀(예: GO 클러스터링 _gene_set)은 parquet 비직렬화 →
+                    # 정렬 리스트로 변환해 저장 (복원 후 다운스트림 시트에는 영향 없음).
+                    for col in df_save.columns:
+                        if df_save[col].map(lambda v: isinstance(v, (set, frozenset))).any():
+                            df_save[col] = df_save[col].map(
+                                lambda v: sorted(v) if isinstance(v, (set, frozenset)) else v)
+                    df_save.to_parquet(out, index=False)
+                    dataset_file_map[name] = str(out)
+                    self.logger.info(f"Persisted generated dataset '{name}' → {out}")
+                except Exception as e:
+                    self.logger.warning(f"Could not persist generated dataset '{name}': {e}")
+
             # 트리에서 펼쳐진 루트 항목 수집
             tree_expanded: list = []
             if hasattr(self, "dataset_manager"):
