@@ -4047,11 +4047,16 @@ class MainWindow(QMainWindow):
             dataset_db_id_map: dict = {}   # db_dataset_id (database source 전용)
             dataset_integration_map: dict = {}  # integration_recipe (integration source 전용)
 
-            # presenter.datasets 에 더해, tab_data 에만 존재하는 데이터셋(예: GO 클러스터링
-            # 결과는 새 탭으로만 표시되고 presenter.datasets 에는 등록되지 않는다)도 포함해야
-            # 사이드카 저장 대상에 잡히고, 그 하위 시트까지 복원된다.
+            # presenter.datasets 에 더해, tab_data 에만 존재하는 '생성 루트' 데이터셋(예: GO
+            # 클러스터링 결과는 새 탭으로만 표시되고 presenter.datasets 에는 등록되지 않는다)도
+            # 포함해야 사이드카 저장 대상에 잡히고, 그 하위 시트까지 복원된다.
+            # 단, filtered/plot/comparison 자식 시트는 레시피 replay 로 복원되므로 여기서 독립
+            # 데이터셋으로 수집하면 안 된다(그러면 복원 시 최상위 중복 시트가 생긴다).
+            _REPLAYABLE_SHEETS = {"whole", "filtered", "plot", "comparison"}
             all_datasets: dict = dict(self.presenter.datasets)
             for entry in self.tab_data.values():
+                if entry.get("sheet_type") in _REPLAYABLE_SHEETS:
+                    continue
                 _ds = entry.get("dataset")
                 _nm = getattr(_ds, "name", None)
                 if _nm and _nm not in all_datasets:
@@ -4082,6 +4087,7 @@ class MainWindow(QMainWindow):
             import re as _re
             from pathlib import Path as _Path
             assets_dir = _Path(str(_Path(path).with_suffix("")) + "_assets")
+            generated_names: set = set()  # 사이드카로 저장한 파생 데이터셋(복원 시 raw 로드)
             for name, ds in all_datasets.items():
                 if dataset_source_map.get(name) != "file":
                     continue
@@ -4104,6 +4110,7 @@ class MainWindow(QMainWindow):
                                 lambda v: sorted(v) if isinstance(v, (set, frozenset)) else v)
                     df_save.to_parquet(out, index=False)
                     dataset_file_map[name] = str(out)
+                    generated_names.add(name)
                     self.logger.info(f"Persisted generated dataset '{name}' → {out}")
                 except Exception as e:
                     self.logger.warning(f"Could not persist generated dataset '{name}': {e}")
@@ -4131,6 +4138,11 @@ class MainWindow(QMainWindow):
             for ds_spec in spec.get("datasets", []):
                 ds_name = ds_spec.get("name", "")
                 source = dataset_source_map.get(ds_name, "file")
+                # 사이드카로 저장한 파생 데이터셋은 'generated' 소스로 표시한다. 복원 시
+                # 일반 load_dataset(=GO 표준화 등 재추론)을 거치지 않고 parquet 를 raw 로 읽어
+                # cluster_id 등 생성 컬럼을 보존한다.
+                if ds_name in generated_names:
+                    source = "generated"
                 ds_spec["source"] = source
                 if source == "integration":
                     ds_spec["integration_recipe"] = dataset_integration_map.get(ds_name, {})
@@ -4139,6 +4151,7 @@ class MainWindow(QMainWindow):
                     ds_spec["db_dataset_id"] = dataset_db_id_map.get(ds_name, "")
                     ds_spec["file_path"] = ""  # 파일 경로 불필요
                 else:
+                    # file / generated — 사이드카/원본 경로를 상대화
                     fp = ds_spec.get("file_path", "")
                     if fp and os.path.isabs(fp):
                         try:
@@ -4203,6 +4216,41 @@ class MainWindow(QMainWindow):
             # ── 통합 결과 소스: 소스 RNA/ATAC 로드 후 replay 하도록 뒤로 미룸 ──
             if source == "integration":
                 deferred_integration.append(ds_spec)
+                continue
+
+            # ── 생성(사이드카) 소스: GO 클러스터링 등 파생 결과. parquet 를 raw 로 읽어
+            #    표준화/재추론 없이 직접 등록한다(cluster_id 등 생성 컬럼 보존). ──
+            if source == "generated":
+                try:
+                    import pandas as pd
+                    from models.data_models import Dataset, DatasetType
+                    if not ds_file or not os.path.exists(ds_file):
+                        raise FileNotFoundError(ds_file or ds_name)
+                    gdf = pd.read_parquet(ds_file)
+                    try:
+                        dtype = DatasetType(ds_type) if ds_type else DatasetType.GO_ANALYSIS
+                    except ValueError:
+                        dtype = DatasetType.GO_ANALYSIS
+                    unique_name = self.dataset_manager._generate_unique_name(ds_name)
+                    dataset = Dataset(name=unique_name, dataset_type=dtype,
+                                      dataframe=gdf, original_columns={}, metadata={})
+                    self.presenter.datasets[unique_name] = dataset
+                    self.dataset_manager.add_dataset(unique_name, metadata={
+                        'file_path': ds_file,
+                        'dataset_type': dtype.value,
+                        'row_count': len(gdf),
+                        'column_count': len(gdf.columns),
+                    })
+                    self.presenter.current_dataset = dataset
+                    self.presenter._update_view_with_dataset(dataset, add_to_manager=False)
+                    self._update_comparison_panel_datasets()
+                    loaded_ds_name = unique_name
+                    loaded_count += 1
+                except Exception as e:
+                    self.logger.warning(f"Failed to load generated dataset '{ds_name}': {e}")
+                    unrestorable_generated.append(ds_name)
+                    continue
+                self._replay_dataset_sheets(loaded_ds_name, sheets)
                 continue
 
             # ── 데이터베이스 소스 ──
