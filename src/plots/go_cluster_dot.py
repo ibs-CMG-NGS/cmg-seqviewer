@@ -48,19 +48,30 @@ def render_go_cluster_dot(fig, df, params):
     elif sort_by == 'Term Name' and C_DESC in df.columns:
         df = df.sort_values(C_DESC, ascending=False)
 
-    # ── Top N ──
+    # ── Top N (무엇을 남길지: FDR=가장 유의 / Fold Enrichment=가장 강한 enrichment) ──
     top_n = int(params.get('top_n', 20))
-    if len(df) > top_n and C_FDR in df.columns:
-        keep = df.nsmallest(top_n, C_FDR).index
+    top_n_by = params.get('top_n_by', 'FDR')
+    if len(df) > top_n:
+        if top_n_by == 'Fold Enrichment' and C_FE in df.columns:
+            keep = pd.to_numeric(df[C_FE], errors='coerce').fillna(
+                float('-inf')).nlargest(top_n).index
+        elif C_FDR in df.columns:
+            keep = df.nsmallest(top_n, C_FDR).index
+        else:
+            keep = df.index[:top_n]
         df = df.loc[df.index.isin(keep)]
     n_terms = len(df)
 
-    # ── Y 라벨 ("C001: term") ──
+    # ── Y 라벨 ("C001: term" — 다중-term 클러스터만 접두, singleton 은 term 명만) ──
     cluster_ids = df[C_CLUSTER].tolist() if C_CLUSTER in df.columns else list(range(n_terms))
+
+    def _cid_prefix(cid):
+        return f"C{cid}: " if str(cid).isdigit() else ""
     if C_DESC in df.columns:
-        y_labels = [f"C{cid}: {str(v)[:60]}" for cid, v in zip(cluster_ids, df[C_DESC])]
+        y_labels = [f"{_cid_prefix(cid)}{str(v)[:60]}"
+                    for cid, v in zip(cluster_ids, df[C_DESC])]
     else:
-        y_labels = [f"C{cid}" for cid in cluster_ids]
+        y_labels = [f"C{cid}" if str(cid).isdigit() else str(cid) for cid in cluster_ids]
 
     # ── X 값 ──
     x_axis = params.get('x_axis', 'Fold Enrichment')

@@ -149,6 +149,25 @@ class GONetworkDialog(BasePlotDialog):
         self._top_n_spin.valueChanged.connect(self._update_plot)
         dot_form.addRow("Top N clusters:", self._top_n_spin)
 
+        # 무엇을 남길지: 가장 유의한 것(FDR) vs 가장 강한 것(Fold Enrichment)
+        self._top_n_by_combo = QComboBox()
+        self._top_n_by_combo.addItems(["FDR", "Fold Enrichment"])
+        self._top_n_by_combo.setToolTip(
+            "Top N 을 무엇으로 고를지: FDR(가장 유의) 또는 Fold Enrichment(가장 강한 enrichment).\n"
+            "클러스터가 많을 때 FDR로만 자르면 강하게 enrich된 항목이 빠질 수 있다.")
+        self._top_n_by_combo.currentTextChanged.connect(self._update_plot)
+        dot_form.addRow("Top N by:", self._top_n_by_combo)
+
+        # singleton(1-멤버) 항목도 size-1 로 포함 → 다중-term 클러스터 대표와 함께 랭킹.
+        # 유의한 단독 term 이 그림에서 통째로 빠지는 것을 막는다.
+        self._include_singletons_check = QCheckBox("Include singletons (as size-1)")
+        self._include_singletons_check.setChecked(True)
+        self._include_singletons_check.setToolTip(
+            "체크 해제 시 다중-term 클러스터(멤버>1)만 표시. 클러스터링에서 혼자 남은\n"
+            "singleton term 은 제외된다. 클러스터·singleton 이 많으면 켜두는 것을 권장.")
+        self._include_singletons_check.toggled.connect(self._update_plot)
+        dot_form.addRow("", self._include_singletons_check)
+
         # ── Dot Size ─────────────────────────────────────────────────────────
         size_group = QGroupBox("Dot Size")
         size_form = QFormLayout(size_group)
@@ -374,6 +393,13 @@ class GONetworkDialog(BasePlotDialog):
                 reps.append(sub.index[0])
         return df.loc[reps].copy() if reps else pd.DataFrame(columns=df.columns)
 
+    def _get_singletons(self, df: pd.DataFrame) -> pd.DataFrame:
+        """다중-term 클러스터에 속하지 않은 term(singleton) 을 각각 size-1 항목으로 반환."""
+        valid = set(self._valid_ids)
+        mask = ~df[StandardColumns.CLUSTER_ID].map(
+            lambda c: isinstance(c, str) and c in valid)
+        return df[mask].copy()
+
     def _build_network(self, plot_df: pd.DataFrame, edge_threshold: float) -> nx.Graph:
         """Jaccard 유사도 기반 네트워크 구성."""
         gene_sets = self._get_gene_sets(plot_df)
@@ -581,20 +607,44 @@ class GONetworkDialog(BasePlotDialog):
     # ── Dot Plot tab ──────────────────────────────────────────────────────────
 
     def _build_rep_df(self):
-        """유효 클러스터 대표 term 표(rep_df)에 _cluster_size 를 붙여 반환. 없으면 None."""
-        rep_df = self._get_representatives(self.df)
-        if rep_df is None or rep_df.empty:
+        """플롯용 표(rep_df) 구성: 다중-term 클러스터 대표 + (옵션) singleton(size-1).
+
+        각 행에 _cluster_size(멤버 수; singleton=1) 와 _fe_median(클러스터 fold enrichment
+        중앙값; singleton 은 자기 값) 을 붙인다. 없으면 None.
+        """
+        include_singletons = self._include_singletons_check.isChecked()
+        parts = []
+        rep = self._get_representatives(self.df)
+        if rep is not None and not rep.empty:
+            parts.append(rep)
+        if include_singletons:
+            singles = self._get_singletons(self.df)
+            if singles is not None and not singles.empty:
+                parts.append(singles)
+        if not parts:
             return None
-        cluster_sizes = self.df.groupby(StandardColumns.CLUSTER_ID).size().to_dict()
-        rep_df = rep_df.copy()
-        rep_df['_cluster_size'] = rep_df[StandardColumns.CLUSTER_ID].map(cluster_sizes).fillna(1)
-        # 클러스터 멤버들의 fold enrichment 중앙값 (color-by 'Fold Enrichment (median)' 용).
-        # 대표(min-FDR) term 한 개가 아니라 클러스터 전체의 '전형적 강도'를 나타낸다.
+        rep_df = pd.concat(parts).copy()
+
+        cid_col = StandardColumns.CLUSTER_ID
+        valid = set(self._valid_ids)
+        cluster_sizes = self.df.groupby(cid_col).size().to_dict()
+
+        def _is_multi(c):
+            return isinstance(c, str) and c in valid
+
+        rep_df['_cluster_size'] = rep_df[cid_col].map(
+            lambda c: cluster_sizes.get(c, 1) if _is_multi(c) else 1)
+
+        # 클러스터 fold enrichment 중앙값 (color-by 'Fold Enrichment (median)' 용).
+        # 다중-term 클러스터는 멤버 median, singleton 은 자기 fold enrichment.
         if StandardColumns.FOLD_ENRICHMENT in self.df.columns:
             fe_med = (self.df.assign(
                         _fe=pd.to_numeric(self.df[StandardColumns.FOLD_ENRICHMENT], errors='coerce'))
-                      .groupby(StandardColumns.CLUSTER_ID)['_fe'].median().to_dict())
-            rep_df['_fe_median'] = rep_df[StandardColumns.CLUSTER_ID].map(fe_med)
+                      .groupby(cid_col)['_fe'].median().to_dict())
+            rep_df['_fe_median'] = rep_df.apply(
+                lambda r: fe_med.get(r[cid_col]) if _is_multi(r[cid_col])
+                else pd.to_numeric(r.get(StandardColumns.FOLD_ENRICHMENT), errors='coerce'),
+                axis=1)
         return rep_df
 
     def _dotplot_params(self) -> dict:
@@ -606,6 +656,8 @@ class GONetworkDialog(BasePlotDialog):
             'size_by': self._dot_size_combo.currentText(),
             'sort_by': self._dot_sort_combo.currentText(),
             'top_n': self._top_n_spin.value(),
+            'top_n_by': self._top_n_by_combo.currentText(),
+            'include_singletons': self._include_singletons_check.isChecked(),
             'dot_size_min': self._dot_size_min_spin.value(),
             'dot_size_scale': self._dot_size_scale_spin.value(),
             'cmap': self._cbar_cmap_combo.currentText(),
