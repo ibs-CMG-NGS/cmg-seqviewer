@@ -10,8 +10,9 @@ from typing import List
 import pandas as pd
 from PyQt6.QtWidgets import (
     QVBoxLayout, QFormLayout, QGroupBox, QDoubleSpinBox, QCheckBox,
-    QFileDialog, QMessageBox,
+    QFileDialog, QMessageBox, QPushButton, QColorDialog,
 )
+from PyQt6.QtGui import QColor
 
 from models.data_models import Dataset, DatasetType
 from models.standard_columns import StandardColumns
@@ -25,6 +26,10 @@ class CountSummaryDialog(BasePlotDialog):
         self.logger = logging.getLogger(__name__)
         self.datasets = datasets
         self._counts_df = None  # 마지막 집계 결과 (Export용)
+        # 막대 색 (사용자 지정 가능). _setup_controls 가 super().__init__ 안에서 호출되므로
+        # 그 전에 초기화한다.
+        self._up_color = '#c0392b'
+        self._down_color = '#2c6fbb'
         super().__init__("DE/DA Count Summary", parent, figsize=(9, 6))
         self._update_plot()
 
@@ -56,6 +61,38 @@ class CountSummaryDialog(BasePlotDialog):
 
         group.setLayout(form)
         layout.addWidget(group)
+
+        # ── Bar colors ──
+        color_group = QGroupBox("Bar Colors")
+        color_form = QFormLayout()
+        self._up_swatch = self._make_color_swatch('_up_color')
+        color_form.addRow("Up-regulated", self._up_swatch)
+        self._down_swatch = self._make_color_swatch('_down_color')
+        color_form.addRow("Down-regulated", self._down_swatch)
+        color_group.setLayout(color_form)
+        layout.addWidget(color_group)
+
+    def _make_color_swatch(self, attr: str) -> QPushButton:
+        """attr(예 '_up_color')에 연결된 색 스와치 버튼. 클릭 시 색 선택 → 재플롯."""
+        btn = QPushButton()
+        btn.setFixedSize(40, 22)
+        btn.setToolTip("Click to change bar color")
+
+        def _apply_style():
+            btn.setStyleSheet(
+                f"QPushButton {{ background-color: {getattr(self, attr)}; "
+                f"border: 1px solid #888; border-radius: 3px; }}")
+        _apply_style()
+
+        def _pick():
+            color = QColorDialog.getColor(QColor(getattr(self, attr)), self, "Bar color")
+            if color.isValid():
+                setattr(self, attr, color.name())
+                _apply_style()
+                self._update_plot()
+
+        btn.clicked.connect(_pick)
+        return btn
 
     def _extra_buttons(self) -> list:
         return [("Export Data", self._export_data)]
@@ -92,6 +129,8 @@ class CountSummaryDialog(BasePlotDialog):
             'as_pct': self._pct_check.isChecked(),
             'unit': 'peaks' if all_atac else 'genes',
             'order': order,
+            'up_color': self._up_color,
+            'down_color': self._down_color,
         }
 
     def _do_plot(self):
