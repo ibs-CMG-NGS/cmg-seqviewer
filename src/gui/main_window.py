@@ -4046,7 +4046,18 @@ class MainWindow(QMainWindow):
             dataset_source_map: dict = {}  # "file" | "database" | "integration"
             dataset_db_id_map: dict = {}   # db_dataset_id (database source 전용)
             dataset_integration_map: dict = {}  # integration_recipe (integration source 전용)
-            for name, ds in self.presenter.datasets.items():
+
+            # presenter.datasets 에 더해, tab_data 에만 존재하는 데이터셋(예: GO 클러스터링
+            # 결과는 새 탭으로만 표시되고 presenter.datasets 에는 등록되지 않는다)도 포함해야
+            # 사이드카 저장 대상에 잡히고, 그 하위 시트까지 복원된다.
+            all_datasets: dict = dict(self.presenter.datasets)
+            for entry in self.tab_data.values():
+                _ds = entry.get("dataset")
+                _nm = getattr(_ds, "name", None)
+                if _nm and _nm not in all_datasets:
+                    all_datasets[_nm] = _ds
+
+            for name, ds in all_datasets.items():
                 fp = getattr(ds, "file_path", None) or ""
                 dataset_file_map[name] = str(fp)
                 dt = getattr(ds, "dataset_type", None)
@@ -4071,7 +4082,7 @@ class MainWindow(QMainWindow):
             import re as _re
             from pathlib import Path as _Path
             assets_dir = _Path(str(_Path(path).with_suffix("")) + "_assets")
-            for name, ds in self.presenter.datasets.items():
+            for name, ds in all_datasets.items():
                 if dataset_source_map.get(name) != "file":
                     continue
                 fp = dataset_file_map.get(name, "")
