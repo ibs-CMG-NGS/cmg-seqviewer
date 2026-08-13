@@ -5250,6 +5250,15 @@ class MainWindow(QMainWindow):
             current_dataset = self.presenter.current_dataset
             _par = current_dataset.name if current_dataset else None
 
+            # 손자 시트 방지: 현재 활성 탭이 이미 자식 시트(filtered/plot, 예: 컬럼 subset
+            # 시트)라면, 새 시트의 부모를 그 자식이 아니라 '루트 조상'으로 평탄화한다.
+            # (트리는 루트 아래 한 단계 시트만 지원하고, 복원도 루트 위에서 레시피를 replay
+            #  하므로 — 부모를 자식으로 두면 트리 등록 실패 + build_spec phantom root 발생.)
+            _cur_entry = self.tab_data.get(self.data_tabs.currentIndex(), {})
+            if _cur_entry.get('sheet_type') in ('filtered', 'plot') \
+                    and _cur_entry.get('parent_dataset'):
+                _par = _cur_entry['parent_dataset']
+
             # 덮어쓰기 대상: "같은 부모 데이터셋"에서 나온 동일 이름의 필터 탭만.
             # (다른 데이터셋에 같은 필터를 적용한 결과는 이름이 같아도 보존한다)
             existing_indices = []

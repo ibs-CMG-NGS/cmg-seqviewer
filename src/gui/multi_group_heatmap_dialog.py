@@ -281,7 +281,16 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
         display_form.setSpacing(6)
 
         self.cmap_combo = QComboBox()
-        self.cmap_combo.addItems(["RdBu_r", "coolwarm", "bwr", "PiYG", "vlag", "seismic"])
+        # Z-score 히트맵에 흔한 발산(diverging) 팔레트 + 일부 순차(sequential) 팔레트.
+        # '_r' 접미사는 색 방향 반전. colorbar(Z-score 범례)의 색상이 이 값으로 정해진다.
+        self.cmap_combo.addItems([
+            "RdBu_r", "RdBu", "coolwarm", "bwr", "seismic", "vlag", "icefire",
+            "PiYG", "PRGn", "BrBG", "PuOr", "RdYlBu_r", "RdYlGn_r", "Spectral_r",
+            "viridis", "magma", "inferno", "plasma", "cividis",
+            "YlGnBu", "YlOrRd", "Blues", "Reds",
+        ])
+        self.cmap_combo.setToolTip("Heatmap/colorbar 색상 팔레트 ('_r' = 색 방향 반전)")
+        self.cmap_combo.setEditable(False)
         display_form.addRow("Color map:", self.cmap_combo)
 
         # 그룹 색 swatches — Apply Groups 시 재구성되도록 영속 컨테이너에 담는다.
