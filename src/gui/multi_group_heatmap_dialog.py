@@ -91,6 +91,9 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
         for _c in self.sample_columns:
             self._sample_to_group.setdefault(_c, '')
 
+        # 히트맵에 포함할 샘플(체크된 것만). 기본은 전부 포함. Apply 시 갱신.
+        self._included_samples: set = set(self.sample_columns)
+
         # 이미 gene-list 필터링된 child sheet 여부 감지
         self._is_prefiltered: bool = dataset.name.startswith('Filtered:')
 
@@ -197,23 +200,36 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
         grp_box = QGroupBox("Sample Groups (editable)")
         grp_v = QVBoxLayout(grp_box)
         _grp_hint = QLabel("Edit each sample's group, then Apply. "
-                           "Same label = same color; blank = ungrouped.")
+                           "Same label = same color; blank = ungrouped. "
+                           "Untick a sample to exclude it from the heatmap.")
         _grp_hint.setWordWrap(True)
         grp_v.addWidget(_grp_hint)
         self.group_table = QTableWidget()
-        self.group_table.setColumnCount(2)
-        self.group_table.setHorizontalHeaderLabels(["Sample", "Group"])
+        self.group_table.setColumnCount(3)
+        self.group_table.setHorizontalHeaderLabels(["✓", "Sample", "Group"])
         self.group_table.verticalHeader().setVisible(False)
         self.group_table.setEditTriggers(
             QAbstractItemView.EditTrigger.DoubleClicked
             | QAbstractItemView.EditTrigger.SelectedClicked)
-        self.group_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.group_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        _hh = self.group_table.horizontalHeader()
+        _hh.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        _hh.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        _hh.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.group_table.setMaximumHeight(200)
         self._populate_group_table()
         grp_v.addWidget(self.group_table)
+        # 전체 선택/해제 편의 버튼
+        _sel_row = QHBoxLayout()
+        _all_btn = QPushButton("Select all")
+        _all_btn.clicked.connect(lambda: self._set_all_included(True))
+        _none_btn = QPushButton("Clear all")
+        _none_btn.clicked.connect(lambda: self._set_all_included(False))
+        _sel_row.addWidget(_all_btn)
+        _sel_row.addWidget(_none_btn)
+        _sel_row.addStretch()
+        grp_v.addLayout(_sel_row)
         apply_btn = QPushButton("Apply Groups")
-        apply_btn.setToolTip("샘플→그룹 지정을 적용하고 히트맵을 다시 그립니다.")
+        apply_btn.setToolTip("샘플 포함 여부와 그룹 지정을 적용하고 히트맵을 다시 그립니다.")
         apply_btn.clicked.connect(self._apply_group_table)
         grp_v.addWidget(apply_btn)
         layout.addWidget(grp_box)
@@ -422,21 +438,43 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
     def _populate_group_table(self):
         self.group_table.setRowCount(len(self.sample_columns))
         for r, col in enumerate(self.sample_columns):
+            # col 0: include 체크박스
+            chk = QTableWidgetItem()
+            chk.setFlags((chk.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                         & ~Qt.ItemFlag.ItemIsEditable)
+            chk.setCheckState(Qt.CheckState.Checked if col in self._included_samples
+                              else Qt.CheckState.Unchecked)
+            self.group_table.setItem(r, 0, chk)
+            # col 1: 샘플명 (읽기 전용)
             sample_item = QTableWidgetItem(str(col))
             sample_item.setFlags(sample_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.group_table.setItem(r, 0, sample_item)
+            self.group_table.setItem(r, 1, sample_item)
+            # col 2: 그룹명 (편집)
             self.group_table.setItem(
-                r, 1, QTableWidgetItem(str(self._sample_to_group.get(col, ''))))
+                r, 2, QTableWidgetItem(str(self._sample_to_group.get(col, ''))))
+
+    def _set_all_included(self, checked: bool):
+        """모든 샘플 include 체크박스를 켜거나 끈다."""
+        state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+        for r in range(self.group_table.rowCount()):
+            item = self.group_table.item(r, 0)
+            if item is not None:
+                item.setCheckState(state)
 
     def _apply_group_table(self):
-        """테이블의 샘플→그룹 지정을 읽어 그룹핑/색상/swatch 를 갱신하고 다시 그린다."""
-        mapping, groups = {}, {}
+        """테이블의 include/그룹 지정을 읽어 포함 샘플·그룹핑·색상·swatch 를 갱신하고 다시 그린다."""
+        mapping, groups, included = {}, {}, set()
         for r, col in enumerate(self.sample_columns):
-            item = self.group_table.item(r, 1)
+            chk = self.group_table.item(r, 0)
+            if chk is not None and chk.checkState() == Qt.CheckState.Checked:
+                included.add(col)
+            item = self.group_table.item(r, 2)
             g = (item.text().strip() if item else '')
             mapping[col] = g
-            if g:
+            # 포함된 샘플만 그룹에 넣는다(제외된 샘플은 color bar/매트릭스에서 빠짐)
+            if g and col in included:
                 groups.setdefault(g, []).append(col)
+        self._included_samples = included
         self._sample_to_group = mapping
         self.sample_groups = groups   # 전부 blank면 {} → 그룹 color bar 없음
         self._recompute_group_colors()
@@ -497,7 +535,16 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
 
             self.filter_info_label.setText(str(n_genes))
 
-            available_sample_cols = [c for c in self.sample_columns if c in df_filtered.columns]
+            available_sample_cols = [
+                c for c in self.sample_columns
+                if c in df_filtered.columns and c in self._included_samples
+            ]
+            if not available_sample_cols:
+                ax = self.figure.add_subplot(111)
+                ax.text(0.5, 0.5, "No samples selected.\nTick at least one sample in Sample Groups.",
+                        ha='center', va='center', transform=ax.transAxes, fontsize=12, color='gray')
+                self.canvas.draw()
+                return
             mat = df_filtered[available_sample_cols].copy()
 
             if 'gene_symbol' in df_filtered.columns:
