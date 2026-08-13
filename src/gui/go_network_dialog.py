@@ -116,13 +116,19 @@ class GONetworkDialog(BasePlotDialog):
 
         self._xaxis_combo = QComboBox()
         self._xaxis_combo.addItems(["-log10(FDR)", "Gene Ratio", "Fold Enrichment"])
-        # 권장 기본: 효과 크기(Fold Enrichment)를 X축, 유의성(FDR)은 색으로 → 정보 중복 없음
-        self._xaxis_combo.setCurrentText("Fold Enrichment")
+        # 재료가 이미 유의성 필터를 거쳤으므로 색은 '강도(Fold Enrichment)'에 쓰고,
+        # 유의성(FDR)은 랭킹용 X축으로 둔다 → 색/크기와 정보 중복을 피한다.
+        self._xaxis_combo.setCurrentText("-log10(FDR)")
         self._xaxis_combo.currentTextChanged.connect(self._update_plot)
         dot_form.addRow("X axis:", self._xaxis_combo)
 
         self._dot_color_combo = QComboBox()
-        self._dot_color_combo.addItems(["FDR", "Ontology", "Direction"])
+        # Fold Enrichment = 대표(min-FDR) term의 강도, (median) = 클러스터 멤버 중앙값.
+        # FDR(min)은 클러스터 크기에 편향돼 dot 크기와 정보가 겹치므로 기본값에서 제외.
+        self._dot_color_combo.addItems([
+            "Fold Enrichment", "Fold Enrichment (median)", "FDR", "Ontology", "Direction",
+        ])
+        self._dot_color_combo.setCurrentText("Fold Enrichment")
         self._dot_color_combo.currentTextChanged.connect(self._update_plot)
         dot_form.addRow("Color by:", self._dot_color_combo)
 
@@ -582,6 +588,13 @@ class GONetworkDialog(BasePlotDialog):
         cluster_sizes = self.df.groupby(StandardColumns.CLUSTER_ID).size().to_dict()
         rep_df = rep_df.copy()
         rep_df['_cluster_size'] = rep_df[StandardColumns.CLUSTER_ID].map(cluster_sizes).fillna(1)
+        # 클러스터 멤버들의 fold enrichment 중앙값 (color-by 'Fold Enrichment (median)' 용).
+        # 대표(min-FDR) term 한 개가 아니라 클러스터 전체의 '전형적 강도'를 나타낸다.
+        if StandardColumns.FOLD_ENRICHMENT in self.df.columns:
+            fe_med = (self.df.assign(
+                        _fe=pd.to_numeric(self.df[StandardColumns.FOLD_ENRICHMENT], errors='coerce'))
+                      .groupby(StandardColumns.CLUSTER_ID)['_fe'].median().to_dict())
+            rep_df['_fe_median'] = rep_df[StandardColumns.CLUSTER_ID].map(fe_med)
         return rep_df
 
     def _dotplot_params(self) -> dict:
