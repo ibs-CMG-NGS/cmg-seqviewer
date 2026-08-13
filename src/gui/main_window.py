@@ -4091,9 +4091,13 @@ class MainWindow(QMainWindow):
             for name, ds in all_datasets.items():
                 if dataset_source_map.get(name) != "file":
                     continue
+                _meta = getattr(ds, "metadata", None) or {}
+                _is_gen = bool(_meta.get("is_generated"))
                 fp = dataset_file_map.get(name, "")
-                if fp and os.path.exists(fp):
-                    continue  # 원본 파일이 이미 있으면 사이드카 불필요
+                # 원본 파일이 있으면 스킵. 단, 복원된 generated 데이터셋(is_generated)은
+                # 사이드카 경로가 있어도 항상 새 위치로 재저장하고 generated 로 다시 표시한다.
+                if fp and os.path.exists(fp) and not _is_gen:
+                    continue
                 df = getattr(ds, "dataframe", None)
                 if df is None or getattr(df, "empty", True):
                     continue
@@ -4232,8 +4236,11 @@ class MainWindow(QMainWindow):
                     except ValueError:
                         dtype = DatasetType.GO_ANALYSIS
                     unique_name = self.dataset_manager._generate_unique_name(ds_name)
+                    # is_generated 플래그를 남겨, 이 데이터셋을 다시 저장할 때도 generated 로
+                    # 취급(표준화 없는 raw 사이드카)하도록 한다 → 재저장 사이클에서도 컬럼 보존.
                     dataset = Dataset(name=unique_name, dataset_type=dtype,
-                                      dataframe=gdf, original_columns={}, metadata={})
+                                      dataframe=gdf, original_columns={},
+                                      metadata={'is_generated': True})
                     self.presenter.datasets[unique_name] = dataset
                     self.dataset_manager.add_dataset(unique_name, metadata={
                         'file_path': ds_file,
