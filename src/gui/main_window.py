@@ -4070,7 +4070,11 @@ class MainWindow(QMainWindow):
                 meta = ds.metadata if hasattr(ds, "metadata") and ds.metadata else {}
                 db_id = meta.get("db_dataset_id", "")
                 integ = meta.get("integration_recipe")
-                if integ:
+                if meta.get("is_generated"):
+                    # 앱 생성 결과(GO 클러스터링 등) — 부모에게서 물려받은 db/integration id가
+                    # 남아 있어도 무시하고 파일(=사이드카 generated) 소스로 저장한다.
+                    dataset_source_map[name] = "file"
+                elif integ:
                     # 파일 없는 통합 결과 — 복원 시 레시피로 replay
                     dataset_source_map[name] = "integration"
                     dataset_integration_map[name] = integ
@@ -4783,12 +4787,20 @@ class MainWindow(QMainWindow):
                 logger.info(f"Moved cluster_id to first column")
             
             dataset_name = f"Clustered: {filtered_dataset.name}"
+            # 메타데이터는 '복사'해서 쓴다(부모의 dict를 공유하면 안 됨). 특히 부모가 DB/통합
+            # 데이터셋이면 db_dataset_id/integration_recipe 를 물려받아, 프로젝트 저장 시 이
+            # 생성 결과가 'database/integration' 소스로 오분류되어 복원 때 부모 데이터를 대신
+            # 불러오는 버그가 생긴다. 그 키들을 제거하고 is_generated 로 명시한다.
+            _clu_meta = dict(filtered_dataset.metadata) if filtered_dataset.metadata else {}
+            _clu_meta.pop('db_dataset_id', None)
+            _clu_meta.pop('integration_recipe', None)
+            _clu_meta['is_generated'] = True
             clustered_dataset = Dataset(
                 name=dataset_name,
                 dataset_type=DatasetType.GO_ANALYSIS,
                 dataframe=clustered_data,
                 original_columns={},
-                metadata=filtered_dataset.metadata
+                metadata=_clu_meta
             )
             
             logger.info(f"Created clustered dataset: {dataset_name}")
