@@ -443,9 +443,16 @@ class MainWindow(QMainWindow):
         self.compare_action.triggered.connect(self._on_compare_datasets)
         # 항상 활성화
         analysis_menu.addAction(self.compare_action)
-        
+
+        # 컬럼 부분선택 → 자식 시트 (비파괴적)
+        self.column_subset_action = QAction("🧾 Select Columns → Subset Sheet...", self)
+        self.column_subset_action.setToolTip(
+            "현재 데이터셋에서 남길 컬럼만 골라 새 자식 시트를 만듭니다(원본 보존).")
+        self.column_subset_action.triggered.connect(self._on_column_subset)
+        analysis_menu.addAction(self.column_subset_action)
+
         analysis_menu.addSeparator()
-        
+
         # GO/KEGG 분석 메뉴 (서브메뉴 없이 직접 추가)
         self.cluster_go_action = QAction("🧬 Cluster GO Terms...", self)
         self.cluster_go_action.triggered.connect(self._on_cluster_go_terms)
@@ -4688,6 +4695,40 @@ class MainWindow(QMainWindow):
                 f"Failed to load GO/KEGG data:\n{str(e)}"
             )
     
+    def _on_column_subset(self):
+        """현재 데이터셋에서 남길 컬럼만 골라 비파괴적 컬럼-subset 자식 시트를 만든다."""
+        from PyQt6.QtWidgets import QMessageBox
+        from models.data_models import FilterCriteria, FilterMode
+
+        ds = self.presenter.current_dataset
+        if ds is None or ds.dataframe is None or ds.dataframe.empty:
+            QMessageBox.information(self, "Select Columns", "표시 중인 데이터셋이 없습니다.")
+            return
+
+        # 현재 표시 중인(=필터된 표시 컬럼) 목록을 기본 선택값으로 제공
+        all_cols = list(ds.dataframe.columns)
+        current_tab = self.data_tabs.currentWidget()
+        preselected = None
+        if isinstance(current_tab, QTableView) and current_tab.model() is not None \
+                and hasattr(current_tab.model(), 'dataframe'):
+            shown = current_tab.model().dataframe()
+            if shown is not None:
+                preselected = [c for c in all_cols if c in set(shown.columns)]
+
+        from gui.column_subset_dialog import ColumnSubsetDialog
+        dlg = ColumnSubsetDialog(all_cols, preselected=preselected, parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        cols = dlg.selected_columns()
+        if not cols:
+            QMessageBox.information(self, "Select Columns", "남길 컬럼을 하나 이상 선택하세요.")
+            return
+        try:
+            self.presenter.apply_filter(
+                FilterCriteria(mode=FilterMode.COLUMN_SUBSET, subset_columns=cols))
+        except Exception as e:
+            QMessageBox.critical(self, "Select Columns", f"시트 생성 실패:\n{e}")
+
     def _on_cluster_go_terms(self):
         """GO Term 클러스터링 다이얼로그 열기 (Filtered 탭에서만 가능)"""
         from PyQt6.QtWidgets import QMessageBox

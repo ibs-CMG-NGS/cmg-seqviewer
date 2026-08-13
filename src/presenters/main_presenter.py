@@ -306,6 +306,12 @@ class MainPresenter(QObject):
         mask = df[column].astype(str).str.contains(keyword, case=False, na=False, regex=False)
         return df[mask]
 
+    def _subset_columns(self, columns) -> pd.DataFrame:
+        """current_dataset 에서 지정한 컬럼만(원본 순서 유지) 남긴 DataFrame 반환."""
+        df = self.current_dataset.dataframe
+        keep = [c for c in df.columns if c in set(columns or [])]
+        return df[keep] if keep else df.iloc[:, 0:0]
+
     def compute_filtered_df(self, criteria: FilterCriteria):
         """탭/시그널 없이 current_dataset 에 필터를 적용한 DataFrame 만 반환한다.
 
@@ -315,6 +321,8 @@ class MainPresenter(QObject):
         """
         if self.current_dataset is None:
             return None
+        if criteria.mode == FilterMode.COLUMN_SUBSET:
+            return self._subset_columns(criteria.subset_columns)
         if criteria.mode == FilterMode.KEYWORD:
             kw = (criteria.search_keyword or "").strip()
             if not kw:
@@ -380,7 +388,18 @@ class MainPresenter(QObject):
         
         try:
             # 필터링 모드에 따라 다르게 처리
-            if criteria.mode == FilterMode.KEYWORD:
+            if criteria.mode == FilterMode.COLUMN_SUBSET:
+                cols = criteria.subset_columns or []
+                if not cols:
+                    self.error_occurred.emit("No columns selected")
+                    self.fsm.trigger(Event.FILTER_FAILED)
+                    return
+                filtered_df = self._subset_columns(cols)
+                n_keep = filtered_df.shape[1]
+                n_all = self.current_dataset.dataframe.shape[1]
+                tab_name = f"Columns: {n_keep} of {n_all}"
+
+            elif criteria.mode == FilterMode.KEYWORD:
                 kw = (criteria.search_keyword or "").strip()
                 if not kw:
                     self.error_occurred.emit("Search keyword is empty")
