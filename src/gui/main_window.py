@@ -1319,6 +1319,28 @@ class MainWindow(QMainWindow):
             all_datasets = self.dataset_manager.get_all_datasets()
             self.comparison_panel.update_dataset_list(all_datasets)
 
+            # ── 이름을 '키'로 참조하는 모든 곳을 연쇄 갱신 ──
+            # (이걸 빼면 자식 시트가 옛 이름을 부모로 가리켜 고아가 되고, 저장 시 phantom
+            #  root 가 생기며, 비교/통합 결과의 복원 replay 가 깨진다.)
+            for entry in self.tab_data.values():
+                # 1) 자식 시트(filtered/plot/컬럼-subset 등)의 부모 참조
+                if entry.get('parent_dataset') == old_name:
+                    entry['parent_dataset'] = new_name
+                # 2) 비교 시트 레시피의 소스 데이터셋 이름
+                cp = entry.get('comparison_params')
+                if isinstance(cp, dict) and isinstance(cp.get('dataset_names'), list):
+                    cp['dataset_names'] = [
+                        new_name if n == old_name else n for n in cp['dataset_names']]
+            # 3) 통합 결과 metadata 의 소스 이름(rna_name/atac_name)
+            for ds in self.presenter.datasets.values():
+                meta = getattr(ds, 'metadata', None)
+                recipe = meta.get('integration_recipe') if isinstance(meta, dict) else None
+                if isinstance(recipe, dict):
+                    if recipe.get('rna_name') == old_name:
+                        recipe['rna_name'] = new_name
+                    if recipe.get('atac_name') == old_name:
+                        recipe['atac_name'] = new_name
+
             self.logger.info(f"Dataset renamed: {old_name} -> {new_name}")
 
     def _on_sheet_renamed(self, tab_index: int, new_label: str):
