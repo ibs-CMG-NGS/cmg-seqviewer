@@ -2776,6 +2776,8 @@ class MainWindow(QMainWindow):
         self.data_tabs.setCornerWidget(self._search_toggle_btn, Qt.Corner.TopRightCorner)
 
         self._find_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
+        # 앱 전역: 어떤 위젯에 포커스가 있어도(테이블/필터 패널 등) Ctrl+F 가 검색을 연다.
+        self._find_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self._find_shortcut.activated.connect(lambda: self._toggle_search(True))
         esc_sc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self._search_input)
         esc_sc.activated.connect(self._close_search)
