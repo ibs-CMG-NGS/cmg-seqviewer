@@ -422,7 +422,9 @@ class MainWindow(QMainWindow):
         analysis_menu = menubar.addMenu("&Analysis")
         
         self.filter_action = QAction("Apply &Filter", self)
-        self.filter_action.setShortcut("Ctrl+F")
+        # Ctrl+F 는 시트 내 검색(Find)에 양보. Apply Filter 는 Ctrl+Shift+F 로 이동.
+        # (예전 Ctrl+F 중복 바인딩은 ambiguous shortcut 이 되어 검색 바가 안 열렸다.)
+        self.filter_action.setShortcut("Ctrl+Shift+F")
         self.filter_action.triggered.connect(self._on_filter_requested)
         # 항상 활성화
         analysis_menu.addAction(self.filter_action)
@@ -2773,8 +2775,8 @@ class MainWindow(QMainWindow):
         self._search_toggle_btn.clicked.connect(lambda: self._toggle_search())
         self.data_tabs.setCornerWidget(self._search_toggle_btn, Qt.Corner.TopRightCorner)
 
-        find_sc = QShortcut(QKeySequence.StandardKey.Find, self)
-        find_sc.activated.connect(lambda: self._toggle_search(True))
+        self._find_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
+        self._find_shortcut.activated.connect(lambda: self._toggle_search(True))
         esc_sc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self._search_input)
         esc_sc.activated.connect(self._close_search)
 
