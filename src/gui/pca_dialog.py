@@ -123,6 +123,9 @@ class PCADialog(BasePlotDialog):
         inv = {c: g for g, cols in seed.items() for c in cols}
         self._sample_to_group = {c: inv.get(c, str(c)) for c in self.sample_cols}
 
+        # PCA에 포함할 샘플(체크된 것만). 기본은 전부 포함. Apply 시 갱신.
+        self._included_samples = set(self.sample_cols)
+
         # 설정 복원
         s = self._saved_settings
         self.n_genes    = s['n_genes']
@@ -236,21 +239,33 @@ class PCADialog(BasePlotDialog):
         grp_box = QGroupBox("Sample Groups (editable)")
         grp_v = QVBoxLayout(grp_box)
         _grp_hint = QLabel("Edit each sample's group, then Apply. "
-                           "Same label = same color; blank = ungrouped.")
+                           "Same label = same color; blank = ungrouped. "
+                           "Untick a sample to exclude it from the PCA.")
         _grp_hint.setWordWrap(True)
         grp_v.addWidget(_grp_hint)
         self.group_table = QTableWidget()
-        self.group_table.setColumnCount(2)
-        self.group_table.setHorizontalHeaderLabels(["Sample", "Group"])
+        self.group_table.setColumnCount(3)
+        self.group_table.setHorizontalHeaderLabels(["✓", "Sample", "Group"])
         self.group_table.verticalHeader().setVisible(False)
         self.group_table.setEditTriggers(
             QAbstractItemView.EditTrigger.DoubleClicked
             | QAbstractItemView.EditTrigger.SelectedClicked)
-        self.group_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.group_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        _hh = self.group_table.horizontalHeader()
+        _hh.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        _hh.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        _hh.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.group_table.setMaximumHeight(200)
         self._populate_group_table()
         grp_v.addWidget(self.group_table)
+        _sel_row = QHBoxLayout()
+        _all_btn = QPushButton("Select all")
+        _all_btn.clicked.connect(lambda: self._set_all_included(True))
+        _none_btn = QPushButton("Clear all")
+        _none_btn.clicked.connect(lambda: self._set_all_included(False))
+        _sel_row.addWidget(_all_btn)
+        _sel_row.addWidget(_none_btn)
+        _sel_row.addStretch()
+        grp_v.addLayout(_sel_row)
         apply_btn = QPushButton("Apply Groups")
         apply_btn.clicked.connect(self._apply_group_table)
         grp_v.addWidget(apply_btn)
@@ -260,6 +275,10 @@ class PCADialog(BasePlotDialog):
         return [("Export PCA Scores (CSV)", self._export_csv)]
 
     # ── Bundle / params ────────────────────────────────────────────────────
+
+    def _effective_samples(self) -> list:
+        """PCA에 실제로 쓸 샘플(체크된 것만, 원본 순서 유지)."""
+        return [c for c in self.sample_cols if c in self._included_samples]
 
     def _plot_params(self) -> dict:
         return {
@@ -271,7 +290,7 @@ class PCADialog(BasePlotDialog):
             'point_size': self.point_size,
             'show_labels': self.show_labels,
             'title': self.plot_title,
-            'sample_columns': list(self.sample_cols),
+            'sample_columns': self._effective_samples(),
             'sample_groups': (
                 {g: list(cols) for g, cols in self.sample_groups.items()}
                 if self._color_mode() == 'group' else {}
@@ -288,20 +307,42 @@ class PCADialog(BasePlotDialog):
     def _populate_group_table(self):
         self.group_table.setRowCount(len(self.sample_cols))
         for r, col in enumerate(self.sample_cols):
+            # col 0: include 체크박스
+            chk = QTableWidgetItem()
+            chk.setFlags((chk.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                         & ~Qt.ItemFlag.ItemIsEditable)
+            chk.setCheckState(Qt.CheckState.Checked if col in self._included_samples
+                              else Qt.CheckState.Unchecked)
+            self.group_table.setItem(r, 0, chk)
+            # col 1: 샘플명 (읽기 전용)
             sample_item = QTableWidgetItem(str(col))
             sample_item.setFlags(sample_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.group_table.setItem(r, 0, sample_item)
-            self.group_table.setItem(r, 1, QTableWidgetItem(str(self._sample_to_group.get(col, ''))))
+            self.group_table.setItem(r, 1, sample_item)
+            # col 2: 그룹명 (편집)
+            self.group_table.setItem(r, 2, QTableWidgetItem(str(self._sample_to_group.get(col, ''))))
+
+    def _set_all_included(self, checked: bool):
+        """모든 샘플 include 체크박스를 켜거나 끈다."""
+        state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+        for r in range(self.group_table.rowCount()):
+            item = self.group_table.item(r, 0)
+            if item is not None:
+                item.setCheckState(state)
 
     def _apply_group_table(self):
-        """테이블의 샘플→그룹 지정을 읽어 그룹핑을 갱신하고 다시 그린다."""
-        mapping, groups = {}, {}
+        """테이블의 include/그룹 지정을 읽어 포함 샘플·그룹핑을 갱신하고 다시 그린다."""
+        mapping, groups, included = {}, {}, set()
         for r, col in enumerate(self.sample_cols):
-            item = self.group_table.item(r, 1)
+            chk = self.group_table.item(r, 0)
+            if chk is not None and chk.checkState() == Qt.CheckState.Checked:
+                included.add(col)
+            item = self.group_table.item(r, 2)
             g = (item.text().strip() if item else '')
             mapping[col] = g
-            if g:
+            # 포함된 샘플만 그룹에 넣는다(제외 샘플은 PCA·색에서 빠짐)
+            if g and col in included:
                 groups.setdefault(g, []).append(col)
+        self._included_samples = included
         self._sample_to_group = mapping
         self.sample_groups = groups  # 전부 blank면 {} → 샘플 색; 지정하면 그룹 색
         # Color by 콤보를 현재 그룹 상태에 맞춰 갱신
@@ -364,6 +405,13 @@ class PCADialog(BasePlotDialog):
         self._save_settings()
         self.figure.clear()
 
+        if len(self._effective_samples()) < 2:
+            ax = self.figure.add_subplot(111)
+            ax.text(0.5, 0.5, "PCA needs at least 2 samples.\nTick more samples in Sample Groups.",
+                    ha='center', va='center', transform=ax.transAxes, fontsize=12, color='gray')
+            self.canvas.draw()
+            return
+
         try:
             result = render_pca(self.figure, self.dataframe, self._plot_params())
         except Exception as e:
@@ -383,7 +431,8 @@ class PCADialog(BasePlotDialog):
 
     def _run_pca(self):
         df = self.dataframe.copy()
-        expr = df[self.sample_cols].copy()
+        samples = self._effective_samples()
+        expr = df[samples].copy()
         expr = expr.fillna(0)
 
         n = min(self.n_genes, len(expr))
@@ -410,12 +459,12 @@ class PCADialog(BasePlotDialog):
         explained_variance = (s ** 2) / (X_centered.shape[0] - 1)
         total_variance = explained_variance.sum()
         explained_variance_ratio = (explained_variance / total_variance).tolist()
-        n_components = min(len(self.sample_cols), X_centered.shape[1], 10)
+        n_components = min(len(samples), X_centered.shape[1], 10)
         scores = U[:, :n_components] * s[:n_components]
 
         self._pca_result = pd.DataFrame(
             scores,
-            index=self.sample_cols,
+            index=samples,
             columns=[f"PC{i+1}" for i in range(scores.shape[1])],
         )
         self._explained_var = explained_variance_ratio[:n_components]

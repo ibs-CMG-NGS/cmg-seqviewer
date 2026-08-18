@@ -16,7 +16,8 @@ def render_count_summary(ax, df, params):
     """
     from matplotlib.ticker import FuncFormatter
 
-    up_color, down_color = '#c0392b', '#2c6fbb'
+    up_color = params.get('up_color') or '#c0392b'
+    down_color = params.get('down_color') or '#2c6fbb'
     fdr_max = float(params.get('fdr_max', 0.05))
     lfc_min = float(params.get('lfc_min', 1.0))
     as_pct = bool(params.get('as_pct', False))

@@ -48,19 +48,30 @@ def render_go_cluster_dot(fig, df, params):
     elif sort_by == 'Term Name' and C_DESC in df.columns:
         df = df.sort_values(C_DESC, ascending=False)
 
-    # ── Top N ──
+    # ── Top N (무엇을 남길지: FDR=가장 유의 / Fold Enrichment=가장 강한 enrichment) ──
     top_n = int(params.get('top_n', 20))
-    if len(df) > top_n and C_FDR in df.columns:
-        keep = df.nsmallest(top_n, C_FDR).index
+    top_n_by = params.get('top_n_by', 'FDR')
+    if len(df) > top_n:
+        if top_n_by == 'Fold Enrichment' and C_FE in df.columns:
+            keep = pd.to_numeric(df[C_FE], errors='coerce').fillna(
+                float('-inf')).nlargest(top_n).index
+        elif C_FDR in df.columns:
+            keep = df.nsmallest(top_n, C_FDR).index
+        else:
+            keep = df.index[:top_n]
         df = df.loc[df.index.isin(keep)]
     n_terms = len(df)
 
-    # ── Y 라벨 ("C001: term") ──
+    # ── Y 라벨 ("C001: term" — 다중-term 클러스터만 접두, singleton 은 term 명만) ──
     cluster_ids = df[C_CLUSTER].tolist() if C_CLUSTER in df.columns else list(range(n_terms))
+
+    def _cid_prefix(cid):
+        return f"C{cid}: " if str(cid).isdigit() else ""
     if C_DESC in df.columns:
-        y_labels = [f"C{cid}: {str(v)[:60]}" for cid, v in zip(cluster_ids, df[C_DESC])]
+        y_labels = [f"{_cid_prefix(cid)}{str(v)[:60]}"
+                    for cid, v in zip(cluster_ids, df[C_DESC])]
     else:
-        y_labels = [f"C{cid}" for cid in cluster_ids]
+        y_labels = [f"C{cid}" if str(cid).isdigit() else str(cid) for cid in cluster_ids]
 
     # ── X 값 ──
     x_axis = params.get('x_axis', 'Fold Enrichment')
@@ -88,10 +99,38 @@ def render_go_cluster_dot(fig, df, params):
         x_vals = list(range(n_terms)); x_label = 'Index'
 
     # ── 색 ──
-    color_by = params.get('color_by', 'FDR')
+    color_by = params.get('color_by', 'Fold Enrichment')
     legend_handles = []
     scatter_cmap = scatter_norm = None
-    if color_by == 'FDR' and C_FDR in df.columns:
+    color_label = 'FDR'
+    if color_by in ('Fold Enrichment', 'Fold Enrichment (median)') and (
+            C_FE in df.columns or '_fe_median' in df.columns):
+        # 효과 크기(강도)로 색칠 — 유의성 필터를 이미 거친 데이터에선 FDR보다 정보 효율이 높다.
+        fe_col = ('_fe_median' if color_by == 'Fold Enrichment (median)'
+                  and '_fe_median' in df.columns else C_FE)
+        fe_vals = pd.to_numeric(df[fe_col], errors='coerce').fillna(0.0).tolist() \
+            if fe_col in df.columns else []
+        if fe_vals:
+            if params.get('z_auto', True):
+                vmin = min(fe_vals)
+                vmax = max(fe_vals)
+            else:
+                vmin = float(params.get('z_min', 0.0))
+                vmax = float(params.get('z_max', 1.0))
+            if vmax <= vmin:
+                vmax = vmin + 1.0
+            scatter_norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+            cmap_name = params.get('cmap', 'YlOrRd_r')
+            # 높은 fold enrichment = 진한 색이 되도록 역방향(_r) 팔레트는 정방향으로 바꾼다.
+            if cmap_name.endswith('_r'):
+                cmap_name = cmap_name[:-2]
+            scatter_cmap = cmap_name
+            dot_colors = fe_vals
+            color_label = ('Fold Enrichment (cluster median)'
+                           if fe_col == '_fe_median' else 'Fold Enrichment')
+        else:
+            dot_colors = '#3498db'
+    elif color_by == 'FDR' and C_FDR in df.columns:
         fdr_vals = [float(v) for v in df[C_FDR]]
         if params.get('z_auto', True):
             vmin = max(min(fdr_vals), 1e-300) if fdr_vals else 1e-300
@@ -104,6 +143,8 @@ def render_go_cluster_dot(fig, df, params):
         scatter_norm = mcolors.LogNorm(vmin=vmin, vmax=vmax)
         scatter_cmap = params.get('cmap', 'viridis_r')
         dot_colors = fdr_vals
+        # 클러스터 FDR = 대표(클러스터 내 최소 FDR) term 값임을 명시 (집계값 아님).
+        color_label = 'FDR (representative term)'
     elif color_by == 'Ontology' and C_ONT in df.columns:
         onts = df[C_ONT].tolist()
         uniq = list(dict.fromkeys(onts))
@@ -137,10 +178,10 @@ def render_go_cluster_dot(fig, df, params):
                     cmap=scatter_cmap, norm=scatter_norm, alpha=0.85,
                     edgecolors='black', linewidths=0.8, zorder=3)
 
-    if color_by == 'FDR' and scatter_cmap:
+    if scatter_cmap is not None and scatter_norm is not None:
         cbar = fig.colorbar(sc, ax=ax, location=params.get('colorbar_loc', 'right'),
                             shrink=float(params.get('colorbar_shrink', 0.6)), pad=0.02)
-        cbar.set_label('FDR')
+        cbar.set_label(color_label)
 
     # ── 크기 범례 ──
     if params.get('show_size_legend', True):

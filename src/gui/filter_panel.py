@@ -272,7 +272,9 @@ class FilterPanel(QWidget):
         self.go_direction_combo = QComboBox()
         self.go_direction_combo.addItems(["All", "UP", "DOWN", "TOTAL"])
         self.go_direction_combo.setMaximumWidth(130)
-        self.go_direction_combo.setToolTip("DEG group used for GO/KEGG analysis (UP-regulated, DOWN-regulated, or TOTAL DEGs)")
+        self.go_direction_combo.setToolTip(
+            "GO/KEGG 분석에 쓰인 유전자 집합(gene_set)으로 필터.\n"
+            "데이터에 따라 UP/DOWN/TOTAL 또는 Cluster01… 등이 나타납니다.")
         go_form.addRow("Gene Set", self.go_direction_combo)
 
         go_inner.addLayout(go_form)
@@ -687,6 +689,28 @@ class FilterPanel(QWidget):
             self.go_mode_widget.setVisible(is_go)
             if not is_go and hasattr(self, 'gene_symbol_radio'):
                 self.gene_symbol_radio.setChecked(True)
+
+        # GO: "Gene Set" 드롭다운을 데이터의 실제 gene_set 값으로 동적 구성한다.
+        # DEG 기반이면 UP/DOWN/TOTAL, 클러스터 GO 결과면 Cluster01… 이 뜬다. 프리젠터는
+        # gene_set 컬럼을 이 값으로 필터하므로, 항목만 갱신하면 클러스터별 필터가 가능해진다.
+        if is_go and dataset is not None and dataset.dataframe is not None:
+            from models.standard_columns import StandardColumns
+            gs_col = StandardColumns.GENE_SET
+            values = []
+            if gs_col in dataset.dataframe.columns:
+                raw = [str(v).strip() for v in dataset.dataframe[gs_col].dropna().unique()]
+                values = [v for v in raw if v and v.upper() != 'UNKNOWN']
+            # 보기 좋은 순서: UP/DOWN/TOTAL 우선, 나머지(클러스터 등)는 이름순
+            _prio = {'UP': 0, 'DOWN': 1, 'TOTAL': 2}
+            values = sorted(set(values), key=lambda v: (_prio.get(v.upper(), 3), v.upper()))
+            self.go_direction_combo.blockSignals(True)
+            current = self.go_direction_combo.currentText()
+            self.go_direction_combo.clear()
+            self.go_direction_combo.addItem("All")
+            self.go_direction_combo.addItems(values if values else ["UP", "DOWN", "TOTAL"])
+            idx = self.go_direction_combo.findText(current)
+            self.go_direction_combo.setCurrentIndex(idx if idx >= 0 else 0)
+            self.go_direction_combo.blockSignals(False)
 
         if not is_atac:
             return

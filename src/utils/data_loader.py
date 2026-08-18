@@ -251,13 +251,16 @@ class DataLoader:
         if MultiGroupLoader.is_multi_group_dataframe(df):
             return DatasetType.MULTI_GROUP
 
-        # 점수가 높은 타입 선택
+        # 점수가 높은 타입 선택. DE 를 무조건 먼저 보지 않고 점수를 비교한다.
+        # (GO 결과에 조정 p값 컬럼을 'padj'로 두면 DE 신호가 3점이 되어, go_score 가 훨씬
+        #  높은데도 DE 로 오판 → Excel 다중시트가 첫 시트만 로드되는 문제를 막는다.)
+        if go_score >= 3 and go_score > de_score:
+            return DatasetType.GO_ANALYSIS
         if de_score >= 3:
             return DatasetType.DIFFERENTIAL_EXPRESSION
-        elif go_score >= 3:
+        if go_score >= 3:
             return DatasetType.GO_ANALYSIS
-        else:
-            return DatasetType.UNKNOWN
+        return DatasetType.UNKNOWN
     
     def _map_columns(self, df: pd.DataFrame, dataset_type: DatasetType) -> Dict[str, str]:
         """

@@ -443,9 +443,16 @@ class MainWindow(QMainWindow):
         self.compare_action.triggered.connect(self._on_compare_datasets)
         # 항상 활성화
         analysis_menu.addAction(self.compare_action)
-        
+
+        # 컬럼 부분선택 → 자식 시트 (비파괴적)
+        self.column_subset_action = QAction("🧾 Select Columns → Subset Sheet...", self)
+        self.column_subset_action.setToolTip(
+            "현재 데이터셋에서 남길 컬럼만 골라 새 자식 시트를 만듭니다(원본 보존).")
+        self.column_subset_action.triggered.connect(self._on_column_subset)
+        analysis_menu.addAction(self.column_subset_action)
+
         analysis_menu.addSeparator()
-        
+
         # GO/KEGG 분석 메뉴 (서브메뉴 없이 직접 추가)
         self.cluster_go_action = QAction("🧬 Cluster GO Terms...", self)
         self.cluster_go_action.triggered.connect(self._on_cluster_go_terms)
@@ -1311,6 +1318,28 @@ class MainWindow(QMainWindow):
             # Comparison Panel의 dataset 리스트 업데이트
             all_datasets = self.dataset_manager.get_all_datasets()
             self.comparison_panel.update_dataset_list(all_datasets)
+
+            # ── 이름을 '키'로 참조하는 모든 곳을 연쇄 갱신 ──
+            # (이걸 빼면 자식 시트가 옛 이름을 부모로 가리켜 고아가 되고, 저장 시 phantom
+            #  root 가 생기며, 비교/통합 결과의 복원 replay 가 깨진다.)
+            for entry in self.tab_data.values():
+                # 1) 자식 시트(filtered/plot/컬럼-subset 등)의 부모 참조
+                if entry.get('parent_dataset') == old_name:
+                    entry['parent_dataset'] = new_name
+                # 2) 비교 시트 레시피의 소스 데이터셋 이름
+                cp = entry.get('comparison_params')
+                if isinstance(cp, dict) and isinstance(cp.get('dataset_names'), list):
+                    cp['dataset_names'] = [
+                        new_name if n == old_name else n for n in cp['dataset_names']]
+            # 3) 통합 결과 metadata 의 소스 이름(rna_name/atac_name)
+            for ds in self.presenter.datasets.values():
+                meta = getattr(ds, 'metadata', None)
+                recipe = meta.get('integration_recipe') if isinstance(meta, dict) else None
+                if isinstance(recipe, dict):
+                    if recipe.get('rna_name') == old_name:
+                        recipe['rna_name'] = new_name
+                    if recipe.get('atac_name') == old_name:
+                        recipe['atac_name'] = new_name
 
             self.logger.info(f"Dataset renamed: {old_name} -> {new_name}")
 
@@ -3231,7 +3260,7 @@ class MainWindow(QMainWindow):
 
         title_label = QLabel(
             "<h2 style='margin:0;'>CMG-SeqViewer</h2>"
-            "<p style='margin:2px 0;'><b>Version 1.2.9</b></p>"
+            "<p style='margin:2px 0;'><b>Version 1.2.10</b></p>"
             "<p style='margin:2px 0; color:#555;'>RNA-Seq Data Analysis &amp; Visualization</p>"
         )
         title_label.setWordWrap(True)
@@ -4046,7 +4075,23 @@ class MainWindow(QMainWindow):
             dataset_source_map: dict = {}  # "file" | "database" | "integration"
             dataset_db_id_map: dict = {}   # db_dataset_id (database source 전용)
             dataset_integration_map: dict = {}  # integration_recipe (integration source 전용)
-            for name, ds in self.presenter.datasets.items():
+
+            # presenter.datasets 에 더해, tab_data 에만 존재하는 '생성 루트' 데이터셋(예: GO
+            # 클러스터링 결과는 새 탭으로만 표시되고 presenter.datasets 에는 등록되지 않는다)도
+            # 포함해야 사이드카 저장 대상에 잡히고, 그 하위 시트까지 복원된다.
+            # 단, filtered/plot/comparison 자식 시트는 레시피 replay 로 복원되므로 여기서 독립
+            # 데이터셋으로 수집하면 안 된다(그러면 복원 시 최상위 중복 시트가 생긴다).
+            _REPLAYABLE_SHEETS = {"whole", "filtered", "plot", "comparison"}
+            all_datasets: dict = dict(self.presenter.datasets)
+            for entry in self.tab_data.values():
+                if entry.get("sheet_type") in _REPLAYABLE_SHEETS:
+                    continue
+                _ds = entry.get("dataset")
+                _nm = getattr(_ds, "name", None)
+                if _nm and _nm not in all_datasets:
+                    all_datasets[_nm] = _ds
+
+            for name, ds in all_datasets.items():
                 fp = getattr(ds, "file_path", None) or ""
                 dataset_file_map[name] = str(fp)
                 dt = getattr(ds, "dataset_type", None)
@@ -4054,7 +4099,11 @@ class MainWindow(QMainWindow):
                 meta = ds.metadata if hasattr(ds, "metadata") and ds.metadata else {}
                 db_id = meta.get("db_dataset_id", "")
                 integ = meta.get("integration_recipe")
-                if integ:
+                if meta.get("is_generated"):
+                    # 앱 생성 결과(GO 클러스터링 등) — 부모에게서 물려받은 db/integration id가
+                    # 남아 있어도 무시하고 파일(=사이드카 generated) 소스로 저장한다.
+                    dataset_source_map[name] = "file"
+                elif integ:
                     # 파일 없는 통합 결과 — 복원 시 레시피로 replay
                     dataset_source_map[name] = "integration"
                     dataset_integration_map[name] = integ
@@ -4063,6 +4112,45 @@ class MainWindow(QMainWindow):
                     dataset_db_id_map[name] = db_id
                 else:
                     dataset_source_map[name] = "file"
+
+            # ── 앱에서 생성된 파생 데이터셋(원본 파일 없음: GO 클러스터링 / cross-species
+            #    harmonized / meta 결과 등)은 프로젝트 옆 사이드카 폴더에 parquet로 저장한다.
+            #    이래야 복원 시 그 데이터셋 자체는 물론, 그것을 부모로 하는 하위 시트(이후에
+            #    만든 필터/플롯 '일반 탭')까지 함께 복원된다. 저장 실패해도 기존 동작으로 폴백. ──
+            import re as _re
+            from pathlib import Path as _Path
+            assets_dir = _Path(str(_Path(path).with_suffix("")) + "_assets")
+            generated_names: set = set()  # 사이드카로 저장한 파생 데이터셋(복원 시 raw 로드)
+            for name, ds in all_datasets.items():
+                if dataset_source_map.get(name) != "file":
+                    continue
+                _meta = getattr(ds, "metadata", None) or {}
+                _is_gen = bool(_meta.get("is_generated"))
+                fp = dataset_file_map.get(name, "")
+                # 원본 파일이 있으면 스킵. 단, 복원된 generated 데이터셋(is_generated)은
+                # 사이드카 경로가 있어도 항상 새 위치로 재저장하고 generated 로 다시 표시한다.
+                if fp and os.path.exists(fp) and not _is_gen:
+                    continue
+                df = getattr(ds, "dataframe", None)
+                if df is None or getattr(df, "empty", True):
+                    continue
+                try:
+                    assets_dir.mkdir(exist_ok=True)
+                    safe = _re.sub(r"[^A-Za-z0-9._-]+", "_", name)[:80] or "dataset"
+                    out = assets_dir / f"{safe}.parquet"
+                    df_save = df.copy()
+                    # set/frozenset 셀(예: GO 클러스터링 _gene_set)은 parquet 비직렬화 →
+                    # 정렬 리스트로 변환해 저장 (복원 후 다운스트림 시트에는 영향 없음).
+                    for col in df_save.columns:
+                        if df_save[col].map(lambda v: isinstance(v, (set, frozenset))).any():
+                            df_save[col] = df_save[col].map(
+                                lambda v: sorted(v) if isinstance(v, (set, frozenset)) else v)
+                    df_save.to_parquet(out, index=False)
+                    dataset_file_map[name] = str(out)
+                    generated_names.add(name)
+                    self.logger.info(f"Persisted generated dataset '{name}' → {out}")
+                except Exception as e:
+                    self.logger.warning(f"Could not persist generated dataset '{name}': {e}")
 
             # 트리에서 펼쳐진 루트 항목 수집
             tree_expanded: list = []
@@ -4087,6 +4175,11 @@ class MainWindow(QMainWindow):
             for ds_spec in spec.get("datasets", []):
                 ds_name = ds_spec.get("name", "")
                 source = dataset_source_map.get(ds_name, "file")
+                # 사이드카로 저장한 파생 데이터셋은 'generated' 소스로 표시한다. 복원 시
+                # 일반 load_dataset(=GO 표준화 등 재추론)을 거치지 않고 parquet 를 raw 로 읽어
+                # cluster_id 등 생성 컬럼을 보존한다.
+                if ds_name in generated_names:
+                    source = "generated"
                 ds_spec["source"] = source
                 if source == "integration":
                     ds_spec["integration_recipe"] = dataset_integration_map.get(ds_name, {})
@@ -4095,6 +4188,7 @@ class MainWindow(QMainWindow):
                     ds_spec["db_dataset_id"] = dataset_db_id_map.get(ds_name, "")
                     ds_spec["file_path"] = ""  # 파일 경로 불필요
                 else:
+                    # file / generated — 사이드카/원본 경로를 상대화
                     fp = ds_spec.get("file_path", "")
                     if fp and os.path.isabs(fp):
                         try:
@@ -4159,6 +4253,44 @@ class MainWindow(QMainWindow):
             # ── 통합 결과 소스: 소스 RNA/ATAC 로드 후 replay 하도록 뒤로 미룸 ──
             if source == "integration":
                 deferred_integration.append(ds_spec)
+                continue
+
+            # ── 생성(사이드카) 소스: GO 클러스터링 등 파생 결과. parquet 를 raw 로 읽어
+            #    표준화/재추론 없이 직접 등록한다(cluster_id 등 생성 컬럼 보존). ──
+            if source == "generated":
+                try:
+                    import pandas as pd
+                    from models.data_models import Dataset, DatasetType
+                    if not ds_file or not os.path.exists(ds_file):
+                        raise FileNotFoundError(ds_file or ds_name)
+                    gdf = pd.read_parquet(ds_file)
+                    try:
+                        dtype = DatasetType(ds_type) if ds_type else DatasetType.GO_ANALYSIS
+                    except ValueError:
+                        dtype = DatasetType.GO_ANALYSIS
+                    unique_name = self.dataset_manager._generate_unique_name(ds_name)
+                    # is_generated 플래그를 남겨, 이 데이터셋을 다시 저장할 때도 generated 로
+                    # 취급(표준화 없는 raw 사이드카)하도록 한다 → 재저장 사이클에서도 컬럼 보존.
+                    dataset = Dataset(name=unique_name, dataset_type=dtype,
+                                      dataframe=gdf, original_columns={},
+                                      metadata={'is_generated': True})
+                    self.presenter.datasets[unique_name] = dataset
+                    self.dataset_manager.add_dataset(unique_name, metadata={
+                        'file_path': ds_file,
+                        'dataset_type': dtype.value,
+                        'row_count': len(gdf),
+                        'column_count': len(gdf.columns),
+                    })
+                    self.presenter.current_dataset = dataset
+                    self.presenter._update_view_with_dataset(dataset, add_to_manager=False)
+                    self._update_comparison_panel_datasets()
+                    loaded_ds_name = unique_name
+                    loaded_count += 1
+                except Exception as e:
+                    self.logger.warning(f"Failed to load generated dataset '{ds_name}': {e}")
+                    unrestorable_generated.append(ds_name)
+                    continue
+                self._replay_dataset_sheets(loaded_ds_name, sheets)
                 continue
 
             # ── 데이터베이스 소스 ──
@@ -4585,6 +4717,40 @@ class MainWindow(QMainWindow):
                 f"Failed to load GO/KEGG data:\n{str(e)}"
             )
     
+    def _on_column_subset(self):
+        """현재 데이터셋에서 남길 컬럼만 골라 비파괴적 컬럼-subset 자식 시트를 만든다."""
+        from PyQt6.QtWidgets import QMessageBox
+        from models.data_models import FilterCriteria, FilterMode
+
+        ds = self.presenter.current_dataset
+        if ds is None or ds.dataframe is None or ds.dataframe.empty:
+            QMessageBox.information(self, "Select Columns", "표시 중인 데이터셋이 없습니다.")
+            return
+
+        # 현재 표시 중인(=필터된 표시 컬럼) 목록을 기본 선택값으로 제공
+        all_cols = list(ds.dataframe.columns)
+        current_tab = self.data_tabs.currentWidget()
+        preselected = None
+        if isinstance(current_tab, QTableView) and current_tab.model() is not None \
+                and hasattr(current_tab.model(), 'dataframe'):
+            shown = current_tab.model().dataframe()
+            if shown is not None:
+                preselected = [c for c in all_cols if c in set(shown.columns)]
+
+        from gui.column_subset_dialog import ColumnSubsetDialog
+        dlg = ColumnSubsetDialog(all_cols, preselected=preselected, parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        cols = dlg.selected_columns()
+        if not cols:
+            QMessageBox.information(self, "Select Columns", "남길 컬럼을 하나 이상 선택하세요.")
+            return
+        try:
+            self.presenter.apply_filter(
+                FilterCriteria(mode=FilterMode.COLUMN_SUBSET, subset_columns=cols))
+        except Exception as e:
+            QMessageBox.critical(self, "Select Columns", f"시트 생성 실패:\n{e}")
+
     def _on_cluster_go_terms(self):
         """GO Term 클러스터링 다이얼로그 열기 (Filtered 탭에서만 가능)"""
         from PyQt6.QtWidgets import QMessageBox
@@ -4684,12 +4850,20 @@ class MainWindow(QMainWindow):
                 logger.info(f"Moved cluster_id to first column")
             
             dataset_name = f"Clustered: {filtered_dataset.name}"
+            # 메타데이터는 '복사'해서 쓴다(부모의 dict를 공유하면 안 됨). 특히 부모가 DB/통합
+            # 데이터셋이면 db_dataset_id/integration_recipe 를 물려받아, 프로젝트 저장 시 이
+            # 생성 결과가 'database/integration' 소스로 오분류되어 복원 때 부모 데이터를 대신
+            # 불러오는 버그가 생긴다. 그 키들을 제거하고 is_generated 로 명시한다.
+            _clu_meta = dict(filtered_dataset.metadata) if filtered_dataset.metadata else {}
+            _clu_meta.pop('db_dataset_id', None)
+            _clu_meta.pop('integration_recipe', None)
+            _clu_meta['is_generated'] = True
             clustered_dataset = Dataset(
                 name=dataset_name,
                 dataset_type=DatasetType.GO_ANALYSIS,
                 dataframe=clustered_data,
                 original_columns={},
-                metadata=filtered_dataset.metadata
+                metadata=_clu_meta
             )
             
             logger.info(f"Created clustered dataset: {dataset_name}")
@@ -5097,6 +5271,15 @@ class MainWindow(QMainWindow):
             from models.data_models import Dataset, DatasetType
             current_dataset = self.presenter.current_dataset
             _par = current_dataset.name if current_dataset else None
+
+            # 손자 시트 방지: 현재 활성 탭이 이미 자식 시트(filtered/plot, 예: 컬럼 subset
+            # 시트)라면, 새 시트의 부모를 그 자식이 아니라 '루트 조상'으로 평탄화한다.
+            # (트리는 루트 아래 한 단계 시트만 지원하고, 복원도 루트 위에서 레시피를 replay
+            #  하므로 — 부모를 자식으로 두면 트리 등록 실패 + build_spec phantom root 발생.)
+            _cur_entry = self.tab_data.get(self.data_tabs.currentIndex(), {})
+            if _cur_entry.get('sheet_type') in ('filtered', 'plot') \
+                    and _cur_entry.get('parent_dataset'):
+                _par = _cur_entry['parent_dataset']
 
             # 덮어쓰기 대상: "같은 부모 데이터셋"에서 나온 동일 이름의 필터 탭만.
             # (다른 데이터셋에 같은 필터를 적용한 결과는 이름이 같아도 보존한다)

@@ -36,6 +36,7 @@ class FilterMode(Enum):
     GENE_LIST = "gene_list"  # 유전자 리스트 기반 필터링
     STATISTICAL = "statistical"  # 통계값 기반 필터링 (p-value, FC)
     KEYWORD = "keyword"  # 식별자 컬럼(symbol/description 등) 부분문자열 검색
+    COLUMN_SUBSET = "column_subset"  # 행은 그대로, 선택한 컬럼만 남긴 자식 시트
 
 
 @dataclass
@@ -299,7 +300,10 @@ class FilterCriteria:
     # KEYWORD 모드용 (식별자 컬럼 부분문자열 검색)
     search_keyword: str = ""
     search_column: str = ""  # 검색할 컬럼명(빈 값이면 데이터셋 타입으로 자동 선택)
-    
+
+    # COLUMN_SUBSET 모드용 (선택한 컬럼만 남김)
+    subset_columns: Optional[List[str]] = None
+
     def to_dict(self) -> Dict[str, Any]:
         """딕셔너리로 변환"""
         return {
@@ -310,6 +314,7 @@ class FilterCriteria:
             'term_id_list': self.term_id_list,
             'search_keyword': self.search_keyword,
             'search_column': self.search_column,
+            'subset_columns': self.subset_columns,
             'fdr_max': self.fdr_max,
             'fold_enrichment_min': self.fold_enrichment_min,
             'go_min_gene_count': self.go_min_gene_count,

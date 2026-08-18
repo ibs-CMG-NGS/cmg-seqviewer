@@ -91,6 +91,9 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
         for _c in self.sample_columns:
             self._sample_to_group.setdefault(_c, '')
 
+        # 히트맵에 포함할 샘플(체크된 것만). 기본은 전부 포함. Apply 시 갱신.
+        self._included_samples: set = set(self.sample_columns)
+
         # 이미 gene-list 필터링된 child sheet 여부 감지
         self._is_prefiltered: bool = dataset.name.startswith('Filtered:')
 
@@ -197,23 +200,36 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
         grp_box = QGroupBox("Sample Groups (editable)")
         grp_v = QVBoxLayout(grp_box)
         _grp_hint = QLabel("Edit each sample's group, then Apply. "
-                           "Same label = same color; blank = ungrouped.")
+                           "Same label = same color; blank = ungrouped. "
+                           "Untick a sample to exclude it from the heatmap.")
         _grp_hint.setWordWrap(True)
         grp_v.addWidget(_grp_hint)
         self.group_table = QTableWidget()
-        self.group_table.setColumnCount(2)
-        self.group_table.setHorizontalHeaderLabels(["Sample", "Group"])
+        self.group_table.setColumnCount(3)
+        self.group_table.setHorizontalHeaderLabels(["✓", "Sample", "Group"])
         self.group_table.verticalHeader().setVisible(False)
         self.group_table.setEditTriggers(
             QAbstractItemView.EditTrigger.DoubleClicked
             | QAbstractItemView.EditTrigger.SelectedClicked)
-        self.group_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.group_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        _hh = self.group_table.horizontalHeader()
+        _hh.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        _hh.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        _hh.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.group_table.setMaximumHeight(200)
         self._populate_group_table()
         grp_v.addWidget(self.group_table)
+        # 전체 선택/해제 편의 버튼
+        _sel_row = QHBoxLayout()
+        _all_btn = QPushButton("Select all")
+        _all_btn.clicked.connect(lambda: self._set_all_included(True))
+        _none_btn = QPushButton("Clear all")
+        _none_btn.clicked.connect(lambda: self._set_all_included(False))
+        _sel_row.addWidget(_all_btn)
+        _sel_row.addWidget(_none_btn)
+        _sel_row.addStretch()
+        grp_v.addLayout(_sel_row)
         apply_btn = QPushButton("Apply Groups")
-        apply_btn.setToolTip("샘플→그룹 지정을 적용하고 히트맵을 다시 그립니다.")
+        apply_btn.setToolTip("샘플 포함 여부와 그룹 지정을 적용하고 히트맵을 다시 그립니다.")
         apply_btn.clicked.connect(self._apply_group_table)
         grp_v.addWidget(apply_btn)
         layout.addWidget(grp_box)
@@ -265,7 +281,16 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
         display_form.setSpacing(6)
 
         self.cmap_combo = QComboBox()
-        self.cmap_combo.addItems(["RdBu_r", "coolwarm", "bwr", "PiYG", "vlag", "seismic"])
+        # Z-score 히트맵에 흔한 발산(diverging) 팔레트 + 일부 순차(sequential) 팔레트.
+        # '_r' 접미사는 색 방향 반전. colorbar(Z-score 범례)의 색상이 이 값으로 정해진다.
+        self.cmap_combo.addItems([
+            "RdBu_r", "RdBu", "coolwarm", "bwr", "seismic", "vlag", "icefire",
+            "PiYG", "PRGn", "BrBG", "PuOr", "RdYlBu_r", "RdYlGn_r", "Spectral_r",
+            "viridis", "magma", "inferno", "plasma", "cividis",
+            "YlGnBu", "YlOrRd", "Blues", "Reds",
+        ])
+        self.cmap_combo.setToolTip("Heatmap/colorbar 색상 팔레트 ('_r' = 색 방향 반전)")
+        self.cmap_combo.setEditable(False)
         display_form.addRow("Color map:", self.cmap_combo)
 
         # 그룹 색 swatches — Apply Groups 시 재구성되도록 영속 컨테이너에 담는다.
@@ -422,21 +447,43 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
     def _populate_group_table(self):
         self.group_table.setRowCount(len(self.sample_columns))
         for r, col in enumerate(self.sample_columns):
+            # col 0: include 체크박스
+            chk = QTableWidgetItem()
+            chk.setFlags((chk.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                         & ~Qt.ItemFlag.ItemIsEditable)
+            chk.setCheckState(Qt.CheckState.Checked if col in self._included_samples
+                              else Qt.CheckState.Unchecked)
+            self.group_table.setItem(r, 0, chk)
+            # col 1: 샘플명 (읽기 전용)
             sample_item = QTableWidgetItem(str(col))
             sample_item.setFlags(sample_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.group_table.setItem(r, 0, sample_item)
+            self.group_table.setItem(r, 1, sample_item)
+            # col 2: 그룹명 (편집)
             self.group_table.setItem(
-                r, 1, QTableWidgetItem(str(self._sample_to_group.get(col, ''))))
+                r, 2, QTableWidgetItem(str(self._sample_to_group.get(col, ''))))
+
+    def _set_all_included(self, checked: bool):
+        """모든 샘플 include 체크박스를 켜거나 끈다."""
+        state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+        for r in range(self.group_table.rowCount()):
+            item = self.group_table.item(r, 0)
+            if item is not None:
+                item.setCheckState(state)
 
     def _apply_group_table(self):
-        """테이블의 샘플→그룹 지정을 읽어 그룹핑/색상/swatch 를 갱신하고 다시 그린다."""
-        mapping, groups = {}, {}
+        """테이블의 include/그룹 지정을 읽어 포함 샘플·그룹핑·색상·swatch 를 갱신하고 다시 그린다."""
+        mapping, groups, included = {}, {}, set()
         for r, col in enumerate(self.sample_columns):
-            item = self.group_table.item(r, 1)
+            chk = self.group_table.item(r, 0)
+            if chk is not None and chk.checkState() == Qt.CheckState.Checked:
+                included.add(col)
+            item = self.group_table.item(r, 2)
             g = (item.text().strip() if item else '')
             mapping[col] = g
-            if g:
+            # 포함된 샘플만 그룹에 넣는다(제외된 샘플은 color bar/매트릭스에서 빠짐)
+            if g and col in included:
                 groups.setdefault(g, []).append(col)
+        self._included_samples = included
         self._sample_to_group = mapping
         self.sample_groups = groups   # 전부 blank면 {} → 그룹 color bar 없음
         self._recompute_group_colors()
@@ -478,154 +525,139 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
 
         return pd.Series(colors, index=sample_cols, name="Group")
 
+    # ── Render inputs (dialog + bundle 공유) ────────────────────────────────
+
+    def _gene_labels(self, df_filtered) -> list:
+        """gene_symbol(없으면 gene_id/index) 기반 유전자 라벨 리스트."""
+        if 'gene_symbol' in df_filtered.columns:
+            return df_filtered['gene_symbol'].fillna(
+                df_filtered.get('gene_id', pd.Series(range(len(df_filtered)))).astype(str)
+            ).astype(str).tolist()
+        if 'gene_id' in df_filtered.columns:
+            return df_filtered['gene_id'].astype(str).tolist()
+        return list(df_filtered.index.astype(str))
+
+    def _build_render_df(self):
+        """렌더용 표(gene_label + 포함 샘플 열) 와 (n_genes, sample_cols) 반환.
+
+        데이터가 없거나 표시할 샘플이 없으면 (None, reason, 0, []).
+        """
+        df_filtered = self._get_filtered_data()
+        n_genes = len(df_filtered)
+        if df_filtered.empty or not self.sample_columns:
+            return None, "no_data", 0, []
+        sample_cols = [
+            c for c in self.sample_columns
+            if c in df_filtered.columns and c in self._included_samples
+        ]
+        if not sample_cols:
+            return None, "no_samples", n_genes, []
+        render_df = df_filtered[sample_cols].copy()
+        render_df.insert(0, 'gene_label', self._gene_labels(df_filtered))
+        return render_df, None, n_genes, sample_cols
+
+    def _plot_params(self, sample_cols=None, n_genes=None) -> dict:
+        if sample_cols is None:
+            sample_cols = [c for c in self.sample_columns if c in self._included_samples]
+        title = (
+            f"{self.dataset.name}  |  Z-score  |  "
+            f"padj≤{self.padj_spin.value():.3g}, "
+            f"baseMean≥{self.basemean_spin.value():.3g}"
+            + (f", n={n_genes}" if n_genes is not None else "")
+        )
+        return {
+            'gene_label_col': 'gene_label',
+            'sample_columns': list(sample_cols),
+            'sample_groups': {g: list(cols) for g, cols in self.sample_groups.items()},
+            'group_colors': dict(self._group_colors),
+            'cmap': self.cmap_combo.currentText(),
+            'linkage': self.linkage_combo.currentText(),
+            'metric': self.metric_combo.currentText(),
+            'cluster_rows': self.cluster_rows_check.isChecked(),
+            'cluster_cols': self.cluster_cols_check.isChecked(),
+            'cut': self.enable_clusters_check.isChecked() and self.cluster_rows_check.isChecked(),
+            'k': self.n_clusters_spin.value(),
+            'z_auto': self.auto_scale_check.isChecked(),
+            'z_min': self.vmin_spin.value(),
+            'z_max': self.vmax_spin.value(),
+            'show_gene_labels': self.show_gene_labels_check.isChecked(),
+            'gene_fontsize': self.gene_fontsize_spin.value(),
+            'show_col_labels': self.show_col_labels_check.isChecked(),
+            'fig_width': self.fig_width_spin.value(),
+            'fig_height': self.fig_height_spin.value(),
+            'title': title,
+        }
+
     # ── Plot ──────────────────────────────────────────────────────────────
 
     def _do_plot(self):
         self.figure.clear()
-
         try:
-            df_filtered = self._get_filtered_data()
-            n_genes = len(df_filtered)
-
-            if df_filtered.empty or not self.sample_columns:
+            render_df, reason, n_genes, sample_cols = self._build_render_df()
+            if render_df is None:
                 ax = self.figure.add_subplot(111)
-                ax.text(0.5, 0.5, "No data after filtering.\nAdjust padj / baseMean thresholds.",
-                        ha='center', va='center', transform=ax.transAxes, fontsize=12, color='gray')
+                msg = ("No samples selected.\nTick at least one sample in Sample Groups."
+                       if reason == "no_samples"
+                       else "No data after filtering.\nAdjust padj / baseMean thresholds.")
+                ax.text(0.5, 0.5, msg, ha='center', va='center',
+                        transform=ax.transAxes, fontsize=12, color='gray')
                 self.canvas.draw()
-                self.filter_info_label.setText("0")
+                if reason == "no_data":
+                    self.filter_info_label.setText("0")
                 return
 
             self.filter_info_label.setText(str(n_genes))
 
-            available_sample_cols = [c for c in self.sample_columns if c in df_filtered.columns]
-            mat = df_filtered[available_sample_cols].copy()
+            from plots.multi_group_heatmap import render_multi_group_heatmap
+            fig, info = render_multi_group_heatmap(
+                render_df, self._plot_params(sample_cols, n_genes))
 
-            if 'gene_symbol' in df_filtered.columns:
-                gene_labels = df_filtered['gene_symbol'].fillna(
-                    df_filtered.get('gene_id', pd.Series(range(len(df_filtered)))).astype(str)
-                ).tolist()
-            else:
-                id_col = 'gene_id' if 'gene_id' in df_filtered.columns else df_filtered.index
-                gene_labels = df_filtered[id_col].astype(str).tolist() if 'gene_id' in df_filtered.columns \
-                         else list(df_filtered.index.astype(str))
-            mat.index = gene_labels
-
-            from scipy.stats import zscore as _zscore
-            mat_z = mat.apply(_zscore, axis=1, result_type='broadcast')
-            mat_z = mat_z.fillna(0)
-
-            col_colors = self._make_col_colors(available_sample_cols)
-
-            linkage = self.linkage_combo.currentText()
-            metric = self.metric_combo.currentText()
-            if linkage == 'ward':
-                metric = 'euclidean'
-
-            do_cluster_rows = self.cluster_rows_check.isChecked()
-            do_cut = self.enable_clusters_check.isChecked() and do_cluster_rows
-            k = self.n_clusters_spin.value()
-
-            from scipy.cluster.hierarchy import linkage as _sc_linkage, fcluster as _sc_fcluster
-            from scipy.spatial.distance import pdist as _sc_pdist
-
-            row_linkage_arr = None
-            row_colors_cluster = None
-            self._cluster_gene_lists = {}
-            self._cluster_colors = {}
-
-            if do_cluster_rows:
-                row_dist = _sc_pdist(mat_z.values, metric=metric)
-                row_linkage_arr = _sc_linkage(row_dist, method=linkage)
-
-                if do_cut:
-                    clust_labels = _sc_fcluster(row_linkage_arr, k, criterion='maxclust')
-                    k_actual = len(set(clust_labels.tolist()))
-                    c_pal = _CLUSTER_PALETTE[:k_actual]
-                    row_colors_cluster = pd.Series(
-                        [c_pal[(c - 1) % len(c_pal)] for c in clust_labels],
-                        index=mat_z.index,
-                        name="Cluster",
-                    )
-                    for gene, cid in zip(mat_z.index, clust_labels.tolist()):
-                        self._cluster_gene_lists.setdefault(int(cid), []).append(gene)
-                    self._cluster_colors = {
-                        c: c_pal[(c - 1) % len(c_pal)]
-                        for c in set(clust_labels.tolist())
-                    }
-
-            fig_w = self.fig_width_spin.value()
-            fig_h = self.fig_height_spin.value()
-
-            plt.close('all')
-
-            yticklabels = self.show_gene_labels_check.isChecked()
-            xticklabels = self.show_col_labels_check.isChecked()
-            gene_fontsize = self.gene_fontsize_spin.value()
-
-            vmin = None if self.auto_scale_check.isChecked() else self.vmin_spin.value()
-            vmax = None if self.auto_scale_check.isChecked() else self.vmax_spin.value()
-
-            cg = sns.clustermap(
-                mat_z,
-                figsize=(fig_w, fig_h),
-                cmap=self.cmap_combo.currentText(),
-                col_colors=col_colors,
-                row_colors=row_colors_cluster,
-                row_cluster=do_cluster_rows,
-                row_linkage=row_linkage_arr,
-                col_cluster=self.cluster_cols_check.isChecked(),
-                method=linkage,
-                metric=metric,
-                yticklabels=yticklabels,
-                xticklabels=xticklabels,
-                linewidths=0 if n_genes > 100 else 0.3,
-                vmin=vmin,
-                vmax=vmax,
-                cbar_kws={"label": "Z-score", "orientation": "vertical"},
-                cbar_pos=(0.02, 0.06, 0.02, 0.18),
-            )
-
-            if yticklabels:
-                cg.ax_heatmap.tick_params(axis='y', labelsize=gene_fontsize)
-            if xticklabels:
-                cg.ax_heatmap.tick_params(axis='x', labelsize=9, rotation=45)
-
-            cg.ax_heatmap.set_xlabel("")
-            cg.ax_heatmap.set_ylabel("")
-
+            self._cluster_gene_lists = info.get('cluster_gene_lists', {})
+            self._cluster_colors = info.get('cluster_colors', {})
             if self._cluster_gene_lists:
-                parts = [
-                    f"C{c}: {len(g)}"
-                    for c, g in sorted(self._cluster_gene_lists.items())
-                ]
+                parts = [f"C{c}: {len(g)}"
+                         for c, g in sorted(self._cluster_gene_lists.items())]
                 self.cluster_info_label.setText("  ".join(parts))
                 self.go_enrichment_btn.setEnabled(True)
             else:
                 self.cluster_info_label.setText("–")
                 self.go_enrichment_btn.setEnabled(False)
 
-            auto_title = (
-                f"{self.dataset.name}  |  Z-score  |  "
-                f"padj≤{self.padj_spin.value():.3g}, "
-                f"baseMean≥{self.basemean_spin.value():.3g}, "
-                f"n={n_genes}"
-            )
-            cg.figure.suptitle(auto_title, y=0.995, fontsize=10, va='top')
-
-            has_xlabels = self.show_col_labels_check.isChecked()
-            bottom_margin = 0.12 if has_xlabels else 0.04
-            cg.figure.subplots_adjust(top=0.93, bottom=bottom_margin)
-
             # seaborn clustermap creates its own figure — assign to self.figure and canvas
-            self.figure = cg.figure
-            self.canvas.figure = cg.figure
-            cg.figure.canvas = self.canvas
+            self.figure = fig
+            self.canvas.figure = fig
+            fig.canvas = self.canvas
             self.canvas.draw()
 
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Heatmap plot failed: {e}", exc_info=True)
             QMessageBox.warning(self, "Plot Error", f"Failed to generate heatmap:\n{str(e)}")
+
+    # ── Bundle export ─────────────────────────────────────────────────────
+
+    def get_bundle_context(self) -> dict:
+        render_df, reason, n_genes, sample_cols = self._build_render_df()
+        if render_df is None:
+            render_df = pd.DataFrame({'gene_label': []})
+        slug = self._slugify(self.dataset.name)
+        return {
+            'figure': self.figure,
+            'dataframe': render_df,
+            'plot_params': self._plot_params(sample_cols, n_genes),
+            'dataset_name': self.dataset.name,
+            'plot_type': 'multi_group_heatmap',
+            'figure_title': f"Multi-Group Heatmap — {self.dataset.name}",
+            'figure_slug': f"{slug}_mg_heatmap",
+            'source_stem': f"{slug}_mg_heatmap",
+            'notes': 'Generated from cmg-seqviewer Multi-Group Heatmap '
+                     '(gene x sample matrix; z-scored per row, clustermap).',
+        }
+
+    @staticmethod
+    def _slugify(name: str) -> str:
+        import re as _re
+        return _re.sub(r'[^A-Za-z0-9._-]+', '_', str(name)).strip('_')[:60] or 'multi_group'
 
     # ── Export ────────────────────────────────────────────────────────────
 
