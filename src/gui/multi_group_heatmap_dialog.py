@@ -612,6 +612,13 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
             fig, info = render_multi_group_heatmap(
                 render_df, self._plot_params(sample_cols, n_genes))
 
+            # correlation/cosine 클러스터링 시 분산이 0인(=상수 발현) 유전자는 그 metric에서
+            # 정의되지 않아 제외된다 — 조용히 사라지지 않도록 표시 개수에 반영한다.
+            n_excluded = info.get('n_excluded_flat', 0)
+            if n_excluded:
+                self.filter_info_label.setText(
+                    f"{n_genes - n_excluded}  ({n_excluded} zero-variance excluded)")
+
             self._cluster_gene_lists = info.get('cluster_gene_lists', {})
             self._cluster_colors = info.get('cluster_colors', {})
             if self._cluster_gene_lists:

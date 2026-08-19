@@ -83,8 +83,34 @@ def render_multi_group_heatmap(df, params):
     row_colors_cluster = None
     cluster_gene_lists: dict = {}
     cluster_colors: dict = {}
+    n_excluded_flat = 0
 
-    if do_cluster_rows:
+    # correlation/cosine 거리는 분산이 0인(=모든 샘플에서 값이 동일한) 유전자에 대해
+    # 정의되지 않는다(0/0 → NaN) — 실데이터에서 드물지 않으며, 그대로 두면 scipy.linkage 가
+    # "condensed distance matrix must contain only finite values" 로 죽는다. 그런 유전자는
+    # 애초에 correlation/cosine 관점에서 클러스터링에 기여할 신호가 없으므로, 이 두 metric을
+    # 쓸 때만 클러스터링(과 표시)에서 제외한다. euclidean/ward(기본값)는 영향 없음.
+    if do_cluster_rows and metric in ('correlation', 'cosine'):
+        flat_mask = (mat_z == 0).all(axis=1)
+        n_excluded_flat = int(flat_mask.sum())
+        if n_excluded_flat:
+            mat_z = mat_z.loc[~flat_mask]
+            n_genes = len(mat_z)
+
+    if mat_z.empty:
+        fig = plt.figure(figsize=(params.get('fig_width', 14), params.get('fig_height', 10)))
+        ax = fig.add_subplot(111)
+        ax.text(0.5, 0.5,
+                f"All {n_excluded_flat} genes have zero variance across samples\n"
+                f"(undefined for {metric} distance). Try a different metric (euclidean)\n"
+                f"or linkage (ward), or check your baseMean/padj filters.",
+                ha='center', va='center', transform=ax.transAxes, fontsize=11, color='gray')
+        ax.axis('off')
+        return fig, {'cluster_gene_lists': {}, 'cluster_colors': {},
+                     'n_excluded_flat': n_excluded_flat}
+
+    will_cluster_rows = do_cluster_rows and len(mat_z) >= 2
+    if will_cluster_rows:
         row_dist = _sc_pdist(mat_z.values, metric=metric)
         row_linkage_arr = _sc_linkage(row_dist, method=linkage)
         if do_cut:
@@ -112,7 +138,7 @@ def render_multi_group_heatmap(df, params):
         cmap=params.get('cmap', 'RdBu_r'),
         col_colors=col_colors,
         row_colors=row_colors_cluster,
-        row_cluster=do_cluster_rows,
+        row_cluster=will_cluster_rows,
         row_linkage=row_linkage_arr,
         col_cluster=bool(params.get('cluster_cols', False)),
         method=linkage,
@@ -139,4 +165,5 @@ def render_multi_group_heatmap(df, params):
     cg.figure.subplots_adjust(top=0.93, bottom=bottom_margin)
 
     return cg.figure, {'cluster_gene_lists': cluster_gene_lists,
-                       'cluster_colors': cluster_colors}
+                       'cluster_colors': cluster_colors,
+                       'n_excluded_flat': n_excluded_flat}
