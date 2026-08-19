@@ -129,30 +129,50 @@ class GOClustering:
         if getattr(self, '_df', None) is None:
             raise RuntimeError("cut() called before fit()")
 
-        df = self._df
-        # 자명한 경우: 각 term 을 개별 클러스터로
         if self._trivial or self._linkage_matrix is None:
-            df = df.copy()
-            df['cluster_id'] = range(len(df))
-            df['is_representative'] = True
-            if StandardColumns.DESCRIPTION in df.columns:
-                df['representative_term'] = df[StandardColumns.DESCRIPTION]
-            else:
-                df['representative_term'] = [f"Term {i}" for i in range(len(df))]
-            return df, {i: [i] for i in range(len(df))}
-
-        # 트리 절단 (거리 = 1 - 유사도)
+            return self._trivial_result()
+        # 트리 절단 (거리 = 1 - 유사도) — 크기 1은 singleton 으로 분리
         distance_threshold = 1 - self.similarity_threshold
         cluster_labels = fcluster(self._linkage_matrix, t=distance_threshold, criterion='distance')
+        return self._finalize(cluster_labels, drop_singletons=True)
 
+    def cut_k(self, n_clusters: int, drop_singletons: bool = False
+              ) -> Tuple[pd.DataFrame, Dict[int, List[int]]]:
+        """캐시된 트리를 '정확히 k개'로 잘라 반환 (cutree(k) 방식, 즉시).
+
+        유사도 임계값 대신 클러스터 '개수'를 직접 지정한다. 기본은 k 개를 모두 클러스터로
+        유지(drop_singletons=False) — 사용자가 요청한 개수를 그대로 보여주기 위함.
+        fit() 을 먼저 호출해야 한다.
+        """
+        if getattr(self, '_df', None) is None:
+            raise RuntimeError("cut_k() called before fit()")
+        if self._trivial or self._linkage_matrix is None:
+            return self._trivial_result()
+        k = max(1, min(int(n_clusters), len(self._valid_indices)))
+        cluster_labels = fcluster(self._linkage_matrix, t=k, criterion='maxclust')
+        return self._finalize(cluster_labels, drop_singletons=drop_singletons)
+
+    def _trivial_result(self) -> Tuple[pd.DataFrame, Dict[int, List[int]]]:
+        """군집 불가(유효 term 없음/‌_gene_set 없음) → 각 term 을 개별 클러스터로."""
+        df = self._df.copy()
+        df['cluster_id'] = range(len(df))
+        df['is_representative'] = True
+        if StandardColumns.DESCRIPTION in df.columns:
+            df['representative_term'] = df[StandardColumns.DESCRIPTION]
+        else:
+            df['representative_term'] = [f"Term {i}" for i in range(len(df))]
+        return df, {i: [i] for i in range(len(df))}
+
+    def _finalize(self, cluster_labels, drop_singletons: bool
+                  ) -> Tuple[pd.DataFrame, Dict[int, List[int]]]:
+        """fcluster 라벨 → (clustered_df, clusters). drop_singletons 면 크기 1 제외."""
         clusters: Dict[int, List[int]] = {}
-        for idx, cluster_id in enumerate(cluster_labels):
-            clusters.setdefault(int(cluster_id), []).append(self._valid_indices[idx])
-
-        # 크기 1(singleton)은 제외 — 해당 term 은 df 에서 cluster_id = -1 로 남는다
-        filtered_clusters = {cid: idxs for cid, idxs in clusters.items() if len(idxs) > 1}
-        df_result = self._add_cluster_info(df, filtered_clusters, self._valid_indices)
-        return df_result, filtered_clusters
+        for idx, cid in enumerate(cluster_labels):
+            clusters.setdefault(int(cid), []).append(self._valid_indices[idx])
+        kept = ({cid: idxs for cid, idxs in clusters.items() if len(idxs) > 1}
+                if drop_singletons else clusters)
+        df_result = self._add_cluster_info(self._df, kept, self._valid_indices)
+        return df_result, kept
 
     def cluster_counts(self, thresholds) -> list:
         """여러 임계값에서 (threshold, n_clusters, n_singletons) 를 빠르게 계산 (sweep 용).

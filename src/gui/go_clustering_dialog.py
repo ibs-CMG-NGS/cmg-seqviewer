@@ -50,16 +50,22 @@ class ClusteringWorker(QThread):
     error = pyqtSignal(str)
     progress = pyqtSignal(int)
     
-    def __init__(self, df, similarity_threshold):
+    def __init__(self, df, similarity_threshold, top_n=0):
         super().__init__()
         self.df = df
         self.similarity_threshold = similarity_threshold
-        
+        self.top_n = int(top_n or 0)   # >0 이면 FDR 상위 N개 term 만 클러스터링
+
     def run(self):
         """Execute clustering in background thread"""
         try:
             self.progress.emit(10)
-            
+
+            # Top N terms (by FDR) 사전 선별 — 적은 term 을 k 개로 자르는 컴팩트 모드용
+            if self.top_n > 0 and StandardColumns.FDR in self.df.columns:
+                self.df = (self.df.sort_values(StandardColumns.FDR)
+                           .head(self.top_n).reset_index(drop=True))
+
             # Ensure _gene_set column exists
             if '_gene_set' not in self.df.columns:
                 # Try to create _gene_set from gene columns
@@ -253,7 +259,36 @@ class GOClusteringDialog(QDialog):
         threshold_layout.addWidget(threshold_help)
         
         params_layout.addRow("Similarity Threshold:", threshold_container)
-        
+
+        # ── Cut mode: 유사도 임계값(전체 리스트) vs 클러스터 개수 k ──
+        self.cut_mode_combo = QComboBox()
+        self.cut_mode_combo.addItems(["Similarity threshold", "Number of clusters (k)"])
+        self.cut_mode_combo.setToolTip(
+            "Similarity threshold: 데이터 기반, 모든 클러스터 + singleton 유지.\n"
+            "Number of clusters (k): 트리를 정확히 k개로 자름(cutree). 컴팩트한 요약에 적합.")
+        params_layout.addRow("Cut by:", self.cut_mode_combo)
+
+        self.k_spin = QSpinBox()
+        self.k_spin.setRange(2, 100)
+        self.k_spin.setValue(10)
+        self.k_spin.setMinimumWidth(60)
+        self.k_spin.setToolTip("트리를 이 개수(k)의 클러스터로 자른다 (k 모드).")
+        params_layout.addRow("Clusters (k):", self.k_spin)
+
+        self.top_n_terms_spin = QSpinBox()
+        self.top_n_terms_spin.setRange(0, 100000)
+        self.top_n_terms_spin.setValue(0)
+        self.top_n_terms_spin.setMinimumWidth(60)
+        self.top_n_terms_spin.setToolTip(
+            "FDR 상위 N개 term 만 클러스터링 (0 = 전체).\n"
+            "예: 50 + 'Number of clusters (k)' → 보기 쉬운 컴팩트 요약.\n"
+            "이 값 변경은 Run Clustering 이 필요합니다(트리 재계산).")
+        params_layout.addRow("Top N terms:", self.top_n_terms_spin)
+
+        self.cut_mode_combo.currentTextChanged.connect(self._on_cut_mode_changed)
+        self.k_spin.valueChanged.connect(lambda _v: self._recut_timer.start())
+        self._on_cut_mode_changed(self.cut_mode_combo.currentText())
+
         # Cluster Size Filter
         size_filter_label = QLabel("<b>Valid Cluster Size Range</b>")
         params_layout.addRow("", size_filter_label)
@@ -855,44 +890,61 @@ class GOClusteringDialog(QDialog):
         self.max_cluster_size = self.max_size_spin.value()
         
         similarity_threshold = self.similarity_spin.value()
+        top_n = self.top_n_terms_spin.value()
         self.run_button.setEnabled(False)
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
-        self.worker = ClusteringWorker(self.dataset, similarity_threshold)
+        self.worker = ClusteringWorker(self.dataset, similarity_threshold, top_n=top_n)
         self.worker.finished.connect(self._on_clustering_finished)
         self.worker.error.connect(self._on_clustering_error)
         self.worker.progress.connect(self.progress_bar.setValue)
         self.worker.start()
         
+    def _on_cut_mode_changed(self, mode):
+        """유사도 임계값 모드 ↔ 클러스터 개수(k) 모드 전환: 관련 컨트롤 활성화 + 라이브 갱신."""
+        is_k = str(mode).startswith("Number")
+        for w in (self.similarity_spin, self.similarity_slider):
+            w.setEnabled(not is_k)
+        self.k_spin.setEnabled(is_k)
+        if getattr(self, '_clustering', None) is not None:
+            self._recut_timer.start()
+
     def _on_clustering_finished(self, clustered_df, clusters, clustering=None):
         """Handle clustering completion"""
-        self._clustering = clustering   # fitted 인스턴스 캐시 → 임계값 라이브 재-cut
+        self._clustering = clustering   # fitted 인스턴스 캐시 → 라이브 재-cut
         self.clustered_df = clustered_df
         self.clusters = clusters
         self.run_button.setEnabled(True)
         self.progress_bar.setVisible(False)
-        self._update_results()
         self.tab_widget.setEnabled(True)
         self.export_button.setEnabled(True)
         self.apply_button.setEnabled(True)
         self.refresh_button.setEnabled(True)
-
-        n_clusters = len(clusters)  # clusters dict already excludes singletons
-        n_singletons = len(clustered_df[clustered_df['cluster_id'] == -1])
-        self.results_label.setText(
-            f"Clustering complete: {n_clusters} clusters, {n_singletons} singletons "
-            f"(threshold {self.similarity_spin.value():.2f}). "
-            f"Drag the threshold to update live.")
         self._update_sweep_hint()
+        # 현재 cut 모드(threshold/k)로 결과를 표시
+        if clustering is not None:
+            self._live_recut()
+        else:
+            self._update_results()
+            n_clusters = len(clusters)
+            n_singletons = len(clustered_df[clustered_df['cluster_id'] == -1])
+            self.results_label.setText(
+                f"Clustering complete: {n_clusters} clusters, {n_singletons} singletons")
 
     def _live_recut(self):
-        """임계값이 바뀌면 캐시된 linkage 를 즉시 다시 잘라 결과를 갱신한다(Run 재실행 불필요)."""
+        """cut 모드에 맞춰 캐시된 linkage 를 즉시 다시 잘라 결과를 갱신(Run 재실행 불필요)."""
         clustering = getattr(self, '_clustering', None)
         if clustering is None:
             return   # 아직 한 번도 Run 하지 않음
-        th = self.similarity_spin.value()
         try:
-            clustered_df, clusters = clustering.cut(th)
+            if self.cut_mode_combo.currentText().startswith("Number"):
+                k = self.k_spin.value()
+                clustered_df, clusters = clustering.cut_k(k)
+                mode_txt = f"k = {k}"
+            else:
+                th = self.similarity_spin.value()
+                clustered_df, clusters = clustering.cut(th)
+                mode_txt = f"threshold {th:.2f}"
         except Exception:
             return
         self.clustered_df = clustered_df
@@ -901,7 +953,7 @@ class GOClusteringDialog(QDialog):
         n_clusters = len(clusters)
         n_singletons = int((clustered_df['cluster_id'] == -1).sum())
         self.results_label.setText(
-            f"threshold {th:.2f} → {n_clusters} clusters, {n_singletons} singletons  (live)")
+            f"{mode_txt} → {n_clusters} clusters, {n_singletons} singletons  (live)")
 
     def _update_sweep_hint(self):
         """여러 임계값에서의 클러스터/singleton 수를 한 줄로 보여준다(값 선택 참고용)."""
