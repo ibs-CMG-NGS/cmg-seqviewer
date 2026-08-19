@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QHeaderView, QSplitter, QWidget, QTabWidget, QTextEdit,
     QFileDialog, QMessageBox, QProgressBar, QGroupBox, QFormLayout,
     QSlider, QCheckBox, QListWidget, QListWidgetItem, QScrollArea, QSizePolicy,
-    QComboBox,
+    QComboBox, QDialogButtonBox,
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont, QBrush, QColor, QPixmap, QIcon
@@ -190,9 +190,10 @@ class GOClusteringDialog(QDialog):
         # Adjust ratio: 2:8 to give more space to network visualization
         splitter.setStretchFactor(0, 2)
         splitter.setStretchFactor(1, 8)
-        # Set initial sizes (20% settings, 80% results)
+        # Set initial sizes (settings 유리하도록 최소폭 이상 확보, 나머지는 네트워크 뷰)
         total_width = 1400
-        splitter.setSizes([int(total_width * 0.2), int(total_width * 0.8)])
+        settings_width = max(360, int(total_width * 0.24))
+        splitter.setSizes([settings_width, total_width - settings_width])
         layout.addWidget(splitter)
         button_layout = self._create_buttons()
         layout.addLayout(button_layout)
@@ -200,22 +201,44 @@ class GOClusteringDialog(QDialog):
     def _create_settings_panel(self):
         """Create the left panel with clustering settings and help"""
         panel = QWidget()
-        layout = QVBoxLayout(panel)
-        
-        # Clustering Parameters Group
+        outer = QVBoxLayout(panel)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        # 좁은 splitter 폭에서도 컨트롤이 잘리지 않도록 스크롤 영역에 담는다.
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setMinimumWidth(340)
+        content = QWidget()
+        layout = QVBoxLayout(content)
+
+        # ── Clustering Parameters ── 두 개의 하위 그룹으로 나눠 가독성을 높인다:
+        # "Cut Strategy"(어떻게 자를지) 와 "Valid Cluster Size Range"(크기 필터).
         params_group = QGroupBox("⚙️ Clustering Parameters")
-        params_layout = QFormLayout(params_group)
-        params_layout.setVerticalSpacing(12)
-        
-        # Similarity Threshold with Slider
+        params_outer = QVBoxLayout(params_group)
+        params_outer.setSpacing(10)
+
+        # ── Cut Strategy ──
+        cut_group = QGroupBox("Cut Strategy")
+        cut_form = QFormLayout(cut_group)
+        cut_form.setVerticalSpacing(10)
+        cut_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        # 자르는 방식을 먼저 고른다 — 아래 두 컨트롤 중 관련 있는 쪽만 활성화된다.
+        self.cut_mode_combo = QComboBox()
+        self.cut_mode_combo.addItems(["Similarity threshold", "Number of clusters (k)"])
+        self.cut_mode_combo.setToolTip(
+            "Similarity threshold: 데이터 기반, 모든 클러스터 + singleton 유지.\n"
+            "Number of clusters (k): 트리를 정확히 k개로 자름(cutree). 컴팩트한 요약에 적합.")
+        cut_form.addRow("Cut by:", self.cut_mode_combo)
+
+        # Similarity Threshold — spin + slider
         threshold_container = QWidget()
         threshold_layout = QVBoxLayout(threshold_container)
         threshold_layout.setContentsMargins(0, 0, 0, 0)
-        threshold_layout.setSpacing(4)
-        
-        # Spinbox and slider in horizontal layout
+        threshold_layout.setSpacing(3)
         threshold_input_layout = QHBoxLayout()
-        
+        threshold_input_layout.setSpacing(6)
+
         self.similarity_spin = QDoubleSpinBox()
         self.similarity_spin.setRange(0.0, 1.0)
         self.similarity_spin.setSingleStep(0.05)
@@ -224,56 +247,28 @@ class GOClusteringDialog(QDialog):
         self.similarity_spin.setMinimumWidth(60)
         self.similarity_spin.setToolTip("Jaccard similarity threshold (0.0-1.0)")
         threshold_input_layout.addWidget(self.similarity_spin)
-        
+
         self.similarity_slider = QSlider(Qt.Orientation.Horizontal)
         self.similarity_slider.setRange(0, 100)
         self.similarity_slider.setValue(70)
         self.similarity_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.similarity_slider.setTickInterval(10)
-        threshold_input_layout.addWidget(self.similarity_slider)
-        
-        # Connect slider and spinbox
-        self.similarity_slider.valueChanged.connect(
-            lambda v: self.similarity_spin.setValue(v / 100.0)
-        )
-        self.similarity_spin.valueChanged.connect(
-            lambda v: self.similarity_slider.setValue(int(v * 100))
-        )
-        # 임계값 변경 시 라이브 재-cut (디바운스). Run 이후에만 동작(_clustering 존재 시).
-        self._recut_timer = QTimer(self)
-        self._recut_timer.setSingleShot(True)
-        self._recut_timer.setInterval(150)
-        self._recut_timer.timeout.connect(self._live_recut)
-        self.similarity_spin.valueChanged.connect(lambda _v: self._recut_timer.start())
-
+        self.similarity_slider.setMinimumHeight(24)
+        threshold_input_layout.addWidget(self.similarity_slider, 1)
         threshold_layout.addLayout(threshold_input_layout)
-        
-        # Help text for threshold
-        threshold_help = QLabel(
-            "<small><i>Recommended: <b>0.7</b> for balanced clustering<br>"
-            "Higher (0.8-0.9) = tighter, more specific clusters<br>"
-            "Lower (0.4-0.6) = broader, more general clusters</i></small>"
-        )
-        threshold_help.setStyleSheet("color: #666; margin-left: 2px;")
+
+        threshold_help = QLabel("<small><i>0.7 recommended · higher = tighter clusters</i></small>")
+        threshold_help.setStyleSheet("color: #666;")
         threshold_help.setWordWrap(True)
         threshold_layout.addWidget(threshold_help)
-        
-        params_layout.addRow("Similarity Threshold:", threshold_container)
-
-        # ── Cut mode: 유사도 임계값(전체 리스트) vs 클러스터 개수 k ──
-        self.cut_mode_combo = QComboBox()
-        self.cut_mode_combo.addItems(["Similarity threshold", "Number of clusters (k)"])
-        self.cut_mode_combo.setToolTip(
-            "Similarity threshold: 데이터 기반, 모든 클러스터 + singleton 유지.\n"
-            "Number of clusters (k): 트리를 정확히 k개로 자름(cutree). 컴팩트한 요약에 적합.")
-        params_layout.addRow("Cut by:", self.cut_mode_combo)
+        cut_form.addRow("Similarity:", threshold_container)
 
         self.k_spin = QSpinBox()
         self.k_spin.setRange(2, 100)
         self.k_spin.setValue(10)
         self.k_spin.setMinimumWidth(60)
         self.k_spin.setToolTip("트리를 이 개수(k)의 클러스터로 자른다 (k 모드).")
-        params_layout.addRow("Clusters (k):", self.k_spin)
+        cut_form.addRow("Clusters (k):", self.k_spin)
 
         self.top_n_terms_spin = QSpinBox()
         self.top_n_terms_spin.setRange(0, 100000)
@@ -283,42 +278,55 @@ class GOClusteringDialog(QDialog):
             "FDR 상위 N개 term 만 클러스터링 (0 = 전체).\n"
             "예: 50 + 'Number of clusters (k)' → 보기 쉬운 컴팩트 요약.\n"
             "이 값 변경은 Run Clustering 이 필요합니다(트리 재계산).")
-        params_layout.addRow("Top N terms:", self.top_n_terms_spin)
+        cut_form.addRow("Top N terms:", self.top_n_terms_spin)
+        top_n_help = QLabel("<small><i>0 = use all filtered terms</i></small>")
+        top_n_help.setStyleSheet("color: #666;")
+        cut_form.addRow("", top_n_help)
 
-        self.cut_mode_combo.currentTextChanged.connect(self._on_cut_mode_changed)
+        # Connect slider ↔ spinbox ↔ live re-cut (디바운스, Run 이후에만 동작)
+        self.similarity_slider.valueChanged.connect(
+            lambda v: self.similarity_spin.setValue(v / 100.0))
+        self.similarity_spin.valueChanged.connect(
+            lambda v: self.similarity_slider.setValue(int(v * 100)))
+        self._recut_timer = QTimer(self)
+        self._recut_timer.setSingleShot(True)
+        self._recut_timer.setInterval(150)
+        self._recut_timer.timeout.connect(self._live_recut)
+        self.similarity_spin.valueChanged.connect(lambda _v: self._recut_timer.start())
         self.k_spin.valueChanged.connect(lambda _v: self._recut_timer.start())
+        self.cut_mode_combo.currentTextChanged.connect(self._on_cut_mode_changed)
         self._on_cut_mode_changed(self.cut_mode_combo.currentText())
 
-        # Cluster Size Filter
-        size_filter_label = QLabel("<b>Valid Cluster Size Range</b>")
-        params_layout.addRow("", size_filter_label)
-        
-        # Min cluster size
+        params_outer.addWidget(cut_group)
+
+        # ── Valid Cluster Size Range ──
+        size_group = QGroupBox("Valid Cluster Size Range")
+        size_form = QFormLayout(size_group)
+        size_form.setVerticalSpacing(10)
+        size_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
         self.min_size_spin = QSpinBox()
         self.min_size_spin.setRange(2, 50)
         self.min_size_spin.setValue(2)
         self.min_size_spin.setToolTip("Minimum number of terms to form a valid cluster")
         self.min_size_spin.setMinimumWidth(60)
-        params_layout.addRow("Min Terms:", self.min_size_spin)
-        
-        # Max cluster size
+        size_form.addRow("Min Terms:", self.min_size_spin)
+
         self.max_size_spin = QSpinBox()
         self.max_size_spin.setRange(3, 200)
         self.max_size_spin.setValue(100)
         self.max_size_spin.setToolTip("Maximum number of terms in a valid cluster")
         self.max_size_spin.setMinimumWidth(60)
-        params_layout.addRow("Max Terms:", self.max_size_spin)
-        
-        size_help = QLabel(
-            "<small><i>Clusters outside this range will be<br>"
-            "displayed separately on the right side</i></small>"
-        )
-        size_help.setStyleSheet("color: #666; margin-left: 2px;")
+        size_form.addRow("Max Terms:", self.max_size_spin)
+
+        size_help = QLabel("<small><i>Outside this range → shown separately</i></small>")
+        size_help.setStyleSheet("color: #666;")
         size_help.setWordWrap(True)
-        params_layout.addRow("", size_help)
-        
+        size_form.addRow("", size_help)
+
+        params_outer.addWidget(size_group)
         layout.addWidget(params_group)
-        
+
         # Run Button
         self.run_button = QPushButton("▶ Run Clustering")
         self.run_button.clicked.connect(self._run_clustering)
@@ -414,17 +422,37 @@ class GOClusteringDialog(QDialog):
         
         layout.addWidget(guide_group)
 
-        # ── Figure Style & Export ────────────────────────────────────
+        # ── Figure Style & Export — 좌측 패널을 차지하지 않도록 팝업으로 이동 ──
+        # self._style 객체 자체는 그대로 유지(_save_figure/_update_network_graph 가 참조).
         self._style = FigureStylePanel()
         self._style.changed.connect(self._on_style_changed)
-        style_group = QGroupBox("Figure Style & Export")
-        sv = QVBoxLayout(style_group)
-        sv.addWidget(self._style)
-        layout.addWidget(style_group)
+        self._style_dialog = None  # lazy: 첫 클릭 때 생성
+        style_btn = QPushButton("🎨 Figure Style && Export...")
+        style_btn.setToolTip("Theme, export size/DPI/format 설정")
+        style_btn.clicked.connect(self._open_style_dialog)
+        layout.addWidget(style_btn)
 
         layout.addStretch()
 
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
         return panel
+
+    def _open_style_dialog(self):
+        """Figure Style & Export 패널을 작은 팝업 다이얼로그로 연다(좌측 패널 공간 절약)."""
+        if self._style_dialog is None:
+            dlg = QDialog(self)
+            dlg.setWindowTitle("Figure Style & Export")
+            v = QVBoxLayout(dlg)
+            v.addWidget(self._style)   # 재파렌팅 — self._style 객체는 그대로 재사용
+            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+            buttons.rejected.connect(dlg.close)
+            buttons.button(QDialogButtonBox.StandardButton.Close).clicked.connect(dlg.close)
+            v.addWidget(buttons)
+            self._style_dialog = dlg
+        self._style_dialog.show()
+        self._style_dialog.raise_()
+        self._style_dialog.activateWindow()
         
     def _create_results_panel(self):
         """Create the right panel with results tabs"""
