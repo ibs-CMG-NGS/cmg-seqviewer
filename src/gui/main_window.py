@@ -5212,25 +5212,30 @@ class MainWindow(QMainWindow):
             )
             dataset = filtered_dataset
         
-        # Cluster Dot Plot는 Clustered 탭에서만 가능
+        # Cluster Dot Plot: 인-앱 'Clustered:' 탭이거나, cluster_id 컬럼이 이미 있는
+        # 데이터셋(업스트림 파이프라인에서 클러스터링해 반입한 파일)이면 허용한다.
         if plot_type == "network":
+            from models.standard_columns import StandardColumns as _SC
             current_tab_name = self.data_tabs.tabText(current_index)
-            if not current_tab_name.startswith("Clustered:"):
+            _has_cluster_col = (
+                dataset is not None and dataset.dataframe is not None
+                and _SC.CLUSTER_ID in dataset.dataframe.columns
+            )
+            if not (current_tab_name.startswith("Clustered:") or _has_cluster_col):
                 QMessageBox.information(
                     self,
                     "Use Clustered Data",
-                    "Cluster Dot Plot requires clustered data.\n\n"
-                    "Please:\n"
-                    "1. Filter your GO/KEGG data (Statistical Filter tab)\n"
-                    "2. Select the 'Filtered:' tab\n"
-                    "3. Run 'GO Analysis → Cluster GO Terms'\n"
-                    "4. Select the generated 'Clustered:' tab\n"
-                    "5. Then open Cluster Dot Plot\n\n"
+                    "Cluster Dot Plot requires clustered data (a 'cluster_id' column).\n\n"
+                    "Either:\n"
+                    "• Filter GO/KEGG data → 'GO Analysis → Cluster GO Terms' → open on the "
+                    "'Clustered:' tab, or\n"
+                    "• Import a GO file that already has a 'cluster_id' column (clustered "
+                    "upstream).\n\n"
                     "Each dot represents one cluster's representative term,\n"
-                    "sized by cluster member count and colored by FDR."
+                    "sized by cluster member count and colored by fold enrichment."
                 )
                 return
-        
+
         try:
             # 시각화 다이얼로그 열기
             if plot_type == "dotplot":
