@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
     QSlider, QCheckBox, QListWidget, QListWidgetItem, QScrollArea, QSizePolicy,
     QComboBox,
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont, QBrush, QColor, QPixmap, QIcon
 
 from models.standard_columns import StandardColumns
@@ -46,7 +46,7 @@ from utils.go_clustering import GOClustering
 class ClusteringWorker(QThread):
     """Background thread for performing GO term clustering"""
     
-    finished = pyqtSignal(object, object)
+    finished = pyqtSignal(object, object, object)  # clustered_df, clusters, fitted GOClustering
     error = pyqtSignal(str)
     progress = pyqtSignal(int)
     
@@ -94,8 +94,11 @@ class ClusteringWorker(QThread):
                     self.df['_gene_set'] = [set() for _ in range(len(self.df))]
             
             self.progress.emit(30)
+            # fit(비싼 Jaccard+linkage) 후 cut — 이후 다이얼로그가 이 인스턴스로 임계값만
+            # 바꿔 즉시 재-cut(cut())할 수 있도록 fitted 인스턴스를 함께 넘긴다.
             clustering = GOClustering(similarity_threshold=self.similarity_threshold)
-            clustered_df, clusters = clustering.cluster_terms(self.df)
+            clustering.fit(self.df)
+            clustered_df, clusters = clustering.cut(self.similarity_threshold)
             
             import logging
             logger = logging.getLogger(__name__)
@@ -109,7 +112,7 @@ class ClusteringWorker(QThread):
             logger.info(f"Clustered DF representative count: {clustered_df['is_representative'].sum()}")
             
             self.progress.emit(90)
-            self.finished.emit(clustered_df, clusters)
+            self.finished.emit(clustered_df, clusters, clustering)
             self.progress.emit(100)
         except Exception as e:
             import traceback
@@ -138,6 +141,7 @@ class GOClusteringDialog(QDialog):
             self.dataset = dataset.copy()
         self.clustered_df = None
         self.clusters = None
+        self._clustering = None       # fit() 된 GOClustering 캐시 → 임계값 라이브 재-cut
         self.network_graph = None
         self.node_positions = None
         self.cluster_colors = {}
@@ -229,7 +233,13 @@ class GOClusteringDialog(QDialog):
         self.similarity_spin.valueChanged.connect(
             lambda v: self.similarity_slider.setValue(int(v * 100))
         )
-        
+        # 임계값 변경 시 라이브 재-cut (디바운스). Run 이후에만 동작(_clustering 존재 시).
+        self._recut_timer = QTimer(self)
+        self._recut_timer.setSingleShot(True)
+        self._recut_timer.setInterval(150)
+        self._recut_timer.timeout.connect(self._live_recut)
+        self.similarity_spin.valueChanged.connect(lambda _v: self._recut_timer.start())
+
         threshold_layout.addLayout(threshold_input_layout)
         
         # Help text for threshold
@@ -388,6 +398,11 @@ class GOClusteringDialog(QDialog):
         self.results_label = QLabel("No clustering results yet. Configure settings and click 'Run Clustering'.")
         self.results_label.setWordWrap(True)
         layout.addWidget(self.results_label)
+        # 임계값 sweep 힌트: Run 이후 linkage 재사용으로 즉시 계산됨
+        self.sweep_label = QLabel("")
+        self.sweep_label.setWordWrap(True)
+        self.sweep_label.setStyleSheet("color:#555; font-size:9pt;")
+        layout.addWidget(self.sweep_label)
         self.tab_widget = QTabWidget()
         self.tab_widget.setEnabled(False)
         network_tab = self._create_network_tab()
@@ -849,15 +864,9 @@ class GOClusteringDialog(QDialog):
         self.worker.progress.connect(self.progress_bar.setValue)
         self.worker.start()
         
-    def _on_clustering_finished(self, clustered_df, clusters):
+    def _on_clustering_finished(self, clustered_df, clusters, clustering=None):
         """Handle clustering completion"""
-        import logging
-        logger = logging.getLogger(__name__)
-        
-        logger.info(f"_on_clustering_finished: received clustered_df with {len(clustered_df)} rows")
-        logger.info(f"_on_clustering_finished: cluster_id value_counts: {clustered_df['cluster_id'].value_counts().head()}")
-        logger.info(f"_on_clustering_finished: representative count: {clustered_df['is_representative'].sum()}")
-        
+        self._clustering = clustering   # fitted 인스턴스 캐시 → 임계값 라이브 재-cut
         self.clustered_df = clustered_df
         self.clusters = clusters
         self.run_button.setEnabled(True)
@@ -867,11 +876,42 @@ class GOClusteringDialog(QDialog):
         self.export_button.setEnabled(True)
         self.apply_button.setEnabled(True)
         self.refresh_button.setEnabled(True)
-        
-        # Count valid clusters and singletons correctly
+
         n_clusters = len(clusters)  # clusters dict already excludes singletons
         n_singletons = len(clustered_df[clustered_df['cluster_id'] == -1])
-        self.results_label.setText(f"Clustering complete: {n_clusters} clusters, {n_singletons} singletons")
+        self.results_label.setText(
+            f"Clustering complete: {n_clusters} clusters, {n_singletons} singletons "
+            f"(threshold {self.similarity_spin.value():.2f}). "
+            f"Drag the threshold to update live.")
+        self._update_sweep_hint()
+
+    def _live_recut(self):
+        """임계값이 바뀌면 캐시된 linkage 를 즉시 다시 잘라 결과를 갱신한다(Run 재실행 불필요)."""
+        clustering = getattr(self, '_clustering', None)
+        if clustering is None:
+            return   # 아직 한 번도 Run 하지 않음
+        th = self.similarity_spin.value()
+        try:
+            clustered_df, clusters = clustering.cut(th)
+        except Exception:
+            return
+        self.clustered_df = clustered_df
+        self.clusters = clusters
+        self._update_results()
+        n_clusters = len(clusters)
+        n_singletons = int((clustered_df['cluster_id'] == -1).sum())
+        self.results_label.setText(
+            f"threshold {th:.2f} → {n_clusters} clusters, {n_singletons} singletons  (live)")
+
+    def _update_sweep_hint(self):
+        """여러 임계값에서의 클러스터/singleton 수를 한 줄로 보여준다(값 선택 참고용)."""
+        clustering = getattr(self, '_clustering', None)
+        if clustering is None or getattr(clustering, '_linkage_matrix', None) is None:
+            self.sweep_label.setText("")
+            return
+        pts = clustering.cluster_counts([0.4, 0.5, 0.6, 0.7, 0.8])
+        txt = "   ".join(f"{t:.1f}: {nc}c/{ns}s" for t, nc, ns in pts)
+        self.sweep_label.setText("Threshold sweep (clusters / singletons):   " + txt)
         
     def _on_clustering_error(self, error_message):
         """Handle clustering error"""
@@ -1505,40 +1545,71 @@ class GOClusteringDialog(QDialog):
         
         self.representative_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         
+    def _build_clean_result_df(self):
+        """clustered_df → 반입/업스트림 호환 결과 표.
+
+        - 내부 컬럼(_gene_set, is_representative, representative_term) 제거
+        - cluster_id 를 문자열로: 유효 클러스터='001'(zero-pad), singleton='Singleton',
+          너무 작은 것='Small', 미군집=''
+        _apply_clustering(앱 반입)과 _export_clusters(파일 저장)가 공유한다.
+        """
+        result_df = self.clustered_df.copy()
+        for col in ['_gene_set', 'is_representative', 'representative_term']:
+            if col in result_df.columns:
+                result_df = result_df.drop(columns=[col])
+        if 'cluster_id' not in result_df.columns:
+            result_df['cluster_id'] = ''
+        if 'cluster_id' in result_df.columns and StandardColumns.CLUSTER_ID != 'cluster_id':
+            result_df = result_df.rename(columns={'cluster_id': StandardColumns.CLUSTER_ID})
+        result_df[StandardColumns.CLUSTER_ID] = result_df[StandardColumns.CLUSTER_ID].astype(object)
+        for idx in result_df.index:
+            raw = result_df.loc[idx, StandardColumns.CLUSTER_ID]
+            if raw == -1:
+                val = 'Singleton'
+            elif self.clusters and raw in self.clusters:
+                val = f"{int(raw):03d}"
+            else:
+                val = 'Small'
+            result_df.loc[idx, StandardColumns.CLUSTER_ID] = val
+        return result_df
+
     def _export_clusters(self):
-        """Export clustering results to Excel file"""
-        if self.clustered_df is None:
+        """클러스터드 GO 표를 Excel/Parquet 로 저장 (반입·업스트림 호환: cluster_id 컬럼 포함).
+
+        저장 파일을 다시 임포트하면 cluster_id 가 있으므로 Cluster Dot Plot 이 바로 열린다.
+        """
+        if self.clustered_df is None or self.clustered_df.empty:
+            QMessageBox.warning(self, "No Clustering Results", "Please run clustering first.")
             return
-        file_path, _ = QFileDialog.getSaveFileName(self, "Export Clustering Results", "", "Excel Files (*.xlsx)")
+        file_path, selected = QFileDialog.getSaveFileName(
+            self, "Export Clustered GO Table", "clustered_go",
+            "Excel (*.xlsx);;Parquet (*.parquet)")
         if not file_path:
             return
         try:
-            with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
-                self.clustered_df.to_excel(writer, sheet_name='All Terms', index=False)
-                representatives = self.clustered_df[self.clustered_df['is_representative'] == True]
-                representatives.to_excel(writer, sheet_name='Representatives', index=False)
-                cluster_summary = []
-                for cluster_id, members in self.clusters.items():
-                    if len(members) == 1:
-                        continue
-                    cluster_df = self.clustered_df[self.clustered_df['cluster_id'] == cluster_id]
-                    rep_row = cluster_df[cluster_df['is_representative'] == True]
-                    if not rep_row.empty:
-                        rep_row = rep_row.iloc[0]
-                        desc_col = None
-                        for col in ['Description', 'Term', 'term']:
-                            if col in rep_row.index:
-                                desc_col = col
-                                break
-                        rep_term = rep_row[desc_col] if desc_col else "N/A"
-                    else:
-                        rep_term = "N/A"
-                    cluster_summary.append({'Cluster ID': cluster_id, 'Size': len(members), 'Representative': rep_term, 'Color': self.cluster_colors.get(cluster_id, '#999999')})
-                summary_df = pd.DataFrame(cluster_summary)
-                summary_df.to_excel(writer, sheet_name='Cluster Summary', index=False)
-            QMessageBox.information(self, "Export Successful", f"Clustering results exported to:\\n{file_path}")
+            result_df = self._build_clean_result_df()
+            # gene_symbols 가 set 이면 '/'-join (parquet/excel 직렬화 가능하게)
+            gs_col = StandardColumns.GENE_SYMBOLS
+            if gs_col in result_df.columns:
+                result_df[gs_col] = result_df[gs_col].apply(
+                    lambda v: '/'.join(sorted(v)) if isinstance(v, (set, frozenset)) else v)
+            low = file_path.lower()
+            as_parquet = low.endswith('.parquet') or (
+                'parquet' in (selected or '').lower() and not low.endswith('.xlsx'))
+            if as_parquet:
+                if not low.endswith('.parquet'):
+                    file_path += '.parquet'
+                result_df.to_parquet(file_path, index=False)
+            else:
+                if not low.endswith('.xlsx'):
+                    file_path += '.xlsx'
+                result_df.to_excel(file_path, index=False)
+            QMessageBox.information(
+                self, "Export Successful",
+                f"Clustered GO table (with cluster_id) exported to:\n{file_path}\n\n"
+                f"Re-importing this file opens the Cluster Dot Plot directly.")
         except Exception as e:
-            QMessageBox.critical(self, "Export Error", f"Failed to export clustering results:\\n\\n{str(e)}")
+            QMessageBox.critical(self, "Export Error", f"Failed to export:\n{str(e)}")
     
     def _apply_clustering(self):
         """
@@ -1559,50 +1630,11 @@ class GOClusteringDialog(QDialog):
             return
         
         try:
-            # Use clustered_df directly (already contains all original columns + cluster_id)
-            # Don't use self.dataset as it may have different index
-            result_df = self.clustered_df.copy()
-            
-            # Remove internal columns (_gene_set, is_representative, representative_term)
-            cols_to_remove = ['_gene_set', 'is_representative', 'representative_term']
-            for col in cols_to_remove:
-                if col in result_df.columns:
-                    result_df = result_df.drop(columns=[col])
-            
-            # Add cluster_id column if not exists (should already exist from clustering)
-            if 'cluster_id' not in result_df.columns:
-                result_df['cluster_id'] = ''
-            
-            # Rename cluster_id to StandardColumns.CLUSTER_ID
-            if 'cluster_id' in result_df.columns and StandardColumns.CLUSTER_ID != 'cluster_id':
-                result_df = result_df.rename(columns={'cluster_id': StandardColumns.CLUSTER_ID})
-            
-            # Map cluster_id values to readable format
+            # cluster_id 를 '001'/'Singleton'/'Small' 문자열로, 내부 컬럼 제거한 결과 표
+            result_df = self._build_clean_result_df()
             import logging
             logger = logging.getLogger(__name__)
-            logger.info(f"Clusters dict keys: {list(self.clusters.keys())[:10] if self.clusters else 'None'}")
-            logger.info(f"Unique cluster_id values in result_df: {result_df[StandardColumns.CLUSTER_ID].unique()[:10]}")
 
-            # Convert cluster_id column to object dtype so string values can be assigned
-            result_df[StandardColumns.CLUSTER_ID] = result_df[StandardColumns.CLUSTER_ID].astype(object)
-
-            for idx in result_df.index:
-                cluster_id_raw = result_df.loc[idx, StandardColumns.CLUSTER_ID]
-                
-                # Determine cluster_id value based on cluster type
-                # Note: self.clusters already contains only valid clusters (size >= min_size)
-                if cluster_id_raw == -1:
-                    # Singleton
-                    cluster_value = 'Singleton'
-                elif cluster_id_raw in self.clusters:
-                    # Valid cluster — zero-padded 3자리로 저장 (정렬 일관성)
-                    cluster_value = f"{int(cluster_id_raw):03d}"
-                else:
-                    # Not in clusters dict means it was filtered out (too small)
-                    cluster_value = 'Small'
-                
-                result_df.loc[idx, StandardColumns.CLUSTER_ID] = cluster_value
-            
             # Emit the result to main GUI
             logger.info(f"Emitting clustered data with {len(result_df)} rows")
             logger.info(f"Result columns: {result_df.columns.tolist()}")
