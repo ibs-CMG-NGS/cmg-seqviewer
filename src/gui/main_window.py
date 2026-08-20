@@ -4078,26 +4078,27 @@ class MainWindow(QMainWindow):
             self._save_recent_projects()
             self._update_recent_projects_menu()
 
-    def _on_save_project(self):
+    def _on_save_project(self) -> bool:
         """현재 분석 세션 저장.
 
         이미 연/저장한 프로젝트가 있으면(상용 프로그램처럼) 대화상자 없이 그 경로에 바로
         덮어쓴다. 아직 없는 새 세션이면 Save As 와 동일하게 대화상자로 경로를 받는다.
+        반환값: 실제로 저장이 완료됐으면 True(취소/실패면 False) — 다른 흐름(예: 새
+        프로젝트를 열기 전 '저장 후 진행')이 성공 여부를 보고 이어갈지 판단하는 데 쓴다.
         """
         if not self.tab_data:
             QMessageBox.information(self, "Save Project", "There are no datasets to save.")
-            return
+            return False
         if self._current_project_path:
-            self._write_project_to_path(self._current_project_path)
-        else:
-            self._on_save_project_as()
+            return self._write_project_to_path(self._current_project_path)
+        return self._on_save_project_as()
 
-    def _on_save_project_as(self):
+    def _on_save_project_as(self) -> bool:
         """항상 대화상자를 띄워 (새) 경로로 저장하고, 이후 Save 의 대상 경로로 기억한다."""
         import os
         if not self.tab_data:
             QMessageBox.information(self, "Save Project", "There are no datasets to save.")
-            return
+            return False
 
         if self._current_project_path:
             start_dir = os.path.dirname(self._current_project_path)
@@ -4110,13 +4111,13 @@ class MainWindow(QMainWindow):
             "SeqViewer Project (*.seqproj);;All Files (*)",
         )
         if not path:
-            return
+            return False
         if not path.endswith(".seqproj"):
             path += ".seqproj"
-        self._write_project_to_path(path)
+        return self._write_project_to_path(path)
 
-    def _write_project_to_path(self, path: str):
-        """spec 을 빌드해 path 에 실제로 기록한다(Save/Save As 공용 본체)."""
+    def _write_project_to_path(self, path: str) -> bool:
+        """spec 을 빌드해 path 에 실제로 기록한다(Save/Save As 공용 본체). 성공 시 True."""
         import os
         from utils.project_io import ProjectIO
 
@@ -4253,10 +4254,12 @@ class MainWindow(QMainWindow):
             self._set_current_project_path(path)  # 이후 Save 의 대상 경로로 기억 + 창 제목 갱신
             self.logger.info(f"Project saved: {path}")
             QMessageBox.information(self, "Save Project", f"Project saved successfully:\n{path}")
+            return True
 
         except Exception as e:
             self.logger.error(f"Failed to save project: {e}", exc_info=True)
             QMessageBox.critical(self, "Save Project Failed", f"Could not save project:\n{e}")
+            return False
 
     def _on_open_project(self):
         """파일 대화상자로 .seqproj 프로젝트 열기"""
@@ -4270,6 +4273,58 @@ class MainWindow(QMainWindow):
         if path:
             self._open_project_path(path)
 
+    def _confirm_and_clear_session_for_open(self) -> bool:
+        """새 프로젝트를 열기 전 기존 세션 처리를 확인받고 비운다.
+
+        세션이 비어 있으면(아무것도 로드 안 됨) 물어볼 필요 없이 바로 진행.
+        그 외엔 Save/Discard/Cancel 3지선다 — Cancel 이면 호출부(프로젝트 열기)가 중단돼야
+        하므로 False 를 반환한다. Save 를 골랐는데 저장이 실패/취소되면 역시 전체를 중단한다
+        (사용자가 지키고 싶어한 데이터를 못 지켰는데 그냥 밀어버리면 안 되므로).
+        """
+        if not self.tab_data:
+            return True
+
+        buttons = (QMessageBox.StandardButton.Save
+                  | QMessageBox.StandardButton.Discard
+                  | QMessageBox.StandardButton.Cancel)
+        reply = QMessageBox.question(
+            self, "Open Project",
+            "Opening a project starts a new session — the current one will be closed.\n\n"
+            "Save changes to the current session first?",
+            buttons, QMessageBox.StandardButton.Save,
+        )
+        if reply == QMessageBox.StandardButton.Cancel:
+            return False
+        if reply == QMessageBox.StandardButton.Save:
+            if not self._on_save_project():
+                return False  # 저장 대화상자 취소/실패 — 세션을 비우지 않고 전체 중단
+        self._clear_session()
+        return True
+
+    def _clear_session(self):
+        """현재 세션의 모든 데이터셋/탭/트리/비교 상태를 비운다(새 프로젝트를 열기 전 등).
+
+        새 프로젝트 로드가 바로 뒤따르므로 _current_project_path 도 여기서 초기화한다
+        (그래야 로드 도중 실패해도 엉뚱한 이전 경로가 '현재 프로젝트'로 남지 않는다).
+        """
+        while self.data_tabs.count():
+            w = self.data_tabs.widget(0)
+            self.data_tabs.removeTab(0)
+            if w is not None:
+                w.deleteLater()
+        self.tab_data = {}
+
+        self.presenter.datasets = {}
+        self.presenter.current_dataset = None
+
+        self.dataset_manager.dataset_tree.clear()
+        self.dataset_manager._dataset_metadata.clear()
+        self.dataset_manager._update_info()
+
+        self._update_comparison_panel_datasets()
+        self._set_current_project_path(None)
+        self.logger.info("Session cleared (opening a new project)")
+
     def _open_project_path(self, path: str):
         """지정된 .seqproj 경로의 프로젝트 복원"""
         import os
@@ -4282,6 +4337,12 @@ class MainWindow(QMainWindow):
                 self.recent_projects.remove(path)
                 self._save_recent_projects()
                 self._update_recent_projects_menu()
+            return
+
+        # 프로젝트를 열면 새 세션으로 시작한다(상용 프로그램의 표준 동작) — 지금 로드된
+        # 것 위에 그냥 얹으면 두 프로젝트가 뒤섞이고, 이후 Save 가 둘을 합쳐 저장해버린다.
+        # 진행 전에 기존 세션 저장 여부를 확인한다(취소하면 열기 자체를 중단).
+        if not self._confirm_and_clear_session_for_open():
             return
 
         try:
