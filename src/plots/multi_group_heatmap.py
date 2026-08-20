@@ -24,7 +24,6 @@ def render_multi_group_heatmap(df, params):
     import matplotlib
     import matplotlib.pyplot as plt
     import seaborn as sns
-    from scipy.stats import zscore as _zscore
     from scipy.cluster.hierarchy import linkage as _sc_linkage, fcluster as _sc_fcluster
     from scipy.spatial.distance import pdist as _sc_pdist
 
@@ -54,7 +53,19 @@ def render_multi_group_heatmap(df, params):
         mat.index = [str(i) for i in range(len(mat))]
     n_genes = len(mat)
 
-    mat_z = mat.apply(_zscore, axis=1, result_type='broadcast').fillna(0)
+    # 행별(유전자별) Z-score. gene_symbol 중복은 실데이터에서 흔한데(여러 유전자가 같은
+    # symbol 공유, isoform 등), mat.index 가 그 라벨이라 중복될 수 있다. pandas
+    # DataFrame.apply(..., result_type='broadcast') 는 인덱스가 유일하지 않으면
+    # "too many dims to broadcast" 로 죽는다(2000+ 유전자에서 중복 라벨이 흔해지며 실제로
+    # 재현됨) — numpy 로 직접 벡터화해 인덱스 유일성과 무관하게 만든다.
+    # scipy.stats.zscore 의 기본과 동일하게 ddof=0(모표준편차) 사용.
+    vals = mat.to_numpy(dtype=float)
+    mean = np.nanmean(vals, axis=1, keepdims=True)
+    std = np.nanstd(vals, axis=1, ddof=0, keepdims=True)
+    with np.errstate(invalid='ignore', divide='ignore'):
+        z = (vals - mean) / std
+    z = np.nan_to_num(z, nan=0.0, posinf=0.0, neginf=0.0)
+    mat_z = pd.DataFrame(z, index=mat.index, columns=mat.columns)
 
     # 상단 그룹 color bar
     sample_groups = params.get('sample_groups') or {}
