@@ -4321,6 +4321,13 @@ class MainWindow(QMainWindow):
         self.dataset_manager._dataset_metadata.clear()
         self.dataset_manager._update_info()
 
+        # 공유 "Whole Dataset" 탭은 앱 시작 시(_init_ui) 딱 한 번만 만들어지고, 이후
+        # 데이터셋 전환 시 내용만 갈아끼우는 구조다(존재를 전제로 여러 곳이 동작 —
+        # 예: MainPresenter._update_view_with_dataset 는 이 이름의 탭을 찾아 채우고,
+        # 없으면 index 0 탭에 폴백하는데 탭이 0개면 그마저 조용히 no-op). 방금 전부 지웠으니
+        # 여기서 다시 만들어 두지 않으면 새 프로젝트를 로드해도 Whole Dataset 탭이 안 뜬다.
+        self._create_data_tab("Whole Dataset")
+
         self._update_comparison_panel_datasets()
         self._set_current_project_path(None)
         self.logger.info("Session cleared (opening a new project)")
