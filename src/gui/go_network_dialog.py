@@ -27,6 +27,7 @@ from PyQt6.QtCore import Qt
 from models.data_models import Dataset
 from models.standard_columns import StandardColumns
 from gui.base_plot_dialog import BasePlotDialog
+from utils.export_paths import remembered_save_path
 
 
 class GONetworkDialog(BasePlotDialog):
@@ -728,7 +729,7 @@ class GONetworkDialog(BasePlotDialog):
             QMessageBox.warning(self, "No Network",
                                 "Network 탭에서 네트워크를 먼저 생성하세요.")
             return
-        file_path, _ = QFileDialog.getSaveFileName(
+        file_path, _ = remembered_save_path(
             self, "Export Network",
             "go_network.graphml",
             "GraphML Files (*.graphml);;GML Files (*.gml);;All Files (*)"

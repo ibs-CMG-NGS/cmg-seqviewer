@@ -24,6 +24,7 @@ from gui.base_plot_dialog import BasePlotDialog
 
 # Import QSpinBox here so _setup_controls can use it
 from PyQt6.QtWidgets import QSpinBox
+from utils.export_paths import remembered_save_path
 
 
 _NON_SAMPLE_COLS = frozenset({
@@ -437,7 +438,8 @@ class GeneExpressionBarDialog(BasePlotDialog):
 
         df = self._selected_genes_df()
         ref_name = self.ref_combo.currentText() if self.ref_combo.count() else None
-        rows = []
+        summary_rows = []
+        scatter_rows = []   # bar 위에 흩뿌려지는 개별 replicate 값 — summary 만으론 재현 불가
         for _, row in df.iterrows():
             gene = row[self.gene_col]
             ref_vals = self._vals(row, self.sample_groups[ref_name]) if ref_name in self.sample_groups else np.array([])
@@ -451,12 +453,17 @@ class GeneExpressionBarDialog(BasePlotDialog):
                     p = self._compute_pvalue(vals, ref_vals)
                 else:
                     p = np.nan
-                rows.append({'gene': gene, 'group': gname, 'n': n,
+                summary_rows.append({'gene': gene, 'group': gname, 'n': n,
                              'mean': mean, 'sd': sd, 'sem': sem,
                              'p_vs_ref': p, 'stars': _p_to_stars(p)})
-        out = pd.DataFrame(rows)
+                for c in cols:
+                    v = pd.to_numeric(row.get(c), errors='coerce')
+                    if pd.notna(v):
+                        scatter_rows.append({'gene': gene, 'group': gname, 'sample': c, 'value': float(v)})
+        summary_df = pd.DataFrame(summary_rows)
+        scatter_df = pd.DataFrame(scatter_rows)
 
-        file_path, _ = QFileDialog.getSaveFileName(
+        file_path, _ = remembered_save_path(
             self, "Export Data",
             f"gene_expression_bar_data_{self.dataset.name}.csv",
             "CSV Files (*.csv);;Excel Files (*.xlsx);;All Files (*)"
@@ -464,7 +471,18 @@ class GeneExpressionBarDialog(BasePlotDialog):
         if not file_path:
             return
         if file_path.endswith('.xlsx'):
-            out.to_excel(file_path, index=False)
+            with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+                summary_df.to_excel(writer, sheet_name='Summary (mean+SEM+stats)', index=False)
+                scatter_df.to_excel(writer, sheet_name='Scatter Values', index=False)
+            QMessageBox.information(self, "Success", f"Data exported to:\n{file_path}")
         else:
-            out.to_csv(file_path, index=False)
-        QMessageBox.information(self, "Success", f"Data exported to:\n{file_path}")
+            from pathlib import Path
+            p = Path(file_path)
+            scatter_path = p.with_name(f"{p.stem}_scatter{p.suffix}")
+            summary_df.to_csv(file_path, index=False)
+            scatter_df.to_csv(scatter_path, index=False)
+            QMessageBox.information(
+                self, "Success",
+                f"Summary (mean/SEM/stats) exported to:\n{file_path}\n\n"
+                f"Individual scatter values exported to:\n{scatter_path}"
+            )

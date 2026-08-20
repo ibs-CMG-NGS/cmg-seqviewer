@@ -15,6 +15,7 @@ from PyQt6.QtCore import Qt
 from models.data_models import Dataset
 from models.standard_columns import StandardColumns
 from gui.base_plot_dialog import BasePlotDialog
+from utils.export_paths import remembered_save_path
 
 
 class GODotPlotDialog(BasePlotDialog):
@@ -23,6 +24,7 @@ class GODotPlotDialog(BasePlotDialog):
     def __init__(self, dataset: Dataset, parent=None):
         self.dataset = dataset
         self.df = dataset.dataframe.copy() if dataset.dataframe is not None else pd.DataFrame()
+        self._plotted_df = None  # 마지막 render_go_dot() 결과(선택+정렬 반영) — Export 용
 
         super().__init__("GO/KEGG Dot Plot", parent, figsize=(10, 8))
         self._update_plot()
@@ -212,9 +214,12 @@ class GODotPlotDialog(BasePlotDialog):
         self.figure.clear()
         res = render_go_dot(self.figure, self._get_filtered_data(), self._plot_params())
         if res is None:
+            self._plotted_df = None
             self.canvas.draw()
             return
         df, sizes = res
+        # 실제 그려진(선택+표시순서 반영) 표를 저장 — Export Data 가 별도 로직 없이 재사용한다.
+        self._plotted_df = df
 
         # 렌더러 기반 픽셀 단위 여백 미세보정 (Qt 전용 — 번들에선 margins로 충분)
         self.canvas.draw()
@@ -242,15 +247,16 @@ class GODotPlotDialog(BasePlotDialog):
     def _export_data(self):
         from PyQt6.QtWidgets import QFileDialog
 
-        df = self._get_filtered_data()
-        top_n = self.top_n_spin.value()
+        # 별도로 선택 로직을 복제하지 않고, 실제 그려진 표(render_go_dot 의 반환값,
+        # top-N 선택 + sort_by 표시순서까지 반영됨)를 그대로 쓴다 — 그림/export 불일치 방지.
+        if self._plotted_df is None or self._plotted_df.empty:
+            QMessageBox.warning(self, "No Data", "Nothing to export.")
+            return
+        df = self._plotted_df.drop(
+            columns=[c for c in self._plotted_df.columns if c.startswith('_')],
+            errors='ignore')
 
-        if StandardColumns.FDR in df.columns:
-            df = df.nsmallest(top_n, StandardColumns.FDR)
-        else:
-            df = df.head(top_n)
-
-        file_path, _ = QFileDialog.getSaveFileName(
+        file_path, _ = remembered_save_path(
             self,
             "Export Data",
             f"go_dot_plot_data_{self.dataset.name}.csv",

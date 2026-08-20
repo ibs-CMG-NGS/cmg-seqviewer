@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
 from gui.base_plot_dialog import BasePlotDialog
 from models.data_models import Dataset
 from models.standard_columns import StandardColumns as SC
+from utils.export_paths import remembered_save_path
 
 
 class TFFootprintDialog(BasePlotDialog):
@@ -221,7 +222,7 @@ class TFFootprintDialog(BasePlotDialog):
     # ── Export ────────────────────────────────────────────────────────────
 
     def _export_data(self):
-        path, _ = QFileDialog.getSaveFileName(
+        path, _ = remembered_save_path(
             self, "Export Footprint Data", "tf_footprint.xlsx",
             "Excel (*.xlsx);;CSV (*.csv)"
         )

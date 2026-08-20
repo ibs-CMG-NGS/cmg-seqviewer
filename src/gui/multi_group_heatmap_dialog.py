@@ -29,11 +29,14 @@ from PyQt6.QtWidgets import (
     QCheckBox, QMessageBox, QFormLayout, QFileDialog,
     QWidget, QGridLayout,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
+    QListWidget, QListWidgetItem, QToolButton,
 )
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor as _QColor, QPixmap as _QPixmap, QIcon as _QIcon
 
 from models.data_models import Dataset, NormalizationType
 from gui.base_plot_dialog import BasePlotDialog
+from utils.export_paths import remembered_save_path
 
 
 # 그룹별 기본 색상 팔레트 (최대 12 그룹)
@@ -107,6 +110,10 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
             group_names = list(self.sample_groups.keys())
             for i, gname in enumerate(group_names):
                 self._group_colors[gname] = _GROUP_PALETTE[i % len(_GROUP_PALETTE)]
+
+        # 그룹(색 블록) 표시 순서 — 기본은 감지된 순서, Display 패널에서 드래그로 재배치 가능.
+        # 컬럼 클러스터링(cluster_cols)이 꺼져 있을 때만 실제로 컬럼 순서에 반영된다.
+        self._group_order: list = list(self.sample_groups.keys())
 
         super().__init__(f"Multi-Group Heatmap — {dataset.name}", parent, figsize=(14, 10))
         self._update_plot()
@@ -301,6 +308,44 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
         self._rebuild_group_swatches()
         display_form.addRow("Groups:", self._swatch_container)
 
+        # 그룹(색 블록) 표시 순서 — 드래그로 재배치 + Up/Down 버튼. 컬럼 클러스터링이
+        # 켜져 있으면(seaborn이 열 순서를 직접 정함) 의미가 없으므로 비활성화한다.
+        order_row = QWidget()
+        order_h = QHBoxLayout(order_row)
+        order_h.setContentsMargins(0, 0, 0, 0)
+        order_h.setSpacing(4)
+        self.group_order_list = QListWidget()
+        self.group_order_list.setMaximumHeight(110)
+        self.group_order_list.setToolTip(
+            "그룹(색 블록)이 히트맵에 표시되는 좌→우 순서. 드래그하거나 ▲▼ 로 재배치.\n"
+            "'Cluster samples (cols)' 가 켜져 있으면 무시된다(열 순서를 클러스터링이 정함).")
+        self.group_order_list.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        self.group_order_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._rebuild_group_order_list()
+        self.group_order_list.model().rowsMoved.connect(self._on_group_order_changed)
+        order_h.addWidget(self.group_order_list, 1)
+
+        order_btns = QVBoxLayout()
+        order_btns.setSpacing(2)
+        self._group_order_up_btn = QToolButton()
+        self._group_order_up_btn.setText("▲")
+        self._group_order_up_btn.setToolTip("선택한 그룹을 앞으로")
+        self._group_order_up_btn.clicked.connect(lambda: self._move_group_order(-1))
+        self._group_order_down_btn = QToolButton()
+        self._group_order_down_btn.setText("▼")
+        self._group_order_down_btn.setToolTip("선택한 그룹을 뒤로")
+        self._group_order_down_btn.clicked.connect(lambda: self._move_group_order(1))
+        order_btns.addWidget(self._group_order_up_btn)
+        order_btns.addWidget(self._group_order_down_btn)
+        order_btns.addStretch()
+        order_h.addLayout(order_btns)
+
+        display_form.addRow("Group order:", order_row)
+
+        # cluster_cols 가 켜지면(seaborn 이 열 순서를 직접 정함) 순서 지정이 무의미하므로 비활성화
+        self.cluster_cols_check.toggled.connect(self._sync_group_order_enabled)
+        self._sync_group_order_enabled(self.cluster_cols_check.isChecked())
+
         self.show_gene_labels_check = QCheckBox("Show gene labels")
         self.show_gene_labels_check.setChecked(True)
         self.show_gene_labels_check.setToolTip("Disable for large gene sets (>300)")
@@ -407,7 +452,7 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
             w = item.widget()
             if w is not None:
                 w.deleteLater()
-        for i, gname in enumerate(self.sample_groups.keys()):
+        for i, gname in enumerate(self._ordered_group_names()):
             row, col = divmod(i, 2)
             cell = QWidget()
             cell_hbox = QHBoxLayout(cell)
@@ -487,8 +532,75 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
         self._sample_to_group = mapping
         self.sample_groups = groups   # 전부 blank면 {} → 그룹 color bar 없음
         self._recompute_group_colors()
+        self._sync_group_order()
         self._rebuild_group_swatches()
+        self._rebuild_group_order_list()
         self._update_plot()
+
+    # ── 그룹 표시 순서 ───────────────────────────────────────────────────────
+
+    def _ordered_group_names(self) -> list:
+        """현재 존재하는 그룹을 _group_order 순서로. 동기화 어긋남에 대비한 안전망 포함."""
+        existing = set(self.sample_groups.keys())
+        ordered = [g for g in self._group_order if g in existing]
+        ordered += [g for g in self.sample_groups.keys() if g not in ordered]
+        return ordered
+
+    def _sync_group_order(self):
+        """그룹 재지정(Apply Groups) 후 _group_order 를 새 그룹 집합에 맞춘다.
+        남아있는 그룹은 기존 순서를 유지, 새 그룹명은 끝에 추가, 사라진 그룹은 제거."""
+        self._group_order = self._ordered_group_names()
+
+    def _ordered_sample_cols(self, cols: list) -> list:
+        """cols(이미 존재/포함 필터된 샘플 컬럼)를 _group_order 순서로 재배열한다.
+        그룹 내부(복제) 상대 순서는 유지, 미지정(ungrouped) 샘플은 끝에 원래 순서대로
+        (안정 정렬이므로 별도 처리 불필요)."""
+        if not self._group_order:
+            return cols
+        rank = {g: i for i, g in enumerate(self._group_order)}
+        unranked = len(rank)
+        return sorted(cols, key=lambda c: rank.get(self._sample_to_group.get(c, ''), unranked))
+
+    @staticmethod
+    def _color_icon(hex_color: str) -> _QIcon:
+        pm = _QPixmap(14, 14)
+        pm.fill(_QColor(hex_color))
+        return _QIcon(pm)
+
+    def _rebuild_group_order_list(self):
+        """그룹 순서 QListWidget 을 현재 _group_order/색상으로 다시 채운다."""
+        self.group_order_list.blockSignals(True)
+        self.group_order_list.clear()
+        for gname in self._ordered_group_names():
+            item = QListWidgetItem(self._color_icon(self._group_colors.get(gname, '#cccccc')), gname)
+            self.group_order_list.addItem(item)
+        self.group_order_list.blockSignals(False)
+
+    def _on_group_order_changed(self, *args):
+        """드래그로 순서를 바꾼 뒤(rowsMoved) 리스트 표시 순서를 _group_order 에 반영."""
+        self._group_order = [self.group_order_list.item(i).text()
+                             for i in range(self.group_order_list.count())]
+        self._update_plot()
+
+    def _move_group_order(self, delta: int):
+        """선택된 그룹을 위/아래로 한 칸 옮긴다(▲▼ 버튼)."""
+        row = self.group_order_list.currentRow()
+        if row < 0:
+            return
+        new_row = row + delta
+        if not (0 <= new_row < self.group_order_list.count()):
+            return
+        item = self.group_order_list.takeItem(row)
+        self.group_order_list.insertItem(new_row, item)
+        self.group_order_list.setCurrentRow(new_row)
+        self._on_group_order_changed()
+
+    def _sync_group_order_enabled(self, cluster_cols_on: bool):
+        """'Cluster samples (cols)' 가 켜지면 순서 지정이 무의미하므로 비활성화."""
+        enabled = not cluster_cols_on
+        self.group_order_list.setEnabled(enabled)
+        self._group_order_up_btn.setEnabled(enabled)
+        self._group_order_down_btn.setEnabled(enabled)
 
     # ── Data ──────────────────────────────────────────────────────────────
 
@@ -550,6 +662,9 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
             c for c in self.sample_columns
             if c in df_filtered.columns and c in self._included_samples
         ]
+        # 컬럼 클러스터링이 꺼져 있으면 사용자가 지정한 그룹 순서대로 재배열(꺼져 있어도
+        # cluster_cols=True 면 seaborn 이 다시 정렬하므로 여기 순서는 무시됨 — 해 없음).
+        sample_cols = self._ordered_sample_cols(sample_cols)
         if not sample_cols:
             return None, "no_samples", n_genes, []
         render_df = df_filtered[sample_cols].copy()
@@ -559,6 +674,7 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
     def _plot_params(self, sample_cols=None, n_genes=None) -> dict:
         if sample_cols is None:
             sample_cols = [c for c in self.sample_columns if c in self._included_samples]
+            sample_cols = self._ordered_sample_cols(sample_cols)
         title = (
             f"{self.dataset.name}  |  Z-score  |  "
             f"padj≤{self.padj_spin.value():.3g}, "
@@ -612,6 +728,13 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
             fig, info = render_multi_group_heatmap(
                 render_df, self._plot_params(sample_cols, n_genes))
 
+            # correlation/cosine 클러스터링 시 분산이 0인(=상수 발현) 유전자는 그 metric에서
+            # 정의되지 않아 제외된다 — 조용히 사라지지 않도록 표시 개수에 반영한다.
+            n_excluded = info.get('n_excluded_flat', 0)
+            if n_excluded:
+                self.filter_info_label.setText(
+                    f"{n_genes - n_excluded}  ({n_excluded} zero-variance excluded)")
+
             self._cluster_gene_lists = info.get('cluster_gene_lists', {})
             self._cluster_colors = info.get('cluster_colors', {})
             if self._cluster_gene_lists:
@@ -662,7 +785,7 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
     # ── Export ────────────────────────────────────────────────────────────
 
     def _export_csv(self):
-        path, _ = QFileDialog.getSaveFileName(
+        path, _ = remembered_save_path(
             self, "Export Data", f"{self.dataset.name}_filtered",
             "CSV Files (*.csv)"
         )
@@ -693,7 +816,7 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
             QMessageBox.warning(self, "Export Error", str(e))
 
     def _export_parquet(self):
-        path, _ = QFileDialog.getSaveFileName(
+        path, _ = remembered_save_path(
             self, "Export to Parquet", f"{self.dataset.name}",
             "Parquet Files (*.parquet)"
         )

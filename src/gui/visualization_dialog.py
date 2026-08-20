@@ -29,6 +29,7 @@ from utils.figure_bundle_export import export_figure_bundle
 from gui.widgets.figure_style_panel import FigureStylePanel
 from gui.widgets.plot_labels_panel import PlotLabelsPanel
 from gui.base_plot_dialog import BasePlotDialog
+from utils.export_paths import remembered_save_path
 
 
 def _fit_settings_scroll_width(scroll: QScrollArea, container: QWidget,
@@ -55,7 +56,7 @@ def _prompt_bundle_path(parent, default_name: str) -> str:
     기본 이름은 {slug}_bundle 로 제안하되 사용자가 위치·폴더 이름을 바꿀 수 있다.
     취소 시 빈 문자열 반환.
     """
-    path, _ = QFileDialog.getSaveFileName(
+    path, _ = remembered_save_path(
         parent,
         "Export Figure Bundle — choose folder name",
         default_name,
@@ -835,7 +836,7 @@ class VolcanoPlotWidget(QWidget):
         """Figure 저장"""
         from PyQt6.QtWidgets import QFileDialog, QMessageBox
         opts = self._style.export_opts()
-        path, _ = QFileDialog.getSaveFileName(
+        path, _ = remembered_save_path(
             self, "Save Figure",
             f"volcano_plot.{opts['fmt']}",
             figure_export.filter_string(),
@@ -854,7 +855,7 @@ class VolcanoPlotWidget(QWidget):
         """현재 표시된 데이터 내보내기"""
         from PyQt6.QtWidgets import QFileDialog, QMessageBox
 
-        file_path, _ = QFileDialog.getSaveFileName(
+        file_path, _ = remembered_save_path(
             self,
             "Export Data",
             "volcano_plot_data.csv",
@@ -1432,7 +1433,7 @@ class HeatmapWidget(QWidget):
 
     def _save_figure(self):
         opts = self._style.export_opts()
-        path, _ = QFileDialog.getSaveFileName(
+        path, _ = remembered_save_path(
             self, "Save Figure",
             f"heatmap.{opts['fmt']}",
             figure_export.filter_string()
@@ -1456,7 +1457,7 @@ class HeatmapWidget(QWidget):
 
         try:
             from PyQt6.QtWidgets import QFileDialog
-            file_path, _ = QFileDialog.getSaveFileName(
+            file_path, _ = remembered_save_path(
                 self,
                 "Export Heatmap Data",
                 "heatmap_data.xlsx",

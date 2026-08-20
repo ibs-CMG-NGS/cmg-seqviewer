@@ -22,6 +22,7 @@ from PyQt6.QtCore import Qt
 import pandas as pd
 
 from models.multi_omics_dataset import ConcordanceCategory, IntegratedColumns
+from utils.export_paths import remembered_save_path
 
 
 class ConcordanceSummaryDialog(QDialog):
@@ -147,7 +148,7 @@ class ConcordanceSummaryDialog(QDialog):
             self.canvas.draw_idle()
 
     def _on_save(self):
-        path, _ = QFileDialog.getSaveFileName(
+        path, _ = remembered_save_path(
             self, "Save Figure", "concordance_summary.png",
             "PNG (*.png);;SVG (*.svg);;PDF (*.pdf)"
         )

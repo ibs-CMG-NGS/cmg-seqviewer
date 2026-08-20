@@ -14,8 +14,8 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 
 from models.data_models import Dataset
-from models.standard_columns import StandardColumns
 from gui.base_plot_dialog import BasePlotDialog
+from utils.export_paths import remembered_save_path
 
 
 class GOBarChartDialog(BasePlotDialog):
@@ -133,21 +133,13 @@ class GOBarChartDialog(BasePlotDialog):
 
     def _export_data(self):
         from PyQt6.QtWidgets import QFileDialog
+        from plots.go_bar import select_go_bar_rows
 
-        df = self._get_filtered_data()
+        # render_go_bar 와 동일한 선택 함수를 재사용 — 두 곳에 로직을 복제하면 한쪽만
+        # 고쳤을 때 그림과 export 가 어긋날 수 있다.
+        df = select_go_bar_rows(self._get_filtered_data(), self._plot_params())
 
-        sort_by = self.sort_combo.currentText()
-        if sort_by == "FDR (ascending)" and StandardColumns.FDR in df.columns:
-            df = df.sort_values(StandardColumns.FDR, ascending=True)
-        elif sort_by == "Gene Count (descending)" and StandardColumns.GENE_COUNT in df.columns:
-            df = df.sort_values(StandardColumns.GENE_COUNT, ascending=False)
-        elif sort_by == "Alphabetical" and StandardColumns.DESCRIPTION in df.columns:
-            df = df.sort_values(StandardColumns.DESCRIPTION, ascending=True)
-
-        top_n = self.top_n_spin.value()
-        df = df.head(top_n)
-
-        file_path, _ = QFileDialog.getSaveFileName(
+        file_path, _ = remembered_save_path(
             self, "Export Data",
             f"go_bar_chart_data_{self.dataset.name}.csv",
             "CSV Files (*.csv);;Excel Files (*.xlsx);;All Files (*)"

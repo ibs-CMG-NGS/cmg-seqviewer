@@ -74,86 +74,123 @@ class GOClustering:
     
     def cluster_terms(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[int, List[int]]]:
         """
-        GO Term을 Jaccard Similarity 기반 계층적 군집화로 클러스터링
-        
-        Args:
-            df: GO/KEGG 분석 결과 DataFrame (_gene_set 컬럼 필요)
-            
+        GO Term을 Jaccard Similarity 기반 계층적 군집화로 클러스터링.
+
+        fit(비싼 Jaccard 유사도 + linkage 1회) + cut(임계값에서 트리 절단, 즉시) 의 래퍼.
+        임계값만 바꿔가며 재군집하려면 fit() 한 번 후 cut(threshold) 를 반복 호출하면 된다.
+
         Returns:
             (클러스터 정보가 추가된 DataFrame, {cluster_id: [term_indices]})
         """
-        # Reset index at the start to ensure consistent positional indexing
+        self.fit(df)
+        return self.cut(self.similarity_threshold)
+
+    def fit(self, df: pd.DataFrame) -> 'GOClustering':
+        """유전자 집합으로 Jaccard 유사도 + average-linkage 트리를 '한 번' 계산해 캐시한다.
+
+        이후 cut(threshold) 는 이 캐시된 linkage 를 잘라내기만 하므로 매우 빠르다.
+        _gene_set 이 없거나 유효 term 이 없으면 '자명한(각자 클러스터)' 상태로 fit 한다.
+        """
         df = df.reset_index(drop=True)
-        
-        if '_gene_set' not in df.columns:
-            self.logger.warning("_gene_set column not found, skipping clustering")
-            df = df.copy()
-            df['cluster_id'] = range(len(df))
-            df['is_representative'] = True
-            df['representative_term'] = df[StandardColumns.DESCRIPTION] if StandardColumns.DESCRIPTION in df.columns else ''
-            return df, {i: [i] for i in range(len(df))}
-        
-        if len(df) == 0:
-            self.logger.warning("Empty DataFrame, skipping clustering")
-            return df.copy(), {}
-        
-        # 유전자 집합 추출
-        gene_sets = [row['_gene_set'] if isinstance(row['_gene_set'], set) else set() 
-                     for _, row in df.iterrows()]
-        
-        # 빈 gene set 필터링
-        valid_indices = [i for i, gs in enumerate(gene_sets) if len(gs) > 0]
-        
-        if len(valid_indices) == 0:
-            self.logger.warning("No valid gene sets found - treating each term as separate cluster")
-            df = df.copy()
-            df['cluster_id'] = range(len(df))
-            df['is_representative'] = True
-            if StandardColumns.DESCRIPTION in df.columns:
-                df['representative_term'] = df[StandardColumns.DESCRIPTION]
-            else:
-                df['representative_term'] = [f"Term {i}" for i in range(len(df))]
-            return df, {i: [i] for i in range(len(df))}
-        
-        # 1. Similarity Matrix 계산
-        valid_gene_sets = [gene_sets[i] for i in valid_indices]
+        self._df = df
+        self._linkage_matrix = None
+        self._valid_indices = []
+        self._trivial = False   # True 면 각 term 이 자기 자신 클러스터(군집 불가)
+
+        if '_gene_set' not in df.columns or len(df) == 0:
+            if '_gene_set' not in df.columns:
+                self.logger.warning("_gene_set column not found, skipping clustering")
+            self._trivial = True
+            return self
+
+        gene_sets = [row if isinstance(row, set) else set() for row in df['_gene_set']]
+        self._valid_indices = [i for i, gs in enumerate(gene_sets) if len(gs) > 0]
+        if len(self._valid_indices) == 0:
+            self.logger.warning("No valid gene sets found - each term becomes its own cluster")
+            self._trivial = True
+            return self
+
+        valid_gene_sets = [gene_sets[i] for i in self._valid_indices]
         similarity_matrix = self._calculate_jaccard_similarity_matrix(valid_gene_sets)
-        
-        # 2. Hierarchical Clustering
-        # Distance = 1 - Similarity
         distance_matrix = 1 - similarity_matrix
-        
-        # condensed distance matrix로 변환 (상삼각행렬을 1D 배열로)
         condensed_distance = squareform(distance_matrix, checks=False)
-        
-        # Hierarchical clustering (average linkage)
-        self.logger.info("Performing hierarchical clustering...")
-        linkage_matrix = linkage(condensed_distance, method='average')
-        
-        # 3. Cut tree at similarity threshold
-        # distance_threshold = 1 - similarity_threshold
+        self.logger.info("Building linkage (average) once; cuts are now instant...")
+        self._linkage_matrix = linkage(condensed_distance, method='average')
+        return self
+
+    def cut(self, similarity_threshold: Optional[float] = None
+            ) -> Tuple[pd.DataFrame, Dict[int, List[int]]]:
+        """캐시된 linkage 를 유사도 임계값에서 잘라 (clustered_df, clusters) 반환 (빠름).
+
+        fit() 을 먼저 호출해야 한다. similarity_threshold 를 주면 self 값도 갱신한다.
+        """
+        if similarity_threshold is not None:
+            self.similarity_threshold = similarity_threshold
+        if getattr(self, '_df', None) is None:
+            raise RuntimeError("cut() called before fit()")
+
+        if self._trivial or self._linkage_matrix is None:
+            return self._trivial_result()
+        # 트리 절단 (거리 = 1 - 유사도) — 크기 1은 singleton 으로 분리
         distance_threshold = 1 - self.similarity_threshold
-        cluster_labels = fcluster(linkage_matrix, t=distance_threshold, criterion='distance')
-        
-        # 4. 클러스터 딕셔너리 생성
-        clusters = {}
-        for idx, cluster_id in enumerate(cluster_labels):
-            original_idx = valid_indices[idx]
-            if cluster_id not in clusters:
-                clusters[cluster_id] = []
-            clusters[cluster_id].append(original_idx)
+        cluster_labels = fcluster(self._linkage_matrix, t=distance_threshold, criterion='distance')
+        return self._finalize(cluster_labels, drop_singletons=True)
 
-        self.logger.info(f"Created {len(clusters)} clusters from {len(valid_indices)} valid terms")
+    def cut_k(self, n_clusters: int, drop_singletons: bool = False
+              ) -> Tuple[pd.DataFrame, Dict[int, List[int]]]:
+        """캐시된 트리를 '정확히 k개'로 잘라 반환 (cutree(k) 방식, 즉시).
 
-        # Filter out singleton clusters (size == 1) from the returned clusters mapping.
-        # Terms that belong to singleton clusters will keep cluster_id = -1 in the
-        # resulting DataFrame so the UI can treat them as singletons.
-        filtered_clusters = {cid: idxs for cid, idxs in clusters.items() if len(idxs) > 1}
+        유사도 임계값 대신 클러스터 '개수'를 직접 지정한다. 기본은 k 개를 모두 클러스터로
+        유지(drop_singletons=False) — 사용자가 요청한 개수를 그대로 보여주기 위함.
+        fit() 을 먼저 호출해야 한다.
+        """
+        if getattr(self, '_df', None) is None:
+            raise RuntimeError("cut_k() called before fit()")
+        if self._trivial or self._linkage_matrix is None:
+            return self._trivial_result()
+        k = max(1, min(int(n_clusters), len(self._valid_indices)))
+        cluster_labels = fcluster(self._linkage_matrix, t=k, criterion='maxclust')
+        return self._finalize(cluster_labels, drop_singletons=drop_singletons)
 
-        # 5. Representative Term 선정 (only for clusters with size > 1)
-        df_result = self._add_cluster_info(df, filtered_clusters, valid_indices)
+    def _trivial_result(self) -> Tuple[pd.DataFrame, Dict[int, List[int]]]:
+        """군집 불가(유효 term 없음/‌_gene_set 없음) → 각 term 을 개별 클러스터로."""
+        df = self._df.copy()
+        df['cluster_id'] = range(len(df))
+        df['is_representative'] = True
+        if StandardColumns.DESCRIPTION in df.columns:
+            df['representative_term'] = df[StandardColumns.DESCRIPTION]
+        else:
+            df['representative_term'] = [f"Term {i}" for i in range(len(df))]
+        return df, {i: [i] for i in range(len(df))}
 
-        return df_result, filtered_clusters
+    def _finalize(self, cluster_labels, drop_singletons: bool
+                  ) -> Tuple[pd.DataFrame, Dict[int, List[int]]]:
+        """fcluster 라벨 → (clustered_df, clusters). drop_singletons 면 크기 1 제외."""
+        clusters: Dict[int, List[int]] = {}
+        for idx, cid in enumerate(cluster_labels):
+            clusters.setdefault(int(cid), []).append(self._valid_indices[idx])
+        kept = ({cid: idxs for cid, idxs in clusters.items() if len(idxs) > 1}
+                if drop_singletons else clusters)
+        df_result = self._add_cluster_info(self._df, kept, self._valid_indices)
+        return df_result, kept
+
+    def cluster_counts(self, thresholds) -> list:
+        """여러 임계값에서 (threshold, n_clusters, n_singletons) 를 빠르게 계산 (sweep 용).
+
+        fit() 이후 호출. linkage 재사용이라 임계값 목록 전체가 즉시 계산된다.
+        """
+        out = []
+        if getattr(self, '_linkage_matrix', None) is None:
+            return out
+        for t in thresholds:
+            labels = fcluster(self._linkage_matrix, t=1 - float(t), criterion='distance')
+            sizes: Dict[int, int] = {}
+            for lb in labels:
+                sizes[int(lb)] = sizes.get(int(lb), 0) + 1
+            n_clusters = sum(1 for s in sizes.values() if s > 1)
+            n_singletons = sum(1 for s in sizes.values() if s == 1)
+            out.append((float(t), n_clusters, n_singletons))
+        return out
     
     def _add_cluster_info(self, df: pd.DataFrame, 
                           clusters: Dict[int, List[int]],

@@ -13,9 +13,9 @@ from PyQt6.QtWidgets import (
     QHeaderView, QSplitter, QWidget, QTabWidget, QTextEdit,
     QFileDialog, QMessageBox, QProgressBar, QGroupBox, QFormLayout,
     QSlider, QCheckBox, QListWidget, QListWidgetItem, QScrollArea, QSizePolicy,
-    QComboBox,
+    QComboBox, QDialogButtonBox,
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont, QBrush, QColor, QPixmap, QIcon
 
 from models.standard_columns import StandardColumns
@@ -41,25 +41,32 @@ import networkx as nx
 from math import ceil, sqrt
 
 from utils.go_clustering import GOClustering
+from utils.export_paths import remembered_save_path
 
 
 class ClusteringWorker(QThread):
     """Background thread for performing GO term clustering"""
     
-    finished = pyqtSignal(object, object)
+    finished = pyqtSignal(object, object, object)  # clustered_df, clusters, fitted GOClustering
     error = pyqtSignal(str)
     progress = pyqtSignal(int)
     
-    def __init__(self, df, similarity_threshold):
+    def __init__(self, df, similarity_threshold, top_n=0):
         super().__init__()
         self.df = df
         self.similarity_threshold = similarity_threshold
-        
+        self.top_n = int(top_n or 0)   # >0 이면 FDR 상위 N개 term 만 클러스터링
+
     def run(self):
         """Execute clustering in background thread"""
         try:
             self.progress.emit(10)
-            
+
+            # Top N terms (by FDR) 사전 선별 — 적은 term 을 k 개로 자르는 컴팩트 모드용
+            if self.top_n > 0 and StandardColumns.FDR in self.df.columns:
+                self.df = (self.df.sort_values(StandardColumns.FDR)
+                           .head(self.top_n).reset_index(drop=True))
+
             # Ensure _gene_set column exists
             if '_gene_set' not in self.df.columns:
                 # Try to create _gene_set from gene columns
@@ -94,8 +101,11 @@ class ClusteringWorker(QThread):
                     self.df['_gene_set'] = [set() for _ in range(len(self.df))]
             
             self.progress.emit(30)
+            # fit(비싼 Jaccard+linkage) 후 cut — 이후 다이얼로그가 이 인스턴스로 임계값만
+            # 바꿔 즉시 재-cut(cut())할 수 있도록 fitted 인스턴스를 함께 넘긴다.
             clustering = GOClustering(similarity_threshold=self.similarity_threshold)
-            clustered_df, clusters = clustering.cluster_terms(self.df)
+            clustering.fit(self.df)
+            clustered_df, clusters = clustering.cut(self.similarity_threshold)
             
             import logging
             logger = logging.getLogger(__name__)
@@ -109,7 +119,7 @@ class ClusteringWorker(QThread):
             logger.info(f"Clustered DF representative count: {clustered_df['is_representative'].sum()}")
             
             self.progress.emit(90)
-            self.finished.emit(clustered_df, clusters)
+            self.finished.emit(clustered_df, clusters, clustering)
             self.progress.emit(100)
         except Exception as e:
             import traceback
@@ -138,6 +148,7 @@ class GOClusteringDialog(QDialog):
             self.dataset = dataset.copy()
         self.clustered_df = None
         self.clusters = None
+        self._clustering = None       # fit() 된 GOClustering 캐시 → 임계값 라이브 재-cut
         self.network_graph = None
         self.node_positions = None
         self.cluster_colors = {}
@@ -180,9 +191,10 @@ class GOClusteringDialog(QDialog):
         # Adjust ratio: 2:8 to give more space to network visualization
         splitter.setStretchFactor(0, 2)
         splitter.setStretchFactor(1, 8)
-        # Set initial sizes (20% settings, 80% results)
+        # Set initial sizes (settings 유리하도록 최소폭 이상 확보, 나머지는 네트워크 뷰)
         total_width = 1400
-        splitter.setSizes([int(total_width * 0.2), int(total_width * 0.8)])
+        settings_width = max(360, int(total_width * 0.24))
+        splitter.setSizes([settings_width, total_width - settings_width])
         layout.addWidget(splitter)
         button_layout = self._create_buttons()
         layout.addLayout(button_layout)
@@ -190,22 +202,44 @@ class GOClusteringDialog(QDialog):
     def _create_settings_panel(self):
         """Create the left panel with clustering settings and help"""
         panel = QWidget()
-        layout = QVBoxLayout(panel)
-        
-        # Clustering Parameters Group
+        outer = QVBoxLayout(panel)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        # 좁은 splitter 폭에서도 컨트롤이 잘리지 않도록 스크롤 영역에 담는다.
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setMinimumWidth(340)
+        content = QWidget()
+        layout = QVBoxLayout(content)
+
+        # ── Clustering Parameters ── 두 개의 하위 그룹으로 나눠 가독성을 높인다:
+        # "Cut Strategy"(어떻게 자를지) 와 "Valid Cluster Size Range"(크기 필터).
         params_group = QGroupBox("⚙️ Clustering Parameters")
-        params_layout = QFormLayout(params_group)
-        params_layout.setVerticalSpacing(12)
-        
-        # Similarity Threshold with Slider
+        params_outer = QVBoxLayout(params_group)
+        params_outer.setSpacing(10)
+
+        # ── Cut Strategy ──
+        cut_group = QGroupBox("Cut Strategy")
+        cut_form = QFormLayout(cut_group)
+        cut_form.setVerticalSpacing(10)
+        cut_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        # 자르는 방식을 먼저 고른다 — 아래 두 컨트롤 중 관련 있는 쪽만 활성화된다.
+        self.cut_mode_combo = QComboBox()
+        self.cut_mode_combo.addItems(["Similarity threshold", "Number of clusters (k)"])
+        self.cut_mode_combo.setToolTip(
+            "Similarity threshold: 데이터 기반, 모든 클러스터 + singleton 유지.\n"
+            "Number of clusters (k): 트리를 정확히 k개로 자름(cutree). 컴팩트한 요약에 적합.")
+        cut_form.addRow("Cut by:", self.cut_mode_combo)
+
+        # Similarity Threshold — spin + slider
         threshold_container = QWidget()
         threshold_layout = QVBoxLayout(threshold_container)
         threshold_layout.setContentsMargins(0, 0, 0, 0)
-        threshold_layout.setSpacing(4)
-        
-        # Spinbox and slider in horizontal layout
+        threshold_layout.setSpacing(3)
         threshold_input_layout = QHBoxLayout()
-        
+        threshold_input_layout.setSpacing(6)
+
         self.similarity_spin = QDoubleSpinBox()
         self.similarity_spin.setRange(0.0, 1.0)
         self.similarity_spin.setSingleStep(0.05)
@@ -214,66 +248,86 @@ class GOClusteringDialog(QDialog):
         self.similarity_spin.setMinimumWidth(60)
         self.similarity_spin.setToolTip("Jaccard similarity threshold (0.0-1.0)")
         threshold_input_layout.addWidget(self.similarity_spin)
-        
+
         self.similarity_slider = QSlider(Qt.Orientation.Horizontal)
         self.similarity_slider.setRange(0, 100)
         self.similarity_slider.setValue(70)
         self.similarity_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.similarity_slider.setTickInterval(10)
-        threshold_input_layout.addWidget(self.similarity_slider)
-        
-        # Connect slider and spinbox
-        self.similarity_slider.valueChanged.connect(
-            lambda v: self.similarity_spin.setValue(v / 100.0)
-        )
-        self.similarity_spin.valueChanged.connect(
-            lambda v: self.similarity_slider.setValue(int(v * 100))
-        )
-        
+        self.similarity_slider.setMinimumHeight(24)
+        threshold_input_layout.addWidget(self.similarity_slider, 1)
         threshold_layout.addLayout(threshold_input_layout)
-        
-        # Help text for threshold
-        threshold_help = QLabel(
-            "<small><i>Recommended: <b>0.7</b> for balanced clustering<br>"
-            "Higher (0.8-0.9) = tighter, more specific clusters<br>"
-            "Lower (0.4-0.6) = broader, more general clusters</i></small>"
-        )
-        threshold_help.setStyleSheet("color: #666; margin-left: 2px;")
+
+        threshold_help = QLabel("<small><i>0.7 recommended · higher = tighter clusters</i></small>")
+        threshold_help.setStyleSheet("color: #666;")
         threshold_help.setWordWrap(True)
         threshold_layout.addWidget(threshold_help)
-        
-        params_layout.addRow("Similarity Threshold:", threshold_container)
-        
-        # Cluster Size Filter
-        size_filter_label = QLabel("<b>Valid Cluster Size Range</b>")
-        params_layout.addRow("", size_filter_label)
-        
-        # Min cluster size
+        cut_form.addRow("Similarity:", threshold_container)
+
+        self.k_spin = QSpinBox()
+        self.k_spin.setRange(2, 100)
+        self.k_spin.setValue(10)
+        self.k_spin.setMinimumWidth(60)
+        self.k_spin.setToolTip("트리를 이 개수(k)의 클러스터로 자른다 (k 모드).")
+        cut_form.addRow("Clusters (k):", self.k_spin)
+
+        self.top_n_terms_spin = QSpinBox()
+        self.top_n_terms_spin.setRange(0, 100000)
+        self.top_n_terms_spin.setValue(0)
+        self.top_n_terms_spin.setMinimumWidth(60)
+        self.top_n_terms_spin.setToolTip(
+            "FDR 상위 N개 term 만 클러스터링 (0 = 전체).\n"
+            "예: 50 + 'Number of clusters (k)' → 보기 쉬운 컴팩트 요약.\n"
+            "이 값 변경은 Run Clustering 이 필요합니다(트리 재계산).")
+        cut_form.addRow("Top N terms:", self.top_n_terms_spin)
+        top_n_help = QLabel("<small><i>0 = use all filtered terms</i></small>")
+        top_n_help.setStyleSheet("color: #666;")
+        cut_form.addRow("", top_n_help)
+
+        # Connect slider ↔ spinbox ↔ live re-cut (디바운스, Run 이후에만 동작)
+        self.similarity_slider.valueChanged.connect(
+            lambda v: self.similarity_spin.setValue(v / 100.0))
+        self.similarity_spin.valueChanged.connect(
+            lambda v: self.similarity_slider.setValue(int(v * 100)))
+        self._recut_timer = QTimer(self)
+        self._recut_timer.setSingleShot(True)
+        self._recut_timer.setInterval(150)
+        self._recut_timer.timeout.connect(self._live_recut)
+        self.similarity_spin.valueChanged.connect(lambda _v: self._recut_timer.start())
+        self.k_spin.valueChanged.connect(lambda _v: self._recut_timer.start())
+        self.cut_mode_combo.currentTextChanged.connect(self._on_cut_mode_changed)
+        self._on_cut_mode_changed(self.cut_mode_combo.currentText())
+
+        params_outer.addWidget(cut_group)
+
+        # ── Valid Cluster Size Range ──
+        size_group = QGroupBox("Valid Cluster Size Range")
+        size_form = QFormLayout(size_group)
+        size_form.setVerticalSpacing(10)
+        size_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
         self.min_size_spin = QSpinBox()
         self.min_size_spin.setRange(2, 50)
         self.min_size_spin.setValue(2)
         self.min_size_spin.setToolTip("Minimum number of terms to form a valid cluster")
         self.min_size_spin.setMinimumWidth(60)
-        params_layout.addRow("Min Terms:", self.min_size_spin)
-        
-        # Max cluster size
+        size_form.addRow("Min Terms:", self.min_size_spin)
+
         self.max_size_spin = QSpinBox()
         self.max_size_spin.setRange(3, 200)
         self.max_size_spin.setValue(100)
         self.max_size_spin.setToolTip("Maximum number of terms in a valid cluster")
         self.max_size_spin.setMinimumWidth(60)
-        params_layout.addRow("Max Terms:", self.max_size_spin)
-        
-        size_help = QLabel(
-            "<small><i>Clusters outside this range will be<br>"
-            "displayed separately on the right side</i></small>"
-        )
-        size_help.setStyleSheet("color: #666; margin-left: 2px;")
+        size_form.addRow("Max Terms:", self.max_size_spin)
+
+        size_help = QLabel("<small><i>Outside this range → shown separately</i></small>")
+        size_help.setStyleSheet("color: #666;")
         size_help.setWordWrap(True)
-        params_layout.addRow("", size_help)
-        
+        size_form.addRow("", size_help)
+
+        params_outer.addWidget(size_group)
         layout.addWidget(params_group)
-        
+
         # Run Button
         self.run_button = QPushButton("▶ Run Clustering")
         self.run_button.clicked.connect(self._run_clustering)
@@ -369,17 +423,37 @@ class GOClusteringDialog(QDialog):
         
         layout.addWidget(guide_group)
 
-        # ── Figure Style & Export ────────────────────────────────────
+        # ── Figure Style & Export — 좌측 패널을 차지하지 않도록 팝업으로 이동 ──
+        # self._style 객체 자체는 그대로 유지(_save_figure/_update_network_graph 가 참조).
         self._style = FigureStylePanel()
         self._style.changed.connect(self._on_style_changed)
-        style_group = QGroupBox("Figure Style & Export")
-        sv = QVBoxLayout(style_group)
-        sv.addWidget(self._style)
-        layout.addWidget(style_group)
+        self._style_dialog = None  # lazy: 첫 클릭 때 생성
+        style_btn = QPushButton("🎨 Figure Style && Export...")
+        style_btn.setToolTip("Theme, export size/DPI/format 설정")
+        style_btn.clicked.connect(self._open_style_dialog)
+        layout.addWidget(style_btn)
 
         layout.addStretch()
 
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
         return panel
+
+    def _open_style_dialog(self):
+        """Figure Style & Export 패널을 작은 팝업 다이얼로그로 연다(좌측 패널 공간 절약)."""
+        if self._style_dialog is None:
+            dlg = QDialog(self)
+            dlg.setWindowTitle("Figure Style & Export")
+            v = QVBoxLayout(dlg)
+            v.addWidget(self._style)   # 재파렌팅 — self._style 객체는 그대로 재사용
+            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+            buttons.rejected.connect(dlg.close)
+            buttons.button(QDialogButtonBox.StandardButton.Close).clicked.connect(dlg.close)
+            v.addWidget(buttons)
+            self._style_dialog = dlg
+        self._style_dialog.show()
+        self._style_dialog.raise_()
+        self._style_dialog.activateWindow()
         
     def _create_results_panel(self):
         """Create the right panel with results tabs"""
@@ -388,6 +462,11 @@ class GOClusteringDialog(QDialog):
         self.results_label = QLabel("No clustering results yet. Configure settings and click 'Run Clustering'.")
         self.results_label.setWordWrap(True)
         layout.addWidget(self.results_label)
+        # 임계값 sweep 힌트: Run 이후 linkage 재사용으로 즉시 계산됨
+        self.sweep_label = QLabel("")
+        self.sweep_label.setWordWrap(True)
+        self.sweep_label.setStyleSheet("color:#555; font-size:9pt;")
+        layout.addWidget(self.sweep_label)
         self.tab_widget = QTabWidget()
         self.tab_widget.setEnabled(False)
         network_tab = self._create_network_tab()
@@ -795,7 +874,7 @@ class GOClusteringDialog(QDialog):
 
     def _save_figure(self):
         opts = self._style.export_opts()
-        path, _ = QFileDialog.getSaveFileName(
+        path, _ = remembered_save_path(
             self, "Save Figure",
             f"go_network.{opts['fmt']}",
             figure_export.filter_string(),
@@ -840,38 +919,80 @@ class GOClusteringDialog(QDialog):
         self.max_cluster_size = self.max_size_spin.value()
         
         similarity_threshold = self.similarity_spin.value()
+        top_n = self.top_n_terms_spin.value()
         self.run_button.setEnabled(False)
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
-        self.worker = ClusteringWorker(self.dataset, similarity_threshold)
+        self.worker = ClusteringWorker(self.dataset, similarity_threshold, top_n=top_n)
         self.worker.finished.connect(self._on_clustering_finished)
         self.worker.error.connect(self._on_clustering_error)
         self.worker.progress.connect(self.progress_bar.setValue)
         self.worker.start()
         
-    def _on_clustering_finished(self, clustered_df, clusters):
+    def _on_cut_mode_changed(self, mode):
+        """유사도 임계값 모드 ↔ 클러스터 개수(k) 모드 전환: 관련 컨트롤 활성화 + 라이브 갱신."""
+        is_k = str(mode).startswith("Number")
+        for w in (self.similarity_spin, self.similarity_slider):
+            w.setEnabled(not is_k)
+        self.k_spin.setEnabled(is_k)
+        if getattr(self, '_clustering', None) is not None:
+            self._recut_timer.start()
+
+    def _on_clustering_finished(self, clustered_df, clusters, clustering=None):
         """Handle clustering completion"""
-        import logging
-        logger = logging.getLogger(__name__)
-        
-        logger.info(f"_on_clustering_finished: received clustered_df with {len(clustered_df)} rows")
-        logger.info(f"_on_clustering_finished: cluster_id value_counts: {clustered_df['cluster_id'].value_counts().head()}")
-        logger.info(f"_on_clustering_finished: representative count: {clustered_df['is_representative'].sum()}")
-        
+        self._clustering = clustering   # fitted 인스턴스 캐시 → 라이브 재-cut
         self.clustered_df = clustered_df
         self.clusters = clusters
         self.run_button.setEnabled(True)
         self.progress_bar.setVisible(False)
-        self._update_results()
         self.tab_widget.setEnabled(True)
         self.export_button.setEnabled(True)
         self.apply_button.setEnabled(True)
         self.refresh_button.setEnabled(True)
-        
-        # Count valid clusters and singletons correctly
-        n_clusters = len(clusters)  # clusters dict already excludes singletons
-        n_singletons = len(clustered_df[clustered_df['cluster_id'] == -1])
-        self.results_label.setText(f"Clustering complete: {n_clusters} clusters, {n_singletons} singletons")
+        self._update_sweep_hint()
+        # 현재 cut 모드(threshold/k)로 결과를 표시
+        if clustering is not None:
+            self._live_recut()
+        else:
+            self._update_results()
+            n_clusters = len(clusters)
+            n_singletons = len(clustered_df[clustered_df['cluster_id'] == -1])
+            self.results_label.setText(
+                f"Clustering complete: {n_clusters} clusters, {n_singletons} singletons")
+
+    def _live_recut(self):
+        """cut 모드에 맞춰 캐시된 linkage 를 즉시 다시 잘라 결과를 갱신(Run 재실행 불필요)."""
+        clustering = getattr(self, '_clustering', None)
+        if clustering is None:
+            return   # 아직 한 번도 Run 하지 않음
+        try:
+            if self.cut_mode_combo.currentText().startswith("Number"):
+                k = self.k_spin.value()
+                clustered_df, clusters = clustering.cut_k(k)
+                mode_txt = f"k = {k}"
+            else:
+                th = self.similarity_spin.value()
+                clustered_df, clusters = clustering.cut(th)
+                mode_txt = f"threshold {th:.2f}"
+        except Exception:
+            return
+        self.clustered_df = clustered_df
+        self.clusters = clusters
+        self._update_results()
+        n_clusters = len(clusters)
+        n_singletons = int((clustered_df['cluster_id'] == -1).sum())
+        self.results_label.setText(
+            f"{mode_txt} → {n_clusters} clusters, {n_singletons} singletons  (live)")
+
+    def _update_sweep_hint(self):
+        """여러 임계값에서의 클러스터/singleton 수를 한 줄로 보여준다(값 선택 참고용)."""
+        clustering = getattr(self, '_clustering', None)
+        if clustering is None or getattr(clustering, '_linkage_matrix', None) is None:
+            self.sweep_label.setText("")
+            return
+        pts = clustering.cluster_counts([0.4, 0.5, 0.6, 0.7, 0.8])
+        txt = "   ".join(f"{t:.1f}: {nc}c/{ns}s" for t, nc, ns in pts)
+        self.sweep_label.setText("Threshold sweep (clusters / singletons):   " + txt)
         
     def _on_clustering_error(self, error_message):
         """Handle clustering error"""
@@ -1505,40 +1626,71 @@ class GOClusteringDialog(QDialog):
         
         self.representative_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         
+    def _build_clean_result_df(self):
+        """clustered_df → 반입/업스트림 호환 결과 표.
+
+        - 내부 컬럼(_gene_set, is_representative, representative_term) 제거
+        - cluster_id 를 문자열로: 유효 클러스터='001'(zero-pad), singleton='Singleton',
+          너무 작은 것='Small', 미군집=''
+        _apply_clustering(앱 반입)과 _export_clusters(파일 저장)가 공유한다.
+        """
+        result_df = self.clustered_df.copy()
+        for col in ['_gene_set', 'is_representative', 'representative_term']:
+            if col in result_df.columns:
+                result_df = result_df.drop(columns=[col])
+        if 'cluster_id' not in result_df.columns:
+            result_df['cluster_id'] = ''
+        if 'cluster_id' in result_df.columns and StandardColumns.CLUSTER_ID != 'cluster_id':
+            result_df = result_df.rename(columns={'cluster_id': StandardColumns.CLUSTER_ID})
+        result_df[StandardColumns.CLUSTER_ID] = result_df[StandardColumns.CLUSTER_ID].astype(object)
+        for idx in result_df.index:
+            raw = result_df.loc[idx, StandardColumns.CLUSTER_ID]
+            if raw == -1:
+                val = 'Singleton'
+            elif self.clusters and raw in self.clusters:
+                val = f"{int(raw):03d}"
+            else:
+                val = 'Small'
+            result_df.loc[idx, StandardColumns.CLUSTER_ID] = val
+        return result_df
+
     def _export_clusters(self):
-        """Export clustering results to Excel file"""
-        if self.clustered_df is None:
+        """클러스터드 GO 표를 Excel/Parquet 로 저장 (반입·업스트림 호환: cluster_id 컬럼 포함).
+
+        저장 파일을 다시 임포트하면 cluster_id 가 있으므로 Cluster Dot Plot 이 바로 열린다.
+        """
+        if self.clustered_df is None or self.clustered_df.empty:
+            QMessageBox.warning(self, "No Clustering Results", "Please run clustering first.")
             return
-        file_path, _ = QFileDialog.getSaveFileName(self, "Export Clustering Results", "", "Excel Files (*.xlsx)")
+        file_path, selected = remembered_save_path(
+            self, "Export Clustered GO Table", "clustered_go",
+            "Excel (*.xlsx);;Parquet (*.parquet)")
         if not file_path:
             return
         try:
-            with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
-                self.clustered_df.to_excel(writer, sheet_name='All Terms', index=False)
-                representatives = self.clustered_df[self.clustered_df['is_representative'] == True]
-                representatives.to_excel(writer, sheet_name='Representatives', index=False)
-                cluster_summary = []
-                for cluster_id, members in self.clusters.items():
-                    if len(members) == 1:
-                        continue
-                    cluster_df = self.clustered_df[self.clustered_df['cluster_id'] == cluster_id]
-                    rep_row = cluster_df[cluster_df['is_representative'] == True]
-                    if not rep_row.empty:
-                        rep_row = rep_row.iloc[0]
-                        desc_col = None
-                        for col in ['Description', 'Term', 'term']:
-                            if col in rep_row.index:
-                                desc_col = col
-                                break
-                        rep_term = rep_row[desc_col] if desc_col else "N/A"
-                    else:
-                        rep_term = "N/A"
-                    cluster_summary.append({'Cluster ID': cluster_id, 'Size': len(members), 'Representative': rep_term, 'Color': self.cluster_colors.get(cluster_id, '#999999')})
-                summary_df = pd.DataFrame(cluster_summary)
-                summary_df.to_excel(writer, sheet_name='Cluster Summary', index=False)
-            QMessageBox.information(self, "Export Successful", f"Clustering results exported to:\\n{file_path}")
+            result_df = self._build_clean_result_df()
+            # gene_symbols 가 set 이면 '/'-join (parquet/excel 직렬화 가능하게)
+            gs_col = StandardColumns.GENE_SYMBOLS
+            if gs_col in result_df.columns:
+                result_df[gs_col] = result_df[gs_col].apply(
+                    lambda v: '/'.join(sorted(v)) if isinstance(v, (set, frozenset)) else v)
+            low = file_path.lower()
+            as_parquet = low.endswith('.parquet') or (
+                'parquet' in (selected or '').lower() and not low.endswith('.xlsx'))
+            if as_parquet:
+                if not low.endswith('.parquet'):
+                    file_path += '.parquet'
+                result_df.to_parquet(file_path, index=False)
+            else:
+                if not low.endswith('.xlsx'):
+                    file_path += '.xlsx'
+                result_df.to_excel(file_path, index=False)
+            QMessageBox.information(
+                self, "Export Successful",
+                f"Clustered GO table (with cluster_id) exported to:\n{file_path}\n\n"
+                f"Re-importing this file opens the Cluster Dot Plot directly.")
         except Exception as e:
-            QMessageBox.critical(self, "Export Error", f"Failed to export clustering results:\\n\\n{str(e)}")
+            QMessageBox.critical(self, "Export Error", f"Failed to export:\n{str(e)}")
     
     def _apply_clustering(self):
         """
@@ -1559,50 +1711,11 @@ class GOClusteringDialog(QDialog):
             return
         
         try:
-            # Use clustered_df directly (already contains all original columns + cluster_id)
-            # Don't use self.dataset as it may have different index
-            result_df = self.clustered_df.copy()
-            
-            # Remove internal columns (_gene_set, is_representative, representative_term)
-            cols_to_remove = ['_gene_set', 'is_representative', 'representative_term']
-            for col in cols_to_remove:
-                if col in result_df.columns:
-                    result_df = result_df.drop(columns=[col])
-            
-            # Add cluster_id column if not exists (should already exist from clustering)
-            if 'cluster_id' not in result_df.columns:
-                result_df['cluster_id'] = ''
-            
-            # Rename cluster_id to StandardColumns.CLUSTER_ID
-            if 'cluster_id' in result_df.columns and StandardColumns.CLUSTER_ID != 'cluster_id':
-                result_df = result_df.rename(columns={'cluster_id': StandardColumns.CLUSTER_ID})
-            
-            # Map cluster_id values to readable format
+            # cluster_id 를 '001'/'Singleton'/'Small' 문자열로, 내부 컬럼 제거한 결과 표
+            result_df = self._build_clean_result_df()
             import logging
             logger = logging.getLogger(__name__)
-            logger.info(f"Clusters dict keys: {list(self.clusters.keys())[:10] if self.clusters else 'None'}")
-            logger.info(f"Unique cluster_id values in result_df: {result_df[StandardColumns.CLUSTER_ID].unique()[:10]}")
 
-            # Convert cluster_id column to object dtype so string values can be assigned
-            result_df[StandardColumns.CLUSTER_ID] = result_df[StandardColumns.CLUSTER_ID].astype(object)
-
-            for idx in result_df.index:
-                cluster_id_raw = result_df.loc[idx, StandardColumns.CLUSTER_ID]
-                
-                # Determine cluster_id value based on cluster type
-                # Note: self.clusters already contains only valid clusters (size >= min_size)
-                if cluster_id_raw == -1:
-                    # Singleton
-                    cluster_value = 'Singleton'
-                elif cluster_id_raw in self.clusters:
-                    # Valid cluster — zero-padded 3자리로 저장 (정렬 일관성)
-                    cluster_value = f"{int(cluster_id_raw):03d}"
-                else:
-                    # Not in clusters dict means it was filtered out (too small)
-                    cluster_value = 'Small'
-                
-                result_df.loc[idx, StandardColumns.CLUSTER_ID] = cluster_value
-            
             # Emit the result to main GUI
             logger.info(f"Emitting clustered data with {len(result_df)} rows")
             logger.info(f"Result columns: {result_df.columns.tolist()}")

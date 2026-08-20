@@ -20,6 +20,7 @@ from matplotlib.figure import Figure
 
 from utils import figure_export
 from plots.registry import render_to_figure, is_supported
+from utils.export_paths import remembered_save_path
 
 
 class PinnedPlotWidget(QWidget):
@@ -88,7 +89,7 @@ class PinnedPlotWidget(QWidget):
     # ── Export ────────────────────────────────────────────────────────────
 
     def _save_figure(self):
-        path, _ = QFileDialog.getSaveFileName(
+        path, _ = remembered_save_path(
             self, "Save Figure", f"{self.plot_type or 'plot'}",
             figure_export.filter_string(),
         )
@@ -121,7 +122,7 @@ class PinnedPlotWidget(QWidget):
         from utils.figure_bundle_export import export_figure_bundle
         ctx = self.get_bundle_context()
         slug = ctx.get('figure_slug', 'figure_bundle')
-        path, _ = QFileDialog.getSaveFileName(
+        path, _ = remembered_save_path(
             self, "Export Figure Bundle — choose folder name",
             f"{slug}_bundle", "Figure Bundle Folder (*)",
         )

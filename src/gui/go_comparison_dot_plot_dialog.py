@@ -18,6 +18,7 @@ from PyQt6.QtCore import Qt
 
 from models.data_models import Dataset
 from gui.base_plot_dialog import BasePlotDialog
+from utils.export_paths import remembered_save_path
 
 
 class GOComparisonDotPlotDialog(BasePlotDialog):
@@ -26,6 +27,7 @@ class GOComparisonDotPlotDialog(BasePlotDialog):
     def __init__(self, dataset: Dataset, parent=None):
         self.dataset = dataset
         self.df = dataset.dataframe.copy() if dataset.dataframe is not None else pd.DataFrame()
+        self._plotted_df = None  # 마지막 render_go_comparison_dot() 결과(선택+필터 반영) — Export 용
 
         meta = dataset.metadata or {}
         self.dataset_names: List[str] = meta.get('dataset_names', [])
@@ -208,45 +210,6 @@ class GOComparisonDotPlotDialog(BasePlotDialog):
 
         return pd.concat(records, ignore_index=True)
 
-    def _get_plot_data(self):
-        long_df = self._build_long_df()
-
-        min_ds = self.min_datasets_spin.value()
-        if min_ds > 1:
-            fe_count = long_df.groupby('term_id')['fe'].apply(
-                lambda x: x.notna().sum()
-            )
-            valid_terms = fe_count[fe_count >= min_ds].index
-            long_df = long_df[long_df['term_id'].isin(valid_terms)]
-
-        if long_df.empty:
-            return long_df
-
-        sort_by = self.sort_combo.currentText()
-        if sort_by == "Average FE (desc)":
-            rank = (
-                long_df.groupby('term_id')['fe']
-                .mean()
-                .sort_values(ascending=False)
-            )
-        else:
-            rank = (
-                long_df.groupby('term_id')['fdr']
-                .mean()
-                .sort_values(ascending=True)
-            )
-
-        top_n = self.top_n_spin.value()
-        top_terms = rank.head(top_n).index
-        long_df = long_df[long_df['term_id'].isin(top_terms)]
-
-        term_order = list(rank[rank.index.isin(top_terms)].index)
-        long_df['_y_rank'] = long_df['term_id'].map(
-            {t: i for i, t in enumerate(reversed(term_order))}
-        )
-
-        return long_df
-
     # ── Plot ──────────────────────────────────────────────────────────────
 
     def _plot_params(self) -> dict:
@@ -271,7 +234,8 @@ class GOComparisonDotPlotDialog(BasePlotDialog):
         from plots.go_comparison_dot import render_go_comparison_dot
 
         self.figure.clear()
-        render_go_comparison_dot(self.figure, self.df, self._plot_params())
+        # 실제 그려진(필터+top-N+정렬 반영) long_df 를 저장 — Export Data 가 별도 로직 없이 재사용한다.
+        self._plotted_df = render_go_comparison_dot(self.figure, self.df, self._plot_params())
         self.canvas.draw()
 
     # ── Bundle export ─────────────────────────────────────────────────────
@@ -294,8 +258,10 @@ class GOComparisonDotPlotDialog(BasePlotDialog):
     def _export_data(self):
         from PyQt6.QtWidgets import QFileDialog
 
-        long_df = self._get_plot_data()
-        if long_df.empty:
+        # 별도로 필터/top-N/정렬 로직을 복제하지 않고, 실제 그려진 long_df(render_go_comparison_dot
+        # 의 반환값)를 그대로 쓴다 — 그림/export 불일치 방지.
+        long_df = self._plotted_df
+        if long_df is None or long_df.empty:
             QMessageBox.information(self, "No Data", "No data to export.")
             return
 
@@ -305,7 +271,7 @@ class GOComparisonDotPlotDialog(BasePlotDialog):
         export_cols += ['dataset', 'fe', 'fdr', 'gene_count']
         export_df = long_df[[c for c in export_cols if c in long_df.columns]].copy()
 
-        file_path, _ = QFileDialog.getSaveFileName(
+        file_path, _ = remembered_save_path(
             self, "Export Data", "go_comparison_data.csv",
             "CSV Files (*.csv);;Excel Files (*.xlsx);;All Files (*)"
         )

@@ -488,26 +488,59 @@ class DataLoader:
         
         return all(std_col in mapping for std_col in required)
     
+    # 파일 시그니처(magic bytes) → 사람이 읽을 이름. "Open Gene List"는 순수 텍스트만
+    # 기대하지만 파일 대화상자가 "All Files"도 허용하므로, GO/DE 결과 Excel/Parquet 파일을
+    # 실수로 여기 골랐을 때 암호 같은 UnicodeDecodeError 대신 명확한 안내를 준다.
+    _BINARY_SIGNATURES = (
+        (b'PK\x03\x04', "Excel (.xlsx)"),
+        (b'\xd0\xcf\x11\xe0', "Excel (.xls)"),
+        (b'PAR1', "Parquet"),
+    )
+
     def load_gene_list_from_file(self, file_path: Path) -> List[str]:
         """
-        파일로부터 유전자 리스트 로드
-        
+        파일로부터 유전자 리스트 로드 (한 줄에 하나의 유전자 ID인 텍스트 파일)
+
         Args:
-            file_path: 텍스트 파일 경로 (한 줄에 하나의 유전자 ID)
-            
+            file_path: 텍스트 파일 경로
+
         Returns:
             유전자 ID 리스트
         """
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
-        
+
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                genes = [line.strip() for line in f if line.strip()]
-            
+            head = file_path.read_bytes()[:8]
+            for sig, kind in self._BINARY_SIGNATURES:
+                if head.startswith(sig):
+                    raise ValueError(
+                        f"'{file_path.name}' looks like a {kind} file, not a plain-text gene "
+                        f"list.\n\n'Open Gene List' expects a text file with one gene ID per "
+                        f"line.\nTo import GO/KEGG or DE results, use '+ Add Dataset' or "
+                        f"File → Open GO/KEGG instead."
+                    )
+
+            # 실제 텍스트 파일: UTF-8 우선, 실패하면 흔한 인코딩으로 순차 폴백
+            # (Windows 한글 로캘에서 저장된 CSV/TXT는 cp949 인 경우가 많다).
+            text = None
+            last_err = None
+            for enc in ('utf-8-sig', 'utf-8', 'cp949', 'latin-1'):
+                try:
+                    text = file_path.read_text(encoding=enc)
+                    if enc not in ('utf-8-sig', 'utf-8'):
+                        self.logger.info(f"Loaded gene list with fallback encoding '{enc}': {file_path}")
+                    break
+                except (UnicodeDecodeError, LookupError) as e:
+                    last_err = e
+                    continue
+            if text is None:
+                raise last_err or UnicodeDecodeError('utf-8', b'', 0, 1, 'unknown encoding')
+
+            genes = [line.strip() for line in text.splitlines() if line.strip()]
             self.logger.info(f"Loaded {len(genes)} genes from {file_path}")
             return genes
-            
+
         except Exception as e:
             self.logger.error(f"Failed to load gene list: {e}", exc_info=True)
             raise

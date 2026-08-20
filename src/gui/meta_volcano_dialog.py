@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 )
 
 from gui.base_plot_dialog import BasePlotDialog
+from utils.export_paths import remembered_save_path
 
 _P_SOURCES = {
     "Fisher": "meta_pvalue_fisher",
@@ -224,7 +225,7 @@ class MetaVolcanoDialog(BasePlotDialog):
         if self._plot_df is None or self._plot_df.empty:
             QMessageBox.warning(self, "No Data", "There is no plotted data to export.")
             return
-        path, _ = QFileDialog.getSaveFileName(
+        path, _ = remembered_save_path(
             self, "Export Meta Volcano Data", "meta_volcano.csv",
             "CSV (*.csv);;TSV (*.tsv);;Excel (*.xlsx)",
         )

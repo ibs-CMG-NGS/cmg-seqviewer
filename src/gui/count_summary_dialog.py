@@ -17,6 +17,7 @@ from PyQt6.QtGui import QColor
 from models.data_models import Dataset, DatasetType
 from models.standard_columns import StandardColumns
 from gui.base_plot_dialog import BasePlotDialog
+from utils.export_paths import remembered_save_path
 
 
 class CountSummaryDialog(BasePlotDialog):
@@ -166,7 +167,7 @@ class CountSummaryDialog(BasePlotDialog):
         if self._counts_df is None or self._counts_df.empty:
             QMessageBox.warning(self, "No Data", "There is no aggregated data to export.")
             return
-        path, _ = QFileDialog.getSaveFileName(
+        path, _ = remembered_save_path(
             self, "Export Count Summary", "count_summary.csv",
             "CSV (*.csv);;TSV (*.tsv);;Excel (*.xlsx)",
         )
