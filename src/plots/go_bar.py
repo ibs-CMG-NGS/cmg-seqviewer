@@ -7,18 +7,17 @@ import numpy as np
 import pandas as pd
 
 
-def render_go_bar(ax, df, params):
-    """GO/KEGG bar chart를 ax에 그린다. 데이터 없으면 None 반환.
+def select_go_bar_rows(df, params):
+    """bar chart에 그려질(=export 되어야 할) 행만 골라 정렬까지 적용해 반환.
 
-    params: top_n, x_axis('-log10(FDR)'|'Gene Ratio'|'Fold Enrichment'),
-            sort_by('FDR (ascending)'|'Gene Count (descending)'|'Alphabetical'),
-            bar_color(hex), horizontal(bool), xlabel_text
+    render_go_bar 와 GOBarChartDialog._export_data 가 이 함수를 공유한다 — 예전엔
+    export 쪽이 이 로직(dropna/sort/top_n)을 별도로 복제해서, 둘 중 하나만 고치면
+    그림과 export 가 어긋날 수 있었다. 데이터가 없으면 빈 DataFrame 반환(호출부가
+    '데이터 없음' 처리는 각자 알아서 함).
     """
     df = df.copy() if df is not None else pd.DataFrame()
     if len(df) == 0:
-        ax.text(0.5, 0.5, 'No data to display\nAdjust filters',
-                ha='center', va='center', transform=ax.transAxes)
-        return None
+        return df
 
     required = ['description']
     if 'fdr' in df.columns:
@@ -27,9 +26,7 @@ def render_go_bar(ax, df, params):
         required.append('gene_count')
     df = df.dropna(subset=required)
     if len(df) == 0:
-        ax.text(0.5, 0.5, 'No valid data to display\n(NaN values removed)',
-                ha='center', va='center', transform=ax.transAxes)
-        return None
+        return df
 
     sort_by = params.get('sort_by', 'FDR (ascending)')
     if sort_by == "FDR (ascending)" and 'fdr' in df.columns:
@@ -39,7 +36,23 @@ def render_go_bar(ax, df, params):
     elif sort_by == "Alphabetical" and 'description' in df.columns:
         df = df.sort_values('description', ascending=True)
 
-    df = df.head(int(params.get('top_n', 15)))
+    return df.head(int(params.get('top_n', 15)))
+
+
+def render_go_bar(ax, df, params):
+    """GO/KEGG bar chart를 ax에 그린다. 데이터 없으면 None 반환.
+
+    params: top_n, x_axis('-log10(FDR)'|'Gene Ratio'|'Fold Enrichment'),
+            sort_by('FDR (ascending)'|'Gene Count (descending)'|'Alphabetical'),
+            bar_color(hex), horizontal(bool), xlabel_text
+    """
+    input_empty = df is None or len(df) == 0
+    df = select_go_bar_rows(df, params)
+    if len(df) == 0:
+        msg = ('No data to display\nAdjust filters' if input_empty
+               else 'No valid data to display\n(NaN values removed)')
+        ax.text(0.5, 0.5, msg, ha='center', va='center', transform=ax.transAxes)
+        return None
 
     x_axis_type = params.get('x_axis', '-log10(FDR)')
     if x_axis_type == "-log10(FDR)":
