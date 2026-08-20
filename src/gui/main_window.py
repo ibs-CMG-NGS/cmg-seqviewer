@@ -5285,8 +5285,22 @@ class MainWindow(QMainWindow):
             # 시트)라면, 새 시트의 부모를 그 자식이 아니라 '루트 조상'으로 평탄화한다.
             # (트리는 루트 아래 한 단계 시트만 지원하고, 복원도 루트 위에서 레시피를 replay
             #  하므로 — 부모를 자식으로 두면 트리 등록 실패 + build_spec phantom root 발생.)
+            #
+            # 단, 이 휴리스틱은 "활성 탭 = 지금 필터링한 대상(current_dataset)" 일 때만 안전
+            # 하다. 프로젝트 복원(_replay_dataset_sheets) 은 여러 루트를 순회하며
+            # presenter.switch_dataset() 만 호출하고 GUI 탭은 그대로 두므로(Whole Dataset 은
+            # 공유 탭이라 새 탭이 안 생기고, 탭 전환도 안 일어남), 활성 탭이 '이전 루트에서
+            # 마지막으로 만든 무관한 시트'로 남아 있을 수 있다. 그 상태에서 이 휴리스틱을 그대로
+            # 쓰면 새로 복원 중인 시트가 엉뚱한(이전) 루트 아래로 잘못 귀속된다. 활성 탭 자체가
+            # current_dataset 을 보여주고 있을 때만(=사용자가 실제로 그 자식 시트를 보며 필터를
+            # 건 인터랙티브 상황) 적용한다.
             _cur_entry = self.tab_data.get(self.data_tabs.currentIndex(), {})
-            if _cur_entry.get('sheet_type') in ('filtered', 'plot') \
+            _cur_tab_dataset = _cur_entry.get('dataset')
+            _tab_shows_current = (
+                current_dataset is not None and _cur_tab_dataset is not None
+                and getattr(_cur_tab_dataset, 'name', None) == current_dataset.name
+            )
+            if _tab_shows_current and _cur_entry.get('sheet_type') in ('filtered', 'plot') \
                     and _cur_entry.get('parent_dataset'):
                 _par = _cur_entry['parent_dataset']
 
