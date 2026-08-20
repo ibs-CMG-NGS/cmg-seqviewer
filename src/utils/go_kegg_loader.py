@@ -90,11 +90,31 @@ class GOKEGGLoader:
                 if df.empty:
                     continue
                 
+                # KEGG 시트는 구조적으로 Ontology 컬럼이 없다(clusterProfiler enrichKEGG()
+                # 출력엔 그 필드 자체가 없음 — 'KEGG ID'/'KEGG Pathway' 컬럼으로만 구분됨).
+                # 모듈 기반 워크플로우에서는 Gene Set 값이 'Cluster01' 같은 모듈 ID라 텍스트에서
+                # ontology 를 유추할 수도 없다(예전 'KEGG_UP' 식 표기와 다름). 그대로 두면 BP/CC/MF
+                # 시트와 concat 후 이 행들의 Ontology 가 NaN → 'UNKNOWN' 으로 빠진다. 시트 자체가
+                # 구조적으로 KEGG 임이 명백하므로(Ontology 컬럼 부재 + KEGG ID/Pathway 컬럼 존재)
+                # 여기서 직접 stamp 한다.
+                raw_cols_lower = {str(c).strip().lower() for c in df.columns}
+                has_ontology_col = any(c in raw_cols_lower for c in ('ontology', 'category'))
+                is_kegg_sheet = (
+                    any(c in raw_cols_lower for c in
+                        ('kegg id', 'kegg.id', 'kegg pathway', 'kegg.pathway'))
+                    or 'kegg' in sheet_name_str
+                )
+                if is_kegg_sheet and not has_ontology_col:
+                    df[StandardColumns.ONTOLOGY] = 'KEGG'
+                    self.logger.info(
+                        f"Sheet '{sheet_name}': no Ontology column but structurally KEGG "
+                        f"(KEGG ID/Pathway columns or 'KEGG' in sheet name) — stamping ontology='KEGG'")
+
                 # Gene set 이름 추가 (시트 이름)
                 # 원본 파일에 이미 Gene Set 컬럼이 있을 수 있으므로 확인 후 추가
                 if 'Gene Set' not in df.columns:
                     df[StandardColumns.GENE_SET] = sheet_name
-                
+
                 # 각 시트를 병합 전에 표준화 (중요!)
                 df = self._standardize_columns(df)
                 
