@@ -15,6 +15,7 @@ from PyQt6.QtGui import QColor
 
 from models.data_models import Dataset
 from gui.base_plot_dialog import BasePlotDialog
+from utils.export_paths import remembered_save_path
 
 
 class GOBarChartDialog(BasePlotDialog):
@@ -138,7 +139,7 @@ class GOBarChartDialog(BasePlotDialog):
         # 고쳤을 때 그림과 export 가 어긋날 수 있다.
         df = select_go_bar_rows(self._get_filtered_data(), self._plot_params())
 
-        file_path, _ = QFileDialog.getSaveFileName(
+        file_path, _ = remembered_save_path(
             self, "Export Data",
             f"go_bar_chart_data_{self.dataset.name}.csv",
             "CSV Files (*.csv);;Excel Files (*.xlsx);;All Files (*)"

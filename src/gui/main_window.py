@@ -35,6 +35,7 @@ from gui.multi_omics_panel import MultiOmicsPanel
 from gui.pandas_table_model import DataFrameTableModel
 from models.data_models import FilterMode, DatasetType
 from presenters.main_presenter import MainPresenter
+from utils.export_paths import remembered_save_path
 
 
 class MainWindow(QMainWindow):
@@ -2632,7 +2633,7 @@ class MainWindow(QMainWindow):
     
     def _on_export_data(self):
         """데이터 내보내기"""
-        file_path, file_filter = QFileDialog.getSaveFileName(
+        file_path, file_filter = remembered_save_path(
             self, "Export Data", "", 
             "Excel Files (*.xlsx);;CSV Files (*.csv);;TSV Files (*.tsv)"
         )
@@ -2653,7 +2654,7 @@ class MainWindow(QMainWindow):
             context = current_tab.get_bundle_context()
             slug = context.get('figure_slug', 'figure_bundle')
             # 기본 이름 {slug}_bundle 제안, 사용자가 위치·이름 변경 가능
-            path, _ = QFileDialog.getSaveFileName(
+            path, _ = remembered_save_path(
                 self, "Export Figure Bundle — choose folder name",
                 f"{slug}_bundle", "Figure Bundle Folder (*)",
             )
@@ -4102,7 +4103,7 @@ class MainWindow(QMainWindow):
             start_dir = os.path.dirname(self._current_project_path)
         else:
             start_dir = os.path.expanduser("~")
-        path, _ = QFileDialog.getSaveFileName(
+        path, _ = remembered_save_path(
             self,
             "Save Project As",
             start_dir,
@@ -5207,7 +5208,7 @@ class MainWindow(QMainWindow):
                                 "Please select a Multi-Omics integrated tab first.")
             return
 
-        path, _ = QFileDialog.getSaveFileName(
+        path, _ = remembered_save_path(
             self, "Export Multi-Omics Results",
             f"{dataset.name}_integrated.xlsx",
             "Excel (*.xlsx)",

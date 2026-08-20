@@ -36,6 +36,7 @@ from PyQt6.QtGui import QColor as _QColor, QPixmap as _QPixmap, QIcon as _QIcon
 
 from models.data_models import Dataset, NormalizationType
 from gui.base_plot_dialog import BasePlotDialog
+from utils.export_paths import remembered_save_path
 
 
 # 그룹별 기본 색상 팔레트 (최대 12 그룹)
@@ -784,7 +785,7 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
     # ── Export ────────────────────────────────────────────────────────────
 
     def _export_csv(self):
-        path, _ = QFileDialog.getSaveFileName(
+        path, _ = remembered_save_path(
             self, "Export Data", f"{self.dataset.name}_filtered",
             "CSV Files (*.csv)"
         )
@@ -815,7 +816,7 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
             QMessageBox.warning(self, "Export Error", str(e))
 
     def _export_parquet(self):
-        path, _ = QFileDialog.getSaveFileName(
+        path, _ = remembered_save_path(
             self, "Export to Parquet", f"{self.dataset.name}",
             "Parquet Files (*.parquet)"
         )

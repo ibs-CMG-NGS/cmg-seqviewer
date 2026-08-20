@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
 from models.data_models import Dataset
 from models.standard_columns import StandardColumns
 from gui.base_plot_dialog import BasePlotDialog
+from utils.export_paths import remembered_save_path
 
 
 class AnnotationComparisonDialog(BasePlotDialog):
@@ -197,7 +198,7 @@ class AnnotationComparisonDialog(BasePlotDialog):
         if self._matrix_df is None or self._matrix_df.empty:
             QMessageBox.warning(self, "No Data", "There is no aggregated data to export.")
             return
-        path, _ = QFileDialog.getSaveFileName(
+        path, _ = remembered_save_path(
             self, "Export Annotation Comparison", "annotation_comparison.csv",
             "CSV (*.csv);;TSV (*.tsv);;Excel (*.xlsx)",
         )

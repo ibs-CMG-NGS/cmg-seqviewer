@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
 
 from gui.base_plot_dialog import BasePlotDialog
 from utils import peak_overlap
+from utils.export_paths import remembered_save_path
 
 
 class UpsetPlotDialog(BasePlotDialog):
@@ -157,7 +158,7 @@ class UpsetPlotDialog(BasePlotDialog):
             QMessageBox.warning(self, "No Data", "내보낼 데이터가 없습니다.")
             return
 
-        path, _ = QFileDialog.getSaveFileName(
+        path, _ = remembered_save_path(
             self, "Export Peak Overlap Data", "da_peak_overlap.xlsx",
             "Excel Files (*.xlsx);;CSV Files (*.csv)"
         )

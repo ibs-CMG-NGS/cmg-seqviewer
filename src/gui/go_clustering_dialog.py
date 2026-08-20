@@ -41,6 +41,7 @@ import networkx as nx
 from math import ceil, sqrt
 
 from utils.go_clustering import GOClustering
+from utils.export_paths import remembered_save_path
 
 
 class ClusteringWorker(QThread):
@@ -873,7 +874,7 @@ class GOClusteringDialog(QDialog):
 
     def _save_figure(self):
         opts = self._style.export_opts()
-        path, _ = QFileDialog.getSaveFileName(
+        path, _ = remembered_save_path(
             self, "Save Figure",
             f"go_network.{opts['fmt']}",
             figure_export.filter_string(),
@@ -1661,7 +1662,7 @@ class GOClusteringDialog(QDialog):
         if self.clustered_df is None or self.clustered_df.empty:
             QMessageBox.warning(self, "No Clustering Results", "Please run clustering first.")
             return
-        file_path, selected = QFileDialog.getSaveFileName(
+        file_path, selected = remembered_save_path(
             self, "Export Clustered GO Table", "clustered_go",
             "Excel (*.xlsx);;Parquet (*.parquet)")
         if not file_path:

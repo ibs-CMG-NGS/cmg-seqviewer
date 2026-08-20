@@ -58,6 +58,7 @@ _STANDARD_DE_COLS = set(StandardColumns.get_de_all()) | {
 
 
 from utils.sample_grouping import auto_group_samples, useful_grouping as _useful_grouping  # noqa: F401
+from utils.export_paths import remembered_save_path
 
 
 def detect_sample_columns(df: pd.DataFrame) -> list:
@@ -494,7 +495,7 @@ class PCADialog(BasePlotDialog):
         if self._pca_result is None:
             QMessageBox.information(self, "No Data", "Run the PCA first.")
             return
-        path, _ = QFileDialog.getSaveFileName(
+        path, _ = remembered_save_path(
             self, "Save PCA Scores", "pca_scores.csv", "CSV Files (*.csv)"
         )
         if path:

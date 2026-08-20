@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
 from gui.base_plot_dialog import BasePlotDialog
 from models.data_models import Dataset
 from models.standard_columns import StandardColumns as SC
+from utils.export_paths import remembered_save_path
 
 # hover 감지 반경 (데이터 단위 아닌 픽셀)
 _HOVER_RADIUS = 8
@@ -459,7 +460,7 @@ class ChromVARDialog(BasePlotDialog):
     # ── Export ────────────────────────────────────────────────────────────
 
     def _export_data(self):
-        path, _ = QFileDialog.getSaveFileName(
+        path, _ = remembered_save_path(
             self, "Export chromVAR Data", "chromvar_diff_tf.xlsx",
             "Excel (*.xlsx);;CSV (*.csv)"
         )

@@ -18,6 +18,7 @@ from PyQt6.QtCore import Qt
 
 from models.data_models import Dataset
 from gui.base_plot_dialog import BasePlotDialog
+from utils.export_paths import remembered_save_path
 
 
 class GOComparisonDotPlotDialog(BasePlotDialog):
@@ -270,7 +271,7 @@ class GOComparisonDotPlotDialog(BasePlotDialog):
         export_cols += ['dataset', 'fe', 'fdr', 'gene_count']
         export_df = long_df[[c for c in export_cols if c in long_df.columns]].copy()
 
-        file_path, _ = QFileDialog.getSaveFileName(
+        file_path, _ = remembered_save_path(
             self, "Export Data", "go_comparison_data.csv",
             "CSV Files (*.csv);;Excel Files (*.xlsx);;All Files (*)"
         )

@@ -15,6 +15,7 @@ from PyQt6.QtCore import Qt
 from models.data_models import Dataset
 from models.standard_columns import StandardColumns
 from gui.base_plot_dialog import BasePlotDialog
+from utils.export_paths import remembered_save_path
 
 
 class GODotPlotDialog(BasePlotDialog):
@@ -255,7 +256,7 @@ class GODotPlotDialog(BasePlotDialog):
             columns=[c for c in self._plotted_df.columns if c.startswith('_')],
             errors='ignore')
 
-        file_path, _ = QFileDialog.getSaveFileName(
+        file_path, _ = remembered_save_path(
             self,
             "Export Data",
             f"go_dot_plot_data_{self.dataset.name}.csv",

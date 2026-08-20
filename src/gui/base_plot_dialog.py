@@ -238,7 +238,8 @@ class BasePlotDialog(QDialog):
 
     def _prompt_bundle_path(self, default_name: str) -> str:
         """번들 폴더 경로를 Save 대화상자로 받는다(이름 편집 가능). 취소 시 빈 문자열."""
-        path, _ = QFileDialog.getSaveFileName(
+        from utils.export_paths import remembered_save_path
+        path, _ = remembered_save_path(
             self,
             "Export Figure Bundle — choose folder name",
             default_name,
@@ -272,8 +273,9 @@ class BasePlotDialog(QDialog):
         self.canvas.draw_idle()
 
     def _save_figure(self):
+        from utils.export_paths import remembered_save_path
         opts = self._style.export_opts()
-        path, _ = QFileDialog.getSaveFileName(
+        path, _ = remembered_save_path(
             self, "Save Figure",
             f"figure.{opts['fmt']}",
             figure_export.filter_string(),

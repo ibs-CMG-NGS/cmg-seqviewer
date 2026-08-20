@@ -24,6 +24,7 @@ from gui.base_plot_dialog import BasePlotDialog
 
 # Import QSpinBox here so _setup_controls can use it
 from PyQt6.QtWidgets import QSpinBox
+from utils.export_paths import remembered_save_path
 
 
 _NON_SAMPLE_COLS = frozenset({
@@ -462,7 +463,7 @@ class GeneExpressionBarDialog(BasePlotDialog):
         summary_df = pd.DataFrame(summary_rows)
         scatter_df = pd.DataFrame(scatter_rows)
 
-        file_path, _ = QFileDialog.getSaveFileName(
+        file_path, _ = remembered_save_path(
             self, "Export Data",
             f"gene_expression_bar_data_{self.dataset.name}.csv",
             "CSV Files (*.csv);;Excel Files (*.xlsx);;All Files (*)"

@@ -14,6 +14,7 @@ from models.data_models import FilterCriteria, FilterMode
 from typing import List
 from pathlib import Path
 import logging
+from utils.export_paths import remembered_save_path
 
 
 class FilterPanel(QWidget):
@@ -493,7 +494,7 @@ class FilterPanel(QWidget):
             )
             return
         
-        file_path, _ = QFileDialog.getSaveFileName(
+        file_path, _ = remembered_save_path(
             self,
             "Save Gene List",
             f"gene_list_{len(genes)}_genes.txt",

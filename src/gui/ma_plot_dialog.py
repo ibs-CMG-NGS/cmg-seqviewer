@@ -20,6 +20,7 @@ from PyQt6.QtCore import Qt
 
 from models.data_models import Dataset
 from gui.base_plot_dialog import BasePlotDialog
+from utils.export_paths import remembered_save_path
 
 
 class MAPlotDialog(BasePlotDialog):
@@ -507,7 +508,7 @@ class MAPlotDialog(BasePlotDialog):
     # ── Export ────────────────────────────────────────────────────────────
 
     def _export_data(self):
-        file_path, _ = QFileDialog.getSaveFileName(
+        file_path, _ = remembered_save_path(
             self, "Export Data", "ma_plot_data.csv",
             "CSV Files (*.csv);;Excel Files (*.xlsx);;All Files (*)"
         )
