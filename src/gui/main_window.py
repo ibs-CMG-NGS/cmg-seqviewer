@@ -80,6 +80,11 @@ class MainWindow(QMainWindow):
         # 최근 프로젝트 히스토리
         self.recent_projects: list = []
         self._load_recent_projects()
+
+        # 현재 열려 있는 프로젝트 파일 경로 (연 적/저장한 적 없으면 None).
+        # 상용 프로그램과 동일하게: Save 는 이 경로가 있으면 대화상자 없이 바로 덮어쓰고,
+        # 없으면(새 세션) Save As 와 동일하게 대화상자를 띄운다. 창 제목에도 반영한다.
+        self._current_project_path: Optional[str] = None
         
         # Database Manager 초기화
         from utils.database_manager import DatabaseManager
@@ -105,6 +110,19 @@ class MainWindow(QMainWindow):
         self.logger.info("Main window initialized")
         self.audit_logger.log_action("Application Started")
     
+    def _update_window_title(self):
+        """창 제목을 갱신한다. 프로젝트를 연/저장한 적이 있으면 파일명을 덧붙인다."""
+        if self._current_project_path:
+            from pathlib import Path as _Path
+            self.setWindowTitle(f"CMG-SeqViewer - {_Path(self._current_project_path).name}")
+        else:
+            self.setWindowTitle("CMG-SeqViewer")
+
+    def _set_current_project_path(self, path: Optional[str]):
+        """현재 프로젝트 경로를 기억(다음 Save 의 대상)하고 창 제목을 갱신한다."""
+        self._current_project_path = path
+        self._update_window_title()
+
     def _init_ui(self):
         """UI 구성 요소 초기화"""
         self.setWindowTitle("CMG-SeqViewer")
@@ -375,10 +393,18 @@ class MainWindow(QMainWindow):
         file_menu.addSeparator()
 
         # 프로젝트 저장/불러오기
-        self.save_project_action = QAction("Save Project...", self)
+        # "Save Project"는 이미 연/저장한 프로젝트가 있으면 대화상자 없이 그 경로에 바로
+        # 덮어쓴다(상용 프로그램의 Save와 동일) — 새 경로로/다른 이름으로 저장하려면
+        # "Save Project As...".
+        self.save_project_action = QAction("Save Project", self)
         self.save_project_action.setShortcut("Ctrl+Shift+S")
         self.save_project_action.triggered.connect(self._on_save_project)
         file_menu.addAction(self.save_project_action)
+
+        self.save_project_as_action = QAction("Save Project As...", self)
+        self.save_project_as_action.setShortcut("Ctrl+Alt+S")
+        self.save_project_as_action.triggered.connect(self._on_save_project_as)
+        file_menu.addAction(self.save_project_as_action)
 
         self.open_project_action = QAction("Open Project...", self)
         self.open_project_action.setShortcut("Ctrl+Shift+O")
@@ -4052,25 +4078,46 @@ class MainWindow(QMainWindow):
             self._update_recent_projects_menu()
 
     def _on_save_project(self):
-        """현재 분석 세션을 .seqproj 파일로 저장"""
-        import os
-        from utils.project_io import ProjectIO
+        """현재 분석 세션 저장.
 
-        # 저장할 탭이 없으면 알림
+        이미 연/저장한 프로젝트가 있으면(상용 프로그램처럼) 대화상자 없이 그 경로에 바로
+        덮어쓴다. 아직 없는 새 세션이면 Save As 와 동일하게 대화상자로 경로를 받는다.
+        """
+        if not self.tab_data:
+            QMessageBox.information(self, "Save Project", "There are no datasets to save.")
+            return
+        if self._current_project_path:
+            self._write_project_to_path(self._current_project_path)
+        else:
+            self._on_save_project_as()
+
+    def _on_save_project_as(self):
+        """항상 대화상자를 띄워 (새) 경로로 저장하고, 이후 Save 의 대상 경로로 기억한다."""
+        import os
         if not self.tab_data:
             QMessageBox.information(self, "Save Project", "There are no datasets to save.")
             return
 
+        if self._current_project_path:
+            start_dir = os.path.dirname(self._current_project_path)
+        else:
+            start_dir = os.path.expanduser("~")
         path, _ = QFileDialog.getSaveFileName(
             self,
-            "Save Project",
-            os.path.expanduser("~"),
+            "Save Project As",
+            start_dir,
             "SeqViewer Project (*.seqproj);;All Files (*)",
         )
         if not path:
             return
         if not path.endswith(".seqproj"):
             path += ".seqproj"
+        self._write_project_to_path(path)
+
+    def _write_project_to_path(self, path: str):
+        """spec 을 빌드해 path 에 실제로 기록한다(Save/Save As 공용 본체)."""
+        import os
+        from utils.project_io import ProjectIO
 
         try:
             # 데이터셋 파일 경로 / 타입 맵 구성
@@ -4202,6 +4249,7 @@ class MainWindow(QMainWindow):
 
             ProjectIO.save(path, spec)
             self._add_recent_project(path)
+            self._set_current_project_path(path)  # 이후 Save 의 대상 경로로 기억 + 창 제목 갱신
             self.logger.info(f"Project saved: {path}")
             QMessageBox.information(self, "Save Project", f"Project saved successfully:\n{path}")
 
@@ -4432,6 +4480,7 @@ class MainWindow(QMainWindow):
             self.data_tabs.setCurrentIndex(active_idx)
 
         self._add_recent_project(path)
+        self._set_current_project_path(path)  # 이후 Save 의 대상 경로로 기억 + 창 제목 갱신
 
         # 복원 경고: 누락 파일 + 재생성 불가한 파생 결과를 구분해 안내
         warn_parts = []
