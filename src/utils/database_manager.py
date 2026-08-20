@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import uuid
+import numpy as np
 import pandas as pd
 
 from models.data_models import Dataset, PreloadedDatasetMetadata, DatasetType
@@ -790,15 +791,19 @@ class DatabaseManager:
             
             df_to_save = dataset.dataframe.copy()
             if '_gene_set' in df_to_save.columns:
-                # set을 문자열로 변환 (/ 구분자 사용)
+                # set(또는 parquet 왕복 후의 list/ndarray)을 '/'-구분 문자열로 변환.
+                # np.ndarray/list 등 배열형 값에 pd.isna() 를 직접 쓰면 원소별 배열이 반환돼
+                # 뒤이은 bool 평가에서 "truth value of an array ... is ambiguous" 로 죽는다
+                # (parquet 의 list<string> 컬럼은 pandas 로 읽으면 셀이 set 이 아니라 ndarray
+                # 가 되는 경우가 흔함) — 배열형인지 먼저 판별해 그 경로를 피한다.
                 def convert_set_to_str(x):
-                    if isinstance(x, set):
-                        return '/'.join(sorted(x)) if x else ''
-                    elif pd.isna(x):
+                    if isinstance(x, (set, frozenset, list, tuple, np.ndarray)):
+                        items = sorted(str(v) for v in x)
+                        return '/'.join(items) if items else ''
+                    if pd.isna(x):  # 이 시점에 x 는 스칼라라고 보장됨
                         return ''
-                    else:
-                        return str(x)
-                
+                    return str(x)
+
                 df_to_save['_gene_set'] = df_to_save['_gene_set'].apply(convert_set_to_str)
             
             df_to_save.to_parquet(file_path, engine='pyarrow', compression='snappy')
