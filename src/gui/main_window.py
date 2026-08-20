@@ -3291,7 +3291,7 @@ class MainWindow(QMainWindow):
 
         title_label = QLabel(
             "<h2 style='margin:0;'>CMG-SeqViewer</h2>"
-            "<p style='margin:2px 0;'><b>Version 1.2.10</b></p>"
+            "<p style='margin:2px 0;'><b>Version 1.2.11</b></p>"
             "<p style='margin:2px 0; color:#555;'>RNA-Seq Data Analysis &amp; Visualization</p>"
         )
         title_label.setWordWrap(True)
