@@ -12,7 +12,12 @@ import pandas as pd
 def render_quadrant(ax, df, params):
     """Quadrant scatter를 ax에 그린다. 카테고리별 scatter_data(list[dict]) 반환.
 
-    params: point_size(기본 30), alpha(기본 0.7), title
+    params: point_size(기본 30), alpha(기본 0.7), title,
+            category_styles(선택, dict[cat -> {'color','size','alpha'}] — 있으면
+            카테고리별로 point_size/alpha/색상을 override, 없으면 위 전역값 + 기본
+            색상으로 폴백),
+            rna_lfc_cutoff/atac_lfc_cutoff(선택, float) — 주어지면 해당 값의 ±지점에
+            점선 significance threshold 기준선을 그린다(0선과는 스타일로 구분).
     """
     col_sym = 'symbol'
     col_rna = 'rna_log2fc'
@@ -34,6 +39,9 @@ def render_quadrant(ax, df, params):
     point_size = int(params.get('point_size', 30))
     alpha = float(params.get('alpha', 0.7))
     title = params.get('title', 'Quadrant Plot')
+    category_styles = params.get('category_styles') or {}
+    rna_lfc_cutoff = params.get('rna_lfc_cutoff')
+    atac_lfc_cutoff = params.get('atac_lfc_cutoff')
 
     df = df.copy() if df is not None else pd.DataFrame()
     scatter_data = []
@@ -48,8 +56,12 @@ def render_quadrant(ax, df, params):
         sub = df[df[col_cat] == cat] if col_cat in df.columns else df.iloc[0:0]
         if sub.empty:
             continue
-        ax.scatter(sub[col_atac], sub[col_rna], c=colors.get(cat, '#CCCCCC'),
-                   s=point_size, alpha=alpha, linewidths=0.3, edgecolors='white',
+        style = category_styles.get(cat, {})
+        cat_color = style.get('color', colors.get(cat, '#CCCCCC'))
+        cat_size = style.get('size', point_size)
+        cat_alpha = style.get('alpha', alpha)
+        ax.scatter(sub[col_atac], sub[col_rna], c=cat_color,
+                   s=cat_size, alpha=cat_alpha, linewidths=0.3, edgecolors='white',
                    label=f"{cat} (n={len(sub)})", zorder=3)
         padj_vals = sub[col_padj].values if col_padj in sub.columns else np.full(len(sub), np.nan)
         scatter_data.append({
@@ -64,6 +76,14 @@ def render_quadrant(ax, df, params):
 
     ax.axhline(0, color='gray', linewidth=0.8, linestyle='--', zorder=1)
     ax.axvline(0, color='gray', linewidth=0.8, linestyle='--', zorder=1)
+
+    if rna_lfc_cutoff:
+        for y in (rna_lfc_cutoff, -rna_lfc_cutoff):
+            ax.axhline(y, color='#555555', linewidth=0.7, linestyle=':', zorder=1)
+    if atac_lfc_cutoff:
+        for x in (atac_lfc_cutoff, -atac_lfc_cutoff):
+            ax.axvline(x, color='#555555', linewidth=0.7, linestyle=':', zorder=1)
+
     ax.set_xlabel("ATAC-seq log2FC (chromatin accessibility)", fontsize=11)
     ax.set_ylabel("RNA-seq log2FC (gene expression)", fontsize=11)
     ax.set_title(title, fontsize=13, fontweight='bold')

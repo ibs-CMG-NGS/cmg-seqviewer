@@ -5211,21 +5211,35 @@ class MainWindow(QMainWindow):
         atac_padj: float,
         atac_lfc: float,
     ):
-        """MultiOmicsPanel의 integrate_requested 시그널 처리"""
+        """MultiOmicsPanel의 integrate_requested 시그널 처리 — 워크벤치 다이얼로그를 연다.
+        실제 통합/탭 생성은 다이얼로그의 Apply 클릭 시에만 일어난다."""
         self.logger.info(
             f"Integration requested: RNA='{rna_name}' ATAC='{atac_name}' "
             f"method={method}"
         )
-        self.presenter.integrate_datasets(
-            rna_name=rna_name,
-            atac_name=atac_name,
-            method=method,
-            tss_window=tss_window,
-            rna_padj=rna_padj,
-            rna_lfc=rna_lfc,
-            atac_padj=atac_padj,
-            atac_lfc=atac_lfc,
+        if rna_name not in self.presenter.datasets or atac_name not in self.presenter.datasets:
+            QMessageBox.warning(self, "Missing Dataset", "Selected RNA/ATAC dataset not found.")
+            return
+
+        from gui.multi_omics_workbench_dialog import MultiOmicsWorkbenchDialog
+        dialog = MultiOmicsWorkbenchDialog(
+            rna_dataset=self.presenter.datasets[rna_name],
+            atac_dataset=self.presenter.datasets[atac_name],
+            method=method, tss_window=tss_window,
+            rna_padj=rna_padj, rna_lfc=rna_lfc, atac_padj=atac_padj, atac_lfc=atac_lfc,
+            parent=self,
         )
+
+        def _on_apply(rna_name_, atac_name_, method_, tss_window_,
+                      rna_padj_, rna_lfc_, atac_padj_, atac_lfc_):
+            self.presenter.integrate_datasets(
+                rna_name=rna_name_, atac_name=atac_name_, method=method_, tss_window=tss_window_,
+                rna_padj=rna_padj_, rna_lfc=rna_lfc_, atac_padj=atac_padj_, atac_lfc=atac_lfc_,
+            )
+            self.status_label.setText(f"Integrated: {rna_name_} + {atac_name_}")
+
+        dialog.integration_apply_requested.connect(_on_apply)
+        dialog.exec()
 
     def _on_multi_omics_visualization(self, plot_type: str):
         """Multi-Omics 전용 시각화"""
@@ -5248,7 +5262,12 @@ class MainWindow(QMainWindow):
 
         if plot_type == "quadrant":
             from gui.quadrant_plot_dialog import QuadrantPlotDialog
-            dialog = QuadrantPlotDialog(dataframe, title=tab_name, parent=self)
+            recipe = (dataset.metadata or {}).get('integration_recipe') or {}
+            dialog = QuadrantPlotDialog(
+                dataframe, title=tab_name, parent=self,
+                rna_lfc_cutoff=recipe.get('rna_lfc', 1.0),
+                atac_lfc_cutoff=recipe.get('atac_lfc', 1.0),
+            )
             dialog.exec()
         elif plot_type == "heatmap":
             from gui.concordance_heatmap_dialog import ConcordanceHeatmapDialog
