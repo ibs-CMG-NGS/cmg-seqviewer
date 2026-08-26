@@ -96,6 +96,7 @@ class HelpDialog(QDialog):
             "6. Statistical Analysis",
             "7. Visualization",
             "7b. Project Save/Load",
+            "7c. IGV Integration",
             "8. Multi-Group Heatmap",
             "9. PCA Plot",
             "10. Dataset Comparison",
@@ -124,6 +125,7 @@ class HelpDialog(QDialog):
             self._get_statistical_analysis(),
             self._get_visualization(),
             self._get_project_save_load(),
+            self._get_igv_integration(),
             self._get_multi_group_heatmap(),
             self._get_pca_plot(),
             self._get_comparison(),
@@ -169,7 +171,24 @@ class HelpDialog(QDialog):
                 lets you adjust visualization parameters without opening a dialog</li>
             <li><b>Bottom:</b> Log Terminal - System messages and status updates</li>
         </ul>
-        
+        <p>Toggle the left/right panels from the <b>Panels</b> menu or their shortcuts:
+        <b>Ctrl+1</b> (Datasets tree), <b>Ctrl+2</b> (Filter / Compare), <b>Ctrl+\\</b> (Split View).</p>
+
+        <h2>Find in Sheet (Ctrl+F)</h2>
+        <p>Press <b>Ctrl+F</b> anywhere (or click the 🔍 icon in the top-right corner of the
+        tab bar) to open a compact search bar above the data table:</p>
+        <ul>
+            <li>Type a keyword — matching rows stay visible, non-matching rows are hidden
+                live as you type (substring, case-insensitive)</li>
+            <li>Searches one column per dataset type: <code>description</code>/<code>term_id</code>
+                for GO/KEGG data, otherwise gene <code>symbol</code> (falls back to
+                <code>gene_id</code>) — shown next to the match count</li>
+            <li><b>→ Sheet</b> creates a filtered child sheet from the current matches</li>
+            <li>Press <b>Esc</b> or click <b>✕</b> to close and unhide all rows</li>
+        </ul>
+        <p><i>Note: this is different from <b>Apply Filter</b> (Ctrl+Shift+F), which creates
+        a new filtered sheet based on statistical or gene-list criteria — see section 4.</i></p>
+
         <h2>Menu Bar</h2>
         <p>All menus are always accessible. The application will show appropriate error messages 
         if an operation cannot be performed in the current context.</p>
@@ -275,7 +294,8 @@ class HelpDialog(QDialog):
         pipeline output folders with one click.</p>
 
         <h2>Opening the Database Browser</h2>
-        <p>Go to <b>File &rarr; Database &rarr; Browse Database</b>.</p>
+        <p>Go to <b>File &rarr; 📚 Database &rarr; Browse Pre-loaded Datasets...</b>
+        (or press <b>Ctrl+B</b>).</p>
         <p>The browser shows all registered datasets with columns:</p>
         <ul>
             <li><b>Alias</b> – friendly name you assigned</li>
@@ -290,12 +310,43 @@ class HelpDialog(QDialog):
         <h2>Loading a Dataset from the Database</h2>
         <ol>
             <li>Open the Database Browser</li>
-            <li>Select one or more rows (Shift/Ctrl+click for multi-select)</li>
-            <li>Click <b>Load Selected</b> — the dataset opens as a new tab immediately</li>
+            <li>Select one or more rows (Shift/Ctrl+click for multi-select, same as a
+                normal table)</li>
+            <li>Click <b>📂 Load Selected Dataset(s)</b> — each selected dataset opens
+                as a new tab immediately</li>
         </ol>
 
+        <h2>Right-Click Context Menu</h2>
+        <p>Right-click any row (selecting it first if it wasn't already selected) for a
+        quick menu with the same actions as the buttons below:
+        <b>📂 Load Selected Dataset(s)</b>, <b>✏️ Edit Metadata</b> / <b>Bulk Edit</b>,
+        <b>📤 Export Selected</b>, <b>🗑️ Delete Selected</b>.</p>
+
+        <h2>Editing Metadata — Single vs. Bulk</h2>
+        <ul>
+            <li><b>1 dataset selected:</b> the <b>✏️ Edit Metadata</b> button/menu item opens
+                the single-dataset editor (alias, organism, cell type, tissue, timepoint,
+                researcher, tags, notes)</li>
+            <li><b>2+ datasets selected:</b> the same button becomes
+                <b>✏️ Bulk Edit (N)</b> and opens the <b>Bulk Edit</b> dialog:
+                <ul>
+                    <li>Each field (Condition, Cell Type, Organism, Tissue, Timepoint,
+                        Researcher, Tags, Notes) has its own checkbox — only
+                        <b>checked</b> fields are overwritten on every selected dataset;
+                        unchecked fields are left untouched</li>
+                    <li><b>Alias</b> is excluded from bulk edit (must stay unique per dataset)</li>
+                    <li><b>Researcher</b> and <b>Tags</b> are list fields with a
+                        <b>Replace</b> / <b>Add</b> mode: <i>Replace</i> overwrites the
+                        existing list, <i>Add</i> appends the entered values to whatever
+                        each dataset already has</li>
+                    <li>Click <b>💾 Apply to N Dataset(s)</b> to commit</li>
+                </ul>
+            </li>
+        </ul>
+
         <h2>Importing a New Dataset into the Database</h2>
-        <p>Go to <b>File &rarr; Database &rarr; Import Dataset to Database</b>:</p>
+        <p>Go to <b>File &rarr; 📚 Database &rarr; Import Current Dataset to Database...</b>
+        (or press <b>Ctrl+I</b>):</p>
         <ol>
             <li>Select an Excel (.xlsx / .xls) or CSV file</li>
             <li>Map columns to standard names in the Column Mapper dialog</li>
@@ -303,6 +354,21 @@ class HelpDialog(QDialog):
             <li>Click <b>Import</b> — the file is converted to Parquet and registered</li>
         </ol>
         <p><b>Tip:</b> Once imported, the original Excel file is no longer needed.</p>
+
+        <h2>Export All / Export Selected — Sharing Datasets</h2>
+        <p>Use these to hand off part or all of your local database to a colleague
+        (e.g. via a shared network drive or a synced cloud folder):</p>
+        <ul>
+            <li><b>📤 Export Selected</b> — exports only the checked/selected rows</li>
+            <li><b>📤 Export All</b> — exports every dataset in the database (asks for
+                confirmation first)</li>
+            <li>Both prompt for a destination folder, then write each dataset's
+                <code>metadata.json</code> entry and its <code>.parquet</code> file
+                there — i.e. the same folder layout <b>Import Folder</b> (below) expects</li>
+            <li>The recipient merges the exported folder back in with
+                <b>📥 Import Folder</b> (see below) — duplicate <code>dataset_id</code>s
+                are automatically skipped, so re-importing is always safe</li>
+        </ul>
 
         <h2>Auto-Registration (Orphan Parquet Files)</h2>
         <p>If you copy <code>.parquet</code> files directly into the
@@ -408,13 +474,14 @@ pipeline_run_2026-03-12/
         <p>Parquet files placed in the <code>datasets/</code> subfolder
         are picked up on the next <b>Refresh</b>.</p>
 
-        <h2>Editing &amp; Deleting Datasets</h2>
+        <h2>Deleting Datasets</h2>
         <ul>
-            <li>Select a dataset row → click <b>✏️ Edit</b> to change alias,
-                organism, cell type, or notes</li>
-            <li>Select a dataset row → click <b>🗑 Delete</b> to remove it
-                from the registry (the <code>.parquet</code> file is also deleted)</li>
+            <li>Select one or more dataset rows → click <b>🗑️ Delete Selected</b>
+                (confirmation required) to remove them from the registry
+                (the <code>.parquet</code> file is also deleted)</li>
         </ul>
+        <p><i>See the Right-Click Context Menu and Editing Metadata sections above for
+        loading, editing (single/bulk), and exporting.</i></p>
         """
     
     def _get_filtering(self):
@@ -459,8 +526,22 @@ pipeline_run_2026-03-12/
             <li>Number of genes filtered</li>
             <li>Filter criteria applied</li>
         </ul>
+
+        <h2>Column Subset Sheet</h2>
+        <p>To keep only certain <i>columns</i> (rather than certain rows), use
+        <b>Analysis &rarr; 🧾 Select Columns → Subset Sheet...</b>:</p>
+        <ol>
+            <li>A checklist of all columns in the active dataset opens, pre-ticked to
+                match whatever is currently visible (per the Column Display Level)</li>
+            <li>Type in the filter box to narrow the list, and use
+                <b>Select all</b> / <b>Clear all</b> for the currently filtered items</li>
+            <li>Click <b>OK</b> — a new child sheet is created with only the ticked
+                columns; the original dataset is unchanged</li>
+        </ol>
+        <p>Useful for trimming a wide table down to just the columns you want to export
+        or paste into a report.</p>
         """
-    
+
     def _get_atac_seq_analysis(self):
         """ATAC-seq Analysis section"""
         return """
@@ -545,6 +626,68 @@ pipeline_run_2026-03-12/
         <p>The standard <b>Volcano Plot</b> also works with ATAC-seq data
         (uses log2fc and adj_pvalue columns).</p>
 
+        <h2>TF Motif Enrichment</h2>
+        <p>Visualizes transcription-factor motif enrichment results from
+        <b>HOMER</b> (<code>knownResults.txt</code>) or <b>MEME AME</b>
+        (<code>ame.tsv</code>) as a horizontal bar chart.</p>
+        <ul>
+            <li>Load via <b>File &rarr; Open TF Motif Results...</b> — this creates a
+                dedicated <i>TF Motif</i> dataset tab (separate from the ATAC DA tab)</li>
+            <li>With that tab active, open <b>Visualization &rarr; 🔓 ATAC-seq &rarr;
+                🔡 TF Motif Enrichment Plot</b></li>
+            <li><b>Top N motifs:</b> how many TFs to show, ranked by &minus;log&#8321;&#8320;(p-value)</li>
+            <li><b>Q-value cutoff:</b> only motifs at/below this q-value are plotted</li>
+            <li><b>Show % bar:</b> overlays the percentage of target peaks containing each
+                motif on a secondary axis</li>
+            <li>You can load a second (e.g. DOWN) result alongside the first to get a
+                side-by-side UP vs DOWN comparison plot</li>
+            <li><b>Export Data</b> saves the plotted table (Excel/CSV)</li>
+        </ul>
+
+        <h2>TF Footprint (TOBIAS BINDetect)</h2>
+        <p>Visualizes TOBIAS BINDetect footprinting output (<code>bindetect_results.txt</code>)
+        as a TF activity scatter plot.</p>
+        <ul>
+            <li>Load via <b>File &rarr; Open TF Footprint Results...</b> — creates a
+                dedicated <i>TF Footprint</i> dataset tab</li>
+            <li>With that tab active, open <b>Visualization &rarr; 🔓 ATAC-seq &rarr;
+                👣 TF Activity Plot (Footprint)</b></li>
+            <li>X axis = condition 1 mean footprint score, Y axis = condition 2 mean
+                footprint score (condition names come from the file's metadata);
+                points above the diagonal (y=x) are more bound in condition 2,
+                below are more bound in condition 1</li>
+            <li><b>P-value cutoff</b> and <b>|Change| &ge;</b> control which TFs are
+                highlighted/colored as significant</li>
+            <li><b>Label top N</b> annotates the top TFs by |change|; <b>Dot size</b> and
+                <b>Show diagonal</b> are also adjustable</li>
+            <li><b>Export Data</b> saves the plotted table</li>
+        </ul>
+
+        <h2>chromVAR TF Activity</h2>
+        <p>Visualizes chromVAR differential TF activity (deviation z-scores) results.</p>
+        <ul>
+            <li>Load via <b>File &rarr; Open chromVAR Results...</b> (CSV/Parquet
+                <code>diff_tf</code> output) — creates a dedicated <i>chromVAR</i>
+                dataset tab. Loading more than one chromVAR result enables a
+                multi-condition mode.</li>
+            <li>With that tab active, open <b>Visualization &rarr; 🔓 ATAC-seq &rarr;
+                🧬 chromVAR TF Activity Plot</b></li>
+            <li><b>View</b> mode:
+                <ul>
+                    <li><b>Volcano</b> — X: delta z-score, Y: &minus;log&#8321;&#8320;(padj)</li>
+                    <li><b>Scatter (base vs compare)</b> — X: base/control condition
+                        z-score, Y: comparison condition z-score</li>
+                    <li><b>Multi-condition Heatmap</b> (only when 2+ chromVAR datasets are
+                        loaded) — TF &times; condition matrix of delta z-scores</li>
+                </ul>
+            </li>
+            <li><b>padj cutoff</b> and <b>|delta| &ge;</b> control significance
+                highlighting; <b>Label top N</b> and <b>Dot size</b> adjust display;
+                <b>Heatmap top N TFs</b> applies only in Heatmap mode</li>
+            <li>Hovering a point in Volcano/Scatter mode shows TF name, motif ID, delta,
+                and padj</li>
+        </ul>
+
         <h2>Annotation Column Explained</h2>
         <p>ATAC-seq peaks are annotated with a genomic context string (HOMER format):</p>
         <ul>
@@ -586,11 +729,26 @@ pipeline_run_2026-03-12/
                 <li>Select the RNA dataset from the drop-down</li>
                 <li>Select the ATAC dataset from the drop-down</li>
                 <li>Choose an <b>Integration Method</b></li>
-                <li>Set significance thresholds for RNA and ATAC</li>
+                <li>Set initial significance thresholds for RNA and ATAC (these are just
+                    starting values — see below)</li>
             </ul>
-            <li>Click <b>Integrate</b></li>
-            <li>A new tab appears: <em>&ldquo;Multi-Omics: [RNA name] × [ATAC name]&rdquo;</em></li>
+            <li>Click <b>🔗 Integrate RNA + ATAC</b> — this opens the
+                <b>RNA + ATAC Integration Workbench</b> dialog (it does <b>not</b>
+                create the result tab yet)</li>
+            <li>In the Workbench, tune the four significance cutoffs
+                (RNA padj / RNA |log2FC| / ATAC padj / ATAC |log2FC|) and the
+                category style/colors on the left while watching the
+                <b>Quadrant Plot</b> preview update live on the right — the
+                expensive gene&ndash;peak join runs only once; re-classifying at a
+                new cutoff and redrawing is fast, so you can explore several
+                thresholds before committing</li>
+            <li>Click <b>Apply</b> in the Workbench to commit the current cutoffs —
+                this creates/refreshes the result tab
+                <em>&ldquo;Multi-Omics: [RNA name] × [ATAC name]&rdquo;</em> and closes
+                the dialog. Click <b>Close</b> instead to discard without creating a tab.</li>
         </ol>
+        <p>To re-tune cutoffs later, reopen the Multi-Omics panel and click
+        <b>Integrate</b> again — the Workbench reopens (a fresh join is computed each time).</p>
 
         <h2>Integration Methods</h2>
         <table border="1" cellpadding="5" cellspacing="0" style="border-collapse:collapse; width:100%;">
@@ -880,10 +1038,14 @@ pipeline_run_2026-03-12/
         <ul>
             <li>Works for DE and ATAC (DA) datasets (both use <code>log2fc</code> +
                 <code>adj_pvalue</code>)</li>
-            <li>Up-regulated bars rise above 0 (red), down-regulated fall below 0 (blue)</li>
+            <li>Up-regulated bars rise above 0, down-regulated fall below 0
+                (default red / blue)</li>
             <li><b>In-dialog thresholds:</b> <code>FDR &le;</code> and <code>|log2FC| &ge;</code>
                 (down to 3 decimals, e.g. 0.585) &mdash; change them to re-aggregate instantly,
                 using the same rule as the statistical filter</li>
+            <li><b>Bar Colors:</b> click the <b>Up-regulated</b> / <b>Down-regulated</b>
+                color swatches to open a color picker and customize either bar color;
+                the plot redraws immediately</li>
             <li><b>Show as % of total</b> toggle; <b>Export Data</b> writes the
                 up/down/total table (CSV / TSV / Excel)</li>
         </ul>
@@ -1010,6 +1172,19 @@ pipeline_run_2026-03-12/
             <tr><td>Cluster samples (cols)</td><td>✘</td><td>Uncheck to preserve original sample order</td></tr>
         </table>
 
+        <h3>Sample Groups (editable)</h3>
+        <p>A table (columns: <b>✓</b>, Sample, Group) lets you override the
+        auto-detected grouping before plotting:</p>
+        <ul>
+            <li><b>✓ column:</b> untick a sample to <b>exclude</b> it from the heatmap
+                entirely (it is dropped from both the data matrix and the group color bar)</li>
+            <li><b>Group column:</b> double-click to edit — same label = same color;
+                leave blank to mark a sample as ungrouped</li>
+            <li><b>Select all</b> / <b>Clear all</b> toggle every ✓ checkbox at once</li>
+            <li>Click <b>Apply Groups</b> to commit the include/exclude and group-label
+                changes and redraw</li>
+        </ul>
+
         <h3>Gene Clusters</h3>
         <p>Cut the row dendrogram into <em>k</em> clusters using scipy <code>fcluster</code>:</p>
         <ol>
@@ -1026,6 +1201,11 @@ pipeline_run_2026-03-12/
             <tr><td>Color map</td><td>RdBu_r / coolwarm / bwr / PiYG / vlag / seismic</td></tr>
             <tr><td>Groups: swatches</td><td>Colour swatch per sample group — click to open colour picker
                 (any colour; not limited to preset palette)</td></tr>
+            <tr><td>Groups: display order</td><td>A reorderable list of group names below the
+                swatches — <b>drag items</b> or use the <b>▲</b>/<b>▼</b> buttons to change the
+                left-to-right order groups appear in the heatmap. Ignored when
+                <b>Cluster samples (cols)</b> is checked, since clustering decides column
+                order itself.</td></tr>
             <tr><td>Show gene labels</td><td>Toggle Y-axis gene name labels (disable for >300 genes)</td></tr>
             <tr><td>Gene label size</td><td>Font size for gene labels (4–14 pt)</td></tr>
             <tr><td>Show sample labels</td><td>Toggle X-axis sample name labels</td></tr>
@@ -1076,7 +1256,7 @@ pipeline_run_2026-03-12/
     def _get_pca_plot(self):
         """PCA Plot section"""
         return """
-        <h1>10. PCA Plot</h1>
+        <h1>9. PCA Plot</h1>
 
         <h2>Overview</h2>
         <p>Principal Component Analysis (PCA) reduces the high-dimensional
@@ -1153,6 +1333,22 @@ pipeline_run_2026-03-12/
         </table>
         <p>Click <b>🔄 Update Plot</b> to apply changed settings.</p>
         <p>All settings are saved and restored between sessions.</p>
+
+        <h2>Color By &amp; Sample Groups (editable)</h2>
+        <p>By default points are colored by an auto-detected condition group (from
+        dataset metadata, the dataset name, or sample-column prefixes); the
+        <b>Color by</b> dropdown lets you switch to <b>Sample</b> (each point its own
+        color) if no meaningful group was detected.</p>
+        <p>A <b>Sample Groups (editable)</b> table (columns: <b>✓</b>, Sample, Group)
+        lets you override this before plotting:</p>
+        <ul>
+            <li><b>✓ column:</b> untick a sample to <b>exclude</b> it from the PCA
+                computation entirely (both the variance selection and the projection)</li>
+            <li><b>Group column:</b> double-click to edit — same label = same color;
+                blank = ungrouped</li>
+            <li><b>Select all</b> / <b>Clear all</b> toggle every ✓ checkbox at once</li>
+            <li>Click <b>Apply Groups</b> to commit and recompute/redraw the PCA</li>
+        </ul>
 
         <h2>Reading the Plot</h2>
         <ul>
@@ -1304,6 +1500,33 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
                 </ul>
             </li>
         </ol>
+
+        <h2>Meta Volcano Plot</h2>
+        <p>Visualizes the meta-analysis columns produced by a
+        <b>Statistics Filtering</b> comparison (2+ datasets, Fisher/Stouffer combined
+        p-values) as a volcano-style plot of overall reproducible signal.</p>
+        <ol>
+            <li>Run <b>Compare &rarr; Statistics Filtering</b> across 2 or more datasets
+                so the <em>"Comparison: Statistics"</em> sheet contains the meta
+                columns (<code>meta_pvalue_fisher</code>, <code>meta_log2fc_mean</code>,
+                <code>meta_direction</code>, <code>meta_found_in</code>, &hellip;)</li>
+            <li>With that sheet active, go to <b>Visualization &rarr;
+                🧩 Cross-Dataset Comparison &rarr; 🌋 Meta Volcano Plot (Comparison sheet)</b></li>
+        </ol>
+        <ul>
+            <li><b>X axis:</b> choose the effect-size source — pooled log2FC
+                (random-effects), mean log2FC, or mean log2 fold-enrichment</li>
+            <li><b>Y axis:</b> &minus;log&#8321;&#8320; of the chosen meta p-value source
+                (Fisher, Fisher FDR, Stouffer, or Random-effects)</li>
+            <li><b>meta p &le;</b> and <b>|mean log2FC| &ge;</b> thresholds define
+                significance; a minimum-datasets-found-in cutoff further requires a gene
+                to appear in at least <i>k</i> of the compared datasets</li>
+            <li>Genes with a consistent direction across datasets
+                (<b>concordant</b>) are colored up (red) / down (blue); genes where
+                datasets disagree on direction (<b>discordant</b>) are shown in gray —
+                this highlights which hits are reproducible versus dataset-specific</li>
+            <li>Hover a point for its gene name and underlying statistics</li>
+        </ul>
         """
     
     def _get_gene_annotation(self):
@@ -1541,7 +1764,32 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
             </li>
             <li>Choose save location and filename</li>
         </ol>
-        
+        <p><i>Tip: export/save dialogs (this one included) share one remembered
+        "last used folder" for the session — pick a location once and later exports
+        default to it, so you won't have to re-navigate every time.</i></p>
+
+        <h2>Export Figure Bundle...</h2>
+        <p>Most plot windows (pinned Volcano/Heatmap tabs and the majority of the
+        other plot dialogs) can export a self-contained, reproducible <b>figure bundle</b>
+        instead of just an image:</p>
+        <ol>
+            <li>With the plot tab/dialog active, go to
+                <b>File &rarr; Export Figure Bundle...</b></li>
+            <li>Choose a destination folder name (defaults to a name based on the plot type)</li>
+        </ol>
+        <p>The bundle folder contains:</p>
+        <ul>
+            <li><code>scripts/figure.py</code> — a standalone script that reproduces the figure</li>
+            <li><code>inputs/data.csv</code> — the exact data used to draw it</li>
+            <li><code>outputs/figure.png/pdf/svg</code> — the rendered figure (PNG always,
+                PDF/SVG best-effort)</li>
+            <li><code>metadata/metadata.yaml</code> and <code>manifest.json</code> —
+                provenance information</li>
+        </ul>
+        <p>Useful for archiving a figure alongside exactly the data and parameters that
+        produced it, or handing it off for a downstream figure-atlas / publication workflow.
+        If the current tab doesn't support this, a message says so.</p>
+
         <h2>Cell Selection</h2>
         <p>Flexible cell selection in data tables:</p>
         <ul>
@@ -1598,11 +1846,31 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
                 <td>Open Dataset</td>
             </tr>
             <tr>
+                <td><b>Ctrl+A</b></td>
+                <td>Open ATAC-seq Dataset</td>
+            </tr>
+            <tr>
+                <td><b>Ctrl+G</b></td>
+                <td>Open GO/KEGG Results</td>
+            </tr>
+            <tr>
+                <td><b>Ctrl+B</b></td>
+                <td>Browse Database (Database Browser)</td>
+            </tr>
+            <tr>
+                <td><b>Ctrl+I</b></td>
+                <td>Import Current Dataset to Database</td>
+            </tr>
+            <tr>
                 <td><b>Ctrl+E</b></td>
                 <td>Export Current Tab</td>
             </tr>
             <tr>
                 <td><b>Ctrl+F</b></td>
+                <td>Find in Sheet (opens the keyword search bar)</td>
+            </tr>
+            <tr>
+                <td><b>Ctrl+Shift+F</b></td>
                 <td>Apply Filter</td>
             </tr>
             <tr>
@@ -1618,22 +1886,41 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
                 <td>Copy Selected Cells</td>
             </tr>
             <tr>
-                <td><b>Ctrl+Q</b></td>
-                <td>Exit Application</td>
+                <td><b>Ctrl+1</b></td>
+                <td>Toggle Datasets (tree) panel</td>
+            </tr>
+            <tr>
+                <td><b>Ctrl+2</b></td>
+                <td>Toggle Filter / Compare panel</td>
+            </tr>
+            <tr>
+                <td><b>Ctrl+\\</b></td>
+                <td>Toggle Split View</td>
             </tr>
             <tr>
                 <td><b>Ctrl+Shift+S</b></td>
                 <td>Save Project (.seqproj)</td>
             </tr>
             <tr>
+                <td><b>Ctrl+Alt+S</b></td>
+                <td>Save Project As... (.seqproj)</td>
+            </tr>
+            <tr>
                 <td><b>Ctrl+Shift+O</b></td>
                 <td>Open Project (.seqproj)</td>
+            </tr>
+            <tr>
+                <td><b>Ctrl+Q</b></td>
+                <td>Exit Application</td>
             </tr>
             <tr>
                 <td><b>F1</b></td>
                 <td>Open this Help Documentation</td>
             </tr>
         </table>
+        <p><i>Tip: file dialogs for export/save (Excel/CSV export, figure/data export,
+        Save Project As, etc.) share one remembered "last used folder" for the session,
+        so each new export defaults to wherever you saved most recently.</i></p>
         
         <h2>Best Practices</h2>
         <ul>
@@ -1724,9 +2011,14 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
 
         <h2>Saving a Project</h2>
         <ol>
-            <li>Go to <b>File &rarr; Save Project...</b> or press <b>Ctrl+Shift+S</b></li>
+            <li>Go to <b>File &rarr; Save Project</b> (<b>Ctrl+Shift+S</b>) to save to the
+                current project path, or <b>File &rarr; Save Project As...</b>
+                (<b>Ctrl+Alt+S</b>) to always be prompted for a (new) location/filename</li>
             <li>Choose a location and filename (extension <code>.seqproj</code> is added automatically)</li>
         </ol>
+        <p><i>Save Project (Ctrl+Shift+S) reuses the last save location once the session
+        has been saved once; use Save Project As... to save a copy elsewhere or under a
+        different name without changing what subsequent Ctrl+Shift+S saves overwrite.</i></p>
         <p>What is saved in the <code>.seqproj</code> file:</p>
         <ul>
             <li><b>Datasets</b> — file paths (relative to the project file for portability) or
@@ -1745,6 +2037,19 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
         <h2>Opening a Project</h2>
         <ol>
             <li>Go to <b>File &rarr; Open Project...</b> or press <b>Ctrl+Shift+O</b></li>
+            <li>If a session is already loaded (any dataset tabs open), a
+                <b>Save / Discard / Cancel</b> prompt appears first — opening a project
+                always starts a brand-new session, replacing the current one:
+                <ul>
+                    <li><b>Save</b> — saves the current session first (Save Project /
+                        Save Project As flow), then proceeds to open the new project</li>
+                    <li><b>Discard</b> — closes the current session without saving and
+                        proceeds</li>
+                    <li><b>Cancel</b> — aborts; nothing is opened or closed</li>
+                </ul>
+                If <b>Save</b> is chosen but the save is itself cancelled or fails, the
+                whole operation is aborted so unsaved work is never silently lost.
+                (An empty session with no datasets loaded skips this prompt.)</li>
             <li>Select a <code>.seqproj</code> file</li>
             <li>The app reloads each source dataset, replays its filters/plots, then
                 regenerates comparison and integration results</li>
@@ -1786,6 +2091,62 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
         </ul>
         """
 
+    def _get_igv_integration(self):
+        """IGV Integration section"""
+        return """
+        <h1>7c. IGV Integration</h1>
+
+        <h2>Overview</h2>
+        <p><a href="https://igv.org/">IGV (Integrative Genomics Viewer)</a> is a separate
+        desktop application for browsing raw genomic tracks (BigWig signal, BAM alignments).
+        CMG-SeqViewer can talk to a locally running IGV over its
+        <b>port command listener</b> so you can jump straight from an ATAC-seq peak row
+        in a table to that exact locus in IGV &mdash; no manual coordinate copying.</p>
+        <p><i>Requires IGV desktop to be installed and running separately;
+        this app does not bundle or launch IGV itself.</i></p>
+
+        <h2>One-time IGV Setup</h2>
+        <ol>
+            <li>In IGV: <b>View &rarr; Preferences &rarr; Advanced</b> &rarr; enable
+                <b>"Enable port"</b> (default port <b>60151</b>)</li>
+            <li>Keep IGV running while using CMG-SeqViewer</li>
+        </ol>
+
+        <h2>IGV Settings Dialog</h2>
+        <p>Open via <b>View &rarr; 🔬 IGV Settings...</b></p>
+        <ul>
+            <li><b>Connection:</b> Port number (default 60151) and a
+                <b>Test Connection</b> button showing ● Connected / ✗ Not running</li>
+            <li><b>Navigation:</b>
+                <ul>
+                    <li><b>Context padding (bp):</b> extra flanking region added around the
+                        peak when jumping IGV to a locus (default 500 bp)</li>
+                    <li><b>Auto-set genome on send:</b> if checked, IGV's genome is switched
+                        automatically using the dataset's <code>genome_build</code> metadata
+                        (or the last genome used) before navigating</li>
+                </ul>
+            </li>
+            <li><b>Signal Tracks:</b> a list of BigWig/BAM files to keep handy.
+                <b>+ Add Track</b> to browse for files, <b>Remove Selected</b> to drop a row,
+                and <b>Load All Tracks in IGV Now</b> to push the whole list into IGV in
+                one click (useful at the start of a session so all your coverage tracks
+                are loaded before you start browsing peaks)</li>
+        </ul>
+        <p>Settings (port, padding, auto-genome, track list) persist between sessions.</p>
+
+        <h2>Sending a Peak to IGV</h2>
+        <p>Right-click any row of an active <b>ATAC-seq</b> tab (the dataset must have
+        <code>chromosome</code> / <code>peak_start</code> / <code>peak_end</code> columns):</p>
+        <ul>
+            <li><b>🔬 Send to IGV</b> &mdash; navigates the running IGV window to
+                <code>chromosome:peak_start&minus;peak_end</code>
+                (widened by the configured context padding)</li>
+            <li><b>📋 Copy Locus</b> &mdash; copies <code>chr:start-end</code> to the clipboard
+                without touching IGV, for pasting elsewhere</li>
+        </ul>
+        <p>If IGV is not reachable, a warning explains how to enable the port listener.</p>
+        """
+
     def _get_go_kegg_analysis(self):
         """GO/KEGG Analysis section"""
         return """
@@ -1811,12 +2172,22 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
         <ol>
             <li>GO/KEGG 데이터 필터링 (예: FDR &lt; 1e-5, BP, UP)</li>
             <li><b>Analysis &rarr; Cluster GO Terms</b> 선택</li>
-            <li>파라미터 설정:
+            <li><b>Cut by</b> (자르는 방식) 선택 — 두 컨트롤 중 관련 있는 쪽만 활성화됨:
                 <ul>
-                    <li><b>Similarity Threshold:</b> 0.0–1.0 (기본값 0.7 — 높을수록 더 엄격, 클러스터 수 감소)</li>
-                    <li><b>Min Terms:</b> 유효 클러스터 최소 term 수 (기본값 2, singleton 제외)</li>
+                    <li><b>Similarity threshold</b> (기본) — 데이터 기반, 모든 클러스터 +
+                        singleton 유지:
+                        <b>Similarity</b> 스핀박스/슬라이더 0.0–1.0
+                        (기본값 0.7 — 높을수록 더 엄격, 클러스터 수 감소)</li>
+                    <li><b>Number of clusters (k)</b> — 트리를 정확히 <b>k</b>개
+                        (2–100)로 자름(cutree); 컴팩트한 요약에 적합</li>
                 </ul>
             </li>
+            <li><b>Top N terms</b> (선택) — 0이면 필터된 전체 term 사용; N&gt;0이면
+                FDR 상위 N개 term만 사전 선별 후 클러스터링 — 예: 50 +
+                "Number of clusters (k)" 조합으로 보기 쉬운 컴팩트 요약을 만들 수 있음.
+                이 값을 바꾸면 트리를 다시 계산해야 하므로 <b>Run Clustering</b> 재실행 필요</li>
+            <li><b>Min / Max Terms</b> (Valid Cluster Size Range) — 이 범위를 벗어나는
+                클러스터는 별도로 표시됨 (기본 Min 2, Max 100)</li>
             <li><b>Run Clustering</b> 실행 — 5개 탭 결과 확인:
                 <ul>
                     <li><b>Network Visualization:</b> 클러스터별 Jaccard 네트워크 그리드; 셀 클릭 → Cluster Detail 탭에서 확대</li>
@@ -1826,13 +2197,23 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
                     <li><b>Cluster Detail:</b> 선택 클러스터의 단일 Jaccard 네트워크 확대 뷰</li>
                 </ul>
             </li>
+            <li><b>라이브 threshold 재조정:</b> Run 이후에는 <b>Similarity</b>나
+                <b>k</b> 값을 바꿔도 전체 재계산 없이(계층 트리는 캐시됨) 즉시
+                재분류/재표시되므로, 여러 threshold를 빠르게 비교해 볼 수 있음</li>
             <li><b>Apply</b> 클릭 → Clustered 탭 생성 (클러스터 ID 컬럼 포함)</li>
         </ol>
+
+        <h3>Figure Style &amp; Export</h3>
+        <p>왼쪽 패널의 <b>🎨 Figure Style &amp; Export...</b> 버튼을 클릭하면 테마/색상과
+        내보내기 크기·DPI·포맷을 설정하는 작은 팝업 다이얼로그가 열립니다
+        (좌측 패널 공간을 아끼기 위해 별도 창으로 분리됨). 여기서 바꾼 스타일은
+        Network Visualization 그리드에 즉시 반영됩니다.</p>
 
         <h3>알고리즘 요약:</h3>
         <ul>
             <li>Jaccard 유사도: 두 term의 공유 유전자 수 ÷ 합집합 유전자 수</li>
-            <li>계층적 군집화(average linkage) + distance threshold = 1 − Similarity Threshold</li>
+            <li>계층적 군집화(average linkage); Similarity 모드는 distance threshold
+                = 1 − Similarity Threshold, k 모드는 트리를 정확히 k개 클러스터로 절단</li>
             <li>Min Terms 미만 클러스터는 singleton으로 분류 (클러스터 ID 미할당)</li>
             <li>대표 term = 각 클러스터에서 FDR이 가장 낮은 term</li>
             <li>클러스터 ID: C001, C002… 형식 (0-padding, 문자열 정렬 가능)</li>
