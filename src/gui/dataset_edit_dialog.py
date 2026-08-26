@@ -7,7 +7,7 @@ Pre-loaded 데이터셋의 메타데이터를 편집하는 다이얼로그
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
                             QPushButton, QLineEdit, QTextEdit, QLabel,
                             QComboBox, QMessageBox, QGroupBox)
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 import logging
 
 from models.data_models import PreloadedDatasetMetadata, DatasetType
@@ -36,6 +36,11 @@ class DatasetEditDialog(QDialog):
     def _init_ui(self):
         """UI 초기화"""
         self.setWindowTitle(f"Edit Dataset - {self.metadata.alias}")
+        self.setWindowFlags(
+            self.windowFlags()
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowMinimizeButtonHint
+        )
         self.setGeometry(150, 150, 600, 700)
         
         layout = QVBoxLayout(self)

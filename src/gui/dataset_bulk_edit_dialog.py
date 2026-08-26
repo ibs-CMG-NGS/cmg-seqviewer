@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
                             QPushButton, QLineEdit, QTextEdit, QLabel,
                             QComboBox, QMessageBox, QGroupBox, QCheckBox,
                             QListWidget, QWidget)
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 from typing import List
 import logging
 
@@ -44,6 +44,11 @@ class BulkEditDialog(QDialog):
         """UI 초기화"""
         count = len(self.metadata_list)
         self.setWindowTitle(f"Bulk Edit - {count} Datasets Selected")
+        self.setWindowFlags(
+            self.windowFlags()
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowMinimizeButtonHint
+        )
         self.setGeometry(150, 150, 620, 700)
 
         layout = QVBoxLayout(self)

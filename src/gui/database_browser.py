@@ -46,6 +46,11 @@ class DatabaseBrowserDialog(QDialog):
     def _init_ui(self):
         """UI 초기화"""
         self.setWindowTitle("Database Browser - Pre-loaded Datasets")
+        self.setWindowFlags(
+            self.windowFlags()
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowMinimizeButtonHint
+        )
         self.setGeometry(100, 100, 1200, 700)
         
         layout = QVBoxLayout(self)

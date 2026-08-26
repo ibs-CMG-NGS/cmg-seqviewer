@@ -3269,7 +3269,12 @@ class MainWindow(QMainWindow):
         """About 다이얼로그"""
         dlg = QDialog(self)
         dlg.setWindowTitle("About CMG-SeqViewer")
-        dlg.setFixedWidth(520)
+        dlg.setWindowFlags(
+            dlg.windowFlags()
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowMinimizeButtonHint
+        )
+        dlg.resize(520, 520)
 
         root = QVBoxLayout(dlg)
         root.setContentsMargins(24, 24, 24, 16)
@@ -3304,7 +3309,6 @@ class MainWindow(QMainWindow):
         body = QTextBrowser()
         body.setOpenExternalLinks(True)
         body.setReadOnly(True)
-        body.setMaximumHeight(320)
         body.setHtml(
             "<p><b>Key Features:</b></p>"
             "<ul>"
@@ -3594,6 +3598,11 @@ class MainWindow(QMainWindow):
             
             dialog = QDialog(self)
             dialog.setWindowTitle("Select Datasets for Venn Diagram")
+            dialog.setWindowFlags(
+                dialog.windowFlags()
+                | Qt.WindowType.WindowMaximizeButtonHint
+                | Qt.WindowType.WindowMinimizeButtonHint
+            )
             dialog.setMinimumWidth(400)
             
             layout = QVBoxLayout(dialog)
@@ -3645,6 +3654,11 @@ class MainWindow(QMainWindow):
 
         select_dialog = QDialog(self)
         select_dialog.setWindowTitle(title)
+        select_dialog.setWindowFlags(
+            select_dialog.windowFlags()
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowMinimizeButtonHint
+        )
         select_dialog.setMinimumWidth(420)
 
         layout = QVBoxLayout(select_dialog)

@@ -42,6 +42,11 @@ class HelpDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("CMG-SeqViewer - User Documentation")
         self.setWindowIcon(create_help_icon())
+        self.setWindowFlags(
+            self.windowFlags()
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowMinimizeButtonHint
+        )
         self.setMinimumSize(900, 700)
         
         self._init_ui()

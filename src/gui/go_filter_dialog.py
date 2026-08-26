@@ -30,6 +30,11 @@ class GOFilterDialog(QDialog):
         super().__init__(parent)
         self.dataset = dataset
         self.setWindowTitle("Filter GO/KEGG Results")
+        self.setWindowFlags(
+            self.windowFlags()
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowMinimizeButtonHint
+        )
         self.setMinimumWidth(500)
         
         self._init_ui()

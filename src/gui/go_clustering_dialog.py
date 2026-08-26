@@ -444,6 +444,11 @@ class GOClusteringDialog(QDialog):
         if self._style_dialog is None:
             dlg = QDialog(self)
             dlg.setWindowTitle("Figure Style & Export")
+            dlg.setWindowFlags(
+                dlg.windowFlags()
+                | Qt.WindowType.WindowMaximizeButtonHint
+                | Qt.WindowType.WindowMinimizeButtonHint
+            )
             v = QVBoxLayout(dlg)
             v.addWidget(self._style)   # 재파렌팅 — self._style 객체는 그대로 재사용
             buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)

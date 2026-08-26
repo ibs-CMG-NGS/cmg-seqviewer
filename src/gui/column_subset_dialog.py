@@ -19,6 +19,11 @@ class ColumnSubsetDialog(QDialog):
                  parent=None):
         super().__init__(parent)
         self.setWindowTitle("Select Columns → Subset Sheet")
+        self.setWindowFlags(
+            self.windowFlags()
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowMinimizeButtonHint
+        )
         self.resize(360, 480)
         self._all_columns = list(columns)
         pre = set(preselected) if preselected is not None else set(columns)
