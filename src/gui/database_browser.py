@@ -7,7 +7,8 @@ Pre-loaded 데이터셋 데이터베이스를 브라우징하고 관리하는 GU
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
                             QTableWidget, QTableWidgetItem, QLineEdit, QLabel,
                             QComboBox, QMessageBox, QHeaderView, QGroupBox,
-                            QFormLayout, QTextEdit, QCheckBox, QSplitter, QWidget)
+                            QFormLayout, QTextEdit, QCheckBox, QSplitter, QWidget,
+                            QMenu)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 from pathlib import Path
@@ -103,7 +104,16 @@ class DatabaseBrowserDialog(QDialog):
         )
         import_folder_btn.clicked.connect(self._on_import_folder)
         search_layout.addWidget(import_folder_btn)
-        
+
+        # Export All 버튼
+        export_all_btn = QPushButton("📤 Export All")
+        export_all_btn.setToolTip(
+            "Export the entire database (metadata.json + all parquet files) to a folder.\n"
+            "Share the folder (e.g. via Google Drive) so others can merge it with 'Import Folder'."
+        )
+        export_all_btn.clicked.connect(self._on_export_all)
+        search_layout.addWidget(export_all_btn)
+
         layout.addWidget(search_group)
         
         # 중앙: Splitter (테이블 + 상세 정보)
@@ -165,6 +175,10 @@ class DatabaseBrowserDialog(QDialog):
 
         # 헤더 클릭으로 정렬 활성화
         self.table.setSortingEnabled(True)
+
+        # 우클릭 컨텍스트 메뉴 (Edit Metadata / Delete Selected)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._on_table_context_menu)
         
         splitter.addWidget(self.table)
         
@@ -221,7 +235,16 @@ class DatabaseBrowserDialog(QDialog):
         self.edit_btn.setEnabled(False)
         self.edit_btn.clicked.connect(self._on_edit_selected)
         mgmt_layout.addWidget(self.edit_btn)
-        
+
+        self.export_selected_btn = QPushButton("📤 Export Selected")
+        self.export_selected_btn.setEnabled(False)
+        self.export_selected_btn.setToolTip(
+            "Export the selected dataset(s) to a folder (metadata.json + parquet).\n"
+            "Share that folder with others; they can merge it via 'Import Folder'."
+        )
+        self.export_selected_btn.clicked.connect(self._on_export_selected)
+        mgmt_layout.addWidget(self.export_selected_btn)
+
         delete_btn = QPushButton("🗑️ Delete Selected")
         delete_btn.clicked.connect(self._on_delete_selected)
         mgmt_layout.addWidget(delete_btn)
@@ -386,8 +409,21 @@ class DatabaseBrowserDialog(QDialog):
             self.selected_ids.append(dataset_id)
         
         self.load_btn.setEnabled(len(self.selected_ids) > 0)
-        self.edit_btn.setEnabled(len(self.selected_ids) == 1)  # 편집은 단일 선택만
-        
+
+        # 편집 버튼: 1개 선택 시 단일 편집, 2개 이상이면 일괄 편집
+        self.edit_btn.setEnabled(len(self.selected_ids) > 0)
+        if len(self.selected_ids) > 1:
+            self.edit_btn.setText(f"✏️ Bulk Edit ({len(self.selected_ids)})")
+        else:
+            self.edit_btn.setText("✏️ Edit Metadata")
+
+        # Export Selected 버튼
+        self.export_selected_btn.setEnabled(len(self.selected_ids) > 0)
+        if len(self.selected_ids) > 1:
+            self.export_selected_btn.setText(f"📤 Export Selected ({len(self.selected_ids)})")
+        else:
+            self.export_selected_btn.setText("📤 Export Selected")
+
         # 선택된 항목 수 업데이트
         self._update_selection_status()
         
@@ -396,7 +432,43 @@ class DatabaseBrowserDialog(QDialog):
             self._show_details(self.selected_ids[0])
         else:
             self._clear_details()
-    
+
+    def _on_table_context_menu(self, pos):
+        """테이블 우클릭 시 컨텍스트 메뉴 (Load / Edit Metadata / Export Selected / Delete Selected)"""
+        index = self.table.indexAt(pos)
+
+        # 선택되지 않은 행에서 우클릭하면 해당 행만 선택
+        if index.isValid() and not self.table.item(index.row(), 0).isSelected():
+            self.table.selectRow(index.row())
+
+        if not self.selected_ids:
+            return
+
+        menu = QMenu(self)
+
+        load_action = menu.addAction("📂 Load Selected Dataset(s)")
+        load_action.triggered.connect(self._on_load_selected)
+
+        menu.addSeparator()
+
+        if len(self.selected_ids) > 1:
+            edit_action = menu.addAction(f"✏️ Bulk Edit ({len(self.selected_ids)})")
+        else:
+            edit_action = menu.addAction("✏️ Edit Metadata")
+        edit_action.triggered.connect(self._on_edit_selected)
+
+        menu.addSeparator()
+
+        export_action = menu.addAction(f"📤 Export Selected ({len(self.selected_ids)})")
+        export_action.triggered.connect(self._on_export_selected)
+
+        menu.addSeparator()
+
+        delete_action = menu.addAction("🗑️ Delete Selected")
+        delete_action.triggered.connect(self._on_delete_selected)
+
+        menu.exec(self.table.viewport().mapToGlobal(pos))
+
     def _update_selection_status(self):
         """선택된 항목 수 표시 업데이트"""
         stats = self.db_manager.get_statistics()
@@ -491,26 +563,48 @@ class DatabaseBrowserDialog(QDialog):
             self.selected_ids = []
     
     def _on_edit_selected(self):
-        """선택된 데이터셋 메타데이터 편집"""
-        if len(self.selected_ids) != 1:
+        """선택된 데이터셋 메타데이터 편집 (단일 선택: 개별 편집, 다중 선택: 일괄 편집)"""
+        if not self.selected_ids:
             return
-        
-        dataset_id = self.selected_ids[0]
-        metadata = self.db_manager.get_metadata(dataset_id)
-        
-        if not metadata:
-            QMessageBox.warning(self, "Error", "Dataset not found.")
-            return
-        
-        from gui.dataset_edit_dialog import DatasetEditDialog
-        
-        dialog = DatasetEditDialog(metadata, self.db_manager, self)
-        dialog.edit_completed.connect(self._on_edit_completed)
-        dialog.exec()
-    
+
+        if len(self.selected_ids) == 1:
+            dataset_id = self.selected_ids[0]
+            metadata = self.db_manager.get_metadata(dataset_id)
+
+            if not metadata:
+                QMessageBox.warning(self, "Error", "Dataset not found.")
+                return
+
+            from gui.dataset_edit_dialog import DatasetEditDialog
+
+            dialog = DatasetEditDialog(metadata, self.db_manager, self)
+            dialog.edit_completed.connect(self._on_edit_completed)
+            dialog.exec()
+        else:
+            metadata_list = [
+                self.db_manager.get_metadata(dataset_id)
+                for dataset_id in self.selected_ids
+            ]
+            metadata_list = [m for m in metadata_list if m is not None]
+
+            if not metadata_list:
+                QMessageBox.warning(self, "Error", "Datasets not found.")
+                return
+
+            from gui.dataset_bulk_edit_dialog import BulkEditDialog
+
+            dialog = BulkEditDialog(metadata_list, self.db_manager, self)
+            dialog.edit_completed.connect(self._on_bulk_edit_completed)
+            dialog.exec()
+
     def _on_edit_completed(self, dataset_id: str):
         """편집 완료 후 목록 새로고침"""
         self.logger.info(f"Dataset metadata edited: {dataset_id}")
+        self._load_datasets()
+
+    def _on_bulk_edit_completed(self, dataset_ids: List[str]):
+        """일괄 편집 완료 후 목록 새로고침"""
+        self.logger.info(f"Bulk edited {len(dataset_ids)} dataset(s): {dataset_ids}")
         self._load_datasets()
     
     def _on_refresh_database(self):
@@ -624,4 +718,74 @@ class DatabaseBrowserDialog(QDialog):
                 self,
                 "Import Folder Failed",
                 f"An error occurred while importing the folder:\n{str(e)}",
+            )
+
+    def _on_export_selected(self):
+        """선택된 데이터셋을 폴더로 내보내기"""
+        if not self.selected_ids:
+            QMessageBox.warning(self, "No Selection", "Please select dataset(s) to export.")
+            return
+
+        self._export_datasets(self.selected_ids)
+
+    def _on_export_all(self):
+        """전체 데이터베이스를 폴더로 내보내기"""
+        all_ids = [m.dataset_id for m in self.db_manager.metadata_list]
+        if not all_ids:
+            QMessageBox.information(self, "Nothing to Export", "The database is empty.")
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Confirm Export All",
+            f"Export all {len(all_ids)} dataset(s) to a folder?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        self._export_datasets(all_ids)
+
+    def _export_datasets(self, dataset_ids: List[str]):
+        """dataset_id 목록을 사용자가 선택한 폴더로 내보내기 (Export Selected/All 공통 로직)"""
+        from PyQt6.QtWidgets import QFileDialog
+
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            f"Select destination folder to export {len(dataset_ids)} dataset(s)",
+            "",
+        )
+        if not folder:
+            return
+
+        export_dir = Path(folder)
+        success_count = 0
+        failed_aliases = []
+
+        try:
+            for dataset_id in dataset_ids:
+                metadata = self.db_manager.get_metadata(dataset_id)
+                alias = metadata.alias if metadata else dataset_id
+                if self.db_manager.export_dataset(dataset_id, export_dir):
+                    success_count += 1
+                else:
+                    failed_aliases.append(alias)
+
+            lines = [f"✅ {success_count} dataset(s) exported to:\n{export_dir}"]
+            if failed_aliases:
+                lines.append(f"\n⚠️ {len(failed_aliases)} failed: {', '.join(failed_aliases)}")
+            lines.append(
+                "\nShare this folder (e.g. upload to Google Drive) — "
+                "others can merge it via '📥 Import Folder'."
+            )
+
+            QMessageBox.information(self, "Export Complete", "\n".join(lines))
+
+        except Exception as e:
+            self.logger.error(f"Failed to export dataset(s): {e}")
+            QMessageBox.critical(
+                self,
+                "Export Failed",
+                f"An error occurred while exporting:\n{str(e)}",
             )
