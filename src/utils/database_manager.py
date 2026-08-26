@@ -18,12 +18,9 @@ import pandas as pd
 from models.data_models import Dataset, PreloadedDatasetMetadata, DatasetType
 from utils.data_path_config import DataPathConfig
 
-# 3차 분석 파이프라인(seqviewer_manifest.json)이 쓰는 dataset_type 문자열 →
-# 앱의 DatasetType.value 매핑. 일치하는 값(go_analysis, chromvar_diff_tf 등)은
-# 그대로 통과하고, 명명이 다른 것만 여기서 변환한다.
-_MANIFEST_TYPE_MAP = {
-    'differential_accessibility': DatasetType.ATAC_SEQ.value,
-}
+# dataset_type 문자열 별칭 매핑(differential_accessibility → atac_seq 등)은
+# PreloadedDatasetMetadata.from_dict()에서 단일 지점으로 적용된다
+# (models.data_models.DATASET_TYPE_ALIASES) — manifest/metadata.json 어느 경로든 동일 적용.
 
 # manifest 필드명 → PreloadedDatasetMetadata 필드명 (값이 없을 때만 보완)
 _MANIFEST_FIELD_FALLBACK = {
@@ -34,11 +31,9 @@ _MANIFEST_FIELD_FALLBACK = {
 
 def _normalize_manifest_item(item: Dict[str, Any]) -> Dict[str, Any]:
     """seqviewer_manifest.json의 datasets[] 항목을 PreloadedDatasetMetadata.from_dict()가
-    이해하는 스키마로 변환한다 (dataset_type 명명 차이, peak_count/significant_peaks 등
-    ATAC 전용 필드명 보완)."""
+    이해하는 스키마로 변환한다 (peak_count/significant_peaks 등 ATAC 전용 필드명 보완).
+    dataset_type 별칭 변환은 from_dict()에서 공통 처리되므로 여기서는 건드리지 않는다."""
     norm = dict(item)
-    raw_type = norm.get('dataset_type', '')
-    norm['dataset_type'] = _MANIFEST_TYPE_MAP.get(raw_type, raw_type)
     for target, source in _MANIFEST_FIELD_FALLBACK.items():
         if not norm.get(target) and norm.get(source):
             norm[target] = norm[source]

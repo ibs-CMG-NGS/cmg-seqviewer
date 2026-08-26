@@ -24,6 +24,20 @@ class DatasetType(Enum):
     UNKNOWN = "unknown"
 
 
+# 외부 분석 파이프라인(R 스크립트 등)이 metadata.json / seqviewer_manifest.json에 쓰는
+# dataset_type 문자열이 앱의 DatasetType.value와 이름이 다를 때의 매핑.
+# PreloadedDatasetMetadata.from_dict()에서 단일 지점으로 적용되어, metadata.json 직접
+# import든 manifest import든 동일하게 적용된다. 일치하는 값은 그대로 통과한다.
+DATASET_TYPE_ALIASES: Dict[str, str] = {
+    'differential_accessibility': DatasetType.ATAC_SEQ.value,
+    # src/analysis/01c_run_masigpro_timeseries.R (maSigPro time-series 결과):
+    # padj 있음 + log2fc 없음 + 샘플 컬럼 3개↑ — 앱에서는 MULTI_GROUP이 이 형태를 담당
+    'time_series': DatasetType.MULTI_GROUP.value,
+    # src/analysis/10_run_coexpression_modules.R (coexpression module 결과): 위와 동일 형태
+    'coexpression_module': DatasetType.MULTI_GROUP.value,
+}
+
+
 class NormalizationType(Enum):
     """발현량 정규화 방법"""
     NORMALIZED_COUNT = "normalized_count"  # DESeq2 normalized counts (기본값)
@@ -431,11 +445,12 @@ class PreloadedDatasetMetadata:
     @staticmethod
     def from_dict(data: Dict[str, Any]) -> 'PreloadedDatasetMetadata':
         """딕셔너리에서 생성"""
+        raw_type = data['dataset_type']
         return PreloadedDatasetMetadata(
             dataset_id=data['dataset_id'],
             alias=data['alias'],
             original_filename=data['original_filename'],
-            dataset_type=DatasetType(data['dataset_type']),
+            dataset_type=DatasetType(DATASET_TYPE_ALIASES.get(raw_type, raw_type)),
             experiment_condition=data.get('experiment_condition', ''),
             cell_type=data.get('cell_type', ''),
             organism=data.get('organism', ''),
