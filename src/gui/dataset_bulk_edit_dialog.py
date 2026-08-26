@@ -50,6 +50,8 @@ class BulkEditDialog(QDialog):
             | Qt.WindowType.WindowMinimizeButtonHint
         )
         self.setGeometry(150, 150, 620, 700)
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(self)
 
         layout = QVBoxLayout(self)
 

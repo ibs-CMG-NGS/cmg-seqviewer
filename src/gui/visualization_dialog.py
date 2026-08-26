@@ -891,6 +891,8 @@ class VolcanoPlotDialog(QDialog):
             | Qt.WindowType.WindowMaximizeButtonHint
             | Qt.WindowType.WindowMinimizeButtonHint
         )
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(self)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
@@ -1565,6 +1567,8 @@ class HeatmapDialog(QDialog):
             | Qt.WindowType.WindowMaximizeButtonHint
             | Qt.WindowType.WindowMinimizeButtonHint
         )
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(self)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)

@@ -67,6 +67,14 @@ class BasePlotDialog(QDialog):
             cont = getattr(self, '_settings_container', None)
             if scroll is not None and cont is not None:
                 QTimer.singleShot(0, lambda: self._fit_settings_scroll_width(scroll, cont))
+        if not getattr(self, '_geometry_remembered', False):
+            self._geometry_remembered = True
+            # 좌측 패널 폭 재조정(위 singleShot)이 먼저 실행되도록, 저장된 크기 복원은
+            # 같은 0ms 틱이지만 그 뒤에 예약한다 — 그래야 복원된 크기가 마지막에 적용되어
+            # 폭 재조정에 덮어써지지 않는다. (서브클래스가 super().__init__() 이후 자체
+            # resize()를 호출할 수도 있어 __init__이 아닌 showEvent에서 복원한다.)
+            from utils.dialog_geometry import remember_geometry
+            QTimer.singleShot(0, lambda: remember_geometry(self))
 
     @staticmethod
     def _fit_settings_scroll_width(scroll: QScrollArea, container: QWidget,

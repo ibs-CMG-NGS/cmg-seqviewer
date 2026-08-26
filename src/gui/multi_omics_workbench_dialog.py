@@ -71,6 +71,8 @@ class MultiOmicsWorkbenchDialog(QDialog):
             | Qt.WindowType.WindowMinimizeButtonHint
         )
         self.resize(1100, 750)
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(self)
 
         self._init_ui(rna_padj, rna_lfc, atac_padj, atac_lfc)
         self._hover = QuadrantHoverTooltip(self.canvas)

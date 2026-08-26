@@ -3275,6 +3275,8 @@ class MainWindow(QMainWindow):
             | Qt.WindowType.WindowMinimizeButtonHint
         )
         dlg.resize(520, 520)
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(dlg, "AboutDialog")
 
         root = QVBoxLayout(dlg)
         root.setContentsMargins(24, 24, 24, 16)
@@ -3604,7 +3606,9 @@ class MainWindow(QMainWindow):
                 | Qt.WindowType.WindowMinimizeButtonHint
             )
             dialog.setMinimumWidth(400)
-            
+            from utils.dialog_geometry import remember_geometry
+            remember_geometry(dialog, "VennDatasetSelect")
+
             layout = QVBoxLayout(dialog)
             layout.addWidget(QLabel("Select 2 or 3 datasets to compare:"))
             
@@ -3660,6 +3664,8 @@ class MainWindow(QMainWindow):
             | Qt.WindowType.WindowMinimizeButtonHint
         )
         select_dialog.setMinimumWidth(420)
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(select_dialog, f"DatasetSelectPrompt/{title}")
 
         layout = QVBoxLayout(select_dialog)
         layout.addWidget(QLabel(prompt))

@@ -20,6 +20,8 @@ class ThemeCustomizeDialog(QDialog):
             | Qt.WindowType.WindowMinimizeButtonHint
         )
         self.setMinimumWidth(340)
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(self)
 
         settings = QSettings("RNASeqDataView", "MainWindow")
         params = figure_theme.load_custom_params(settings)

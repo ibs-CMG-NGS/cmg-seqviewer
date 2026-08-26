@@ -48,6 +48,8 @@ class HelpDialog(QDialog):
             | Qt.WindowType.WindowMinimizeButtonHint
         )
         self.setMinimumSize(900, 700)
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(self)
         
         self._init_ui()
         self._load_content()

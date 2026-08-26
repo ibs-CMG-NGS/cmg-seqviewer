@@ -178,6 +178,8 @@ class GOClusteringDialog(QDialog):
             | Qt.WindowType.WindowMaximizeButtonHint
             | Qt.WindowType.WindowMinimizeButtonHint
         )
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(self)
         self._init_ui()
         
     def _init_ui(self):
@@ -455,6 +457,8 @@ class GOClusteringDialog(QDialog):
             buttons.rejected.connect(dlg.close)
             buttons.button(QDialogButtonBox.StandardButton.Close).clicked.connect(dlg.close)
             v.addWidget(buttons)
+            from utils.dialog_geometry import remember_geometry
+            remember_geometry(dlg, "GOClusteringFigureStyle")
             self._style_dialog = dlg
         self._style_dialog.show()
         self._style_dialog.raise_()

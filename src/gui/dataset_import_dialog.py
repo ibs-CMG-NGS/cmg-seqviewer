@@ -44,7 +44,9 @@ class DatasetImportDialog(QDialog):
             | Qt.WindowType.WindowMinimizeButtonHint
         )
         self.setGeometry(150, 150, 600, 700)
-        
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(self)
+
         layout = QVBoxLayout(self)
         
         # 데이터셋 정보 (읽기 전용)

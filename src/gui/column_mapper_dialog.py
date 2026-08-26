@@ -62,7 +62,9 @@ class ColumnMapperDialog(QDialog):
         )
         self.setMinimumWidth(700)
         self.setMinimumHeight(500)
-        
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(self)
+
         self._init_ui()
         self._apply_auto_mapping()
     

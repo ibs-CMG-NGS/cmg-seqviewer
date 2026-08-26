@@ -42,6 +42,8 @@ class ConcordanceSummaryDialog(QDialog):
             | Qt.WindowType.WindowMaximizeButtonHint
             | Qt.WindowType.WindowMinimizeButtonHint
         )
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(self)
         self._ax = None
         self._init_ui()
         self._plot()

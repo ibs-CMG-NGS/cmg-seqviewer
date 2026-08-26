@@ -52,7 +52,9 @@ class DatabaseBrowserDialog(QDialog):
             | Qt.WindowType.WindowMinimizeButtonHint
         )
         self.setGeometry(100, 100, 1200, 700)
-        
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(self)
+
         layout = QVBoxLayout(self)
         
         # 상단: 검색 및 필터

@@ -36,6 +36,8 @@ class GOFilterDialog(QDialog):
             | Qt.WindowType.WindowMinimizeButtonHint
         )
         self.setMinimumWidth(500)
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(self)
         
         self._init_ui()
     

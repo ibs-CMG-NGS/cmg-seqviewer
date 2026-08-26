@@ -22,6 +22,8 @@ class IGVSettingsDialog(QDialog):
         )
         self.setMinimumWidth(620)
         self.setMinimumHeight(460)
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(self)
         self._build_ui()
         self._load_settings()
 

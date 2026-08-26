@@ -25,6 +25,8 @@ class ColumnSubsetDialog(QDialog):
             | Qt.WindowType.WindowMinimizeButtonHint
         )
         self.resize(360, 480)
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(self)
         self._all_columns = list(columns)
         pre = set(preselected) if preselected is not None else set(columns)
 
