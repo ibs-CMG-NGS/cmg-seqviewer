@@ -6,7 +6,7 @@ hierarchical clustermap 으로 시각화합니다.
 
 Features:
   - padj / baseMean 필터
-  - 상위 N 유전자 제한 (정렬 기준: padj 오름차순)
+  - 상위 N 유전자 제한 (정렬 기준: |stat| 내림차순, stat 없으면 padj 오름차순 폴백)
   - Z-score 정규화 (row 단위, 각 유전자 평균=0 표준편차=1)
   - 그룹별 color annotation bar (상단)
   - gene_symbol 레이블 (없으면 gene_id)
@@ -65,6 +65,7 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
         self.normalization_type: NormalizationType = dataset.metadata.get(
             'normalization_type', NormalizationType.NORMALIZED_COUNT
         )
+        self._last_rank_method: Optional[str] = None   # Top N에 실제로 쓰인 랭킹 기준
 
         # metadata가 없을 때 dataframe에서 sample_columns/sample_groups 추론
         if not self.sample_columns and not self.df.empty:
@@ -158,7 +159,10 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
         self.top_n_spin.setRange(10, 5000)
         self.top_n_spin.setSingleStep(50)
         self.top_n_spin.setValue(200)
-        self.top_n_spin.setToolTip("Maximum genes to show (sorted by padj ascending)")
+        self.top_n_spin.setToolTip(
+            "Maximum genes to show — ranked by |stat| when available "
+            "(falls back to padj ascending otherwise)."
+        )
 
         self.filter_info_label = QLabel("–")
         self.filter_info_label.setStyleSheet("color: #555; font-size: 9pt;")
@@ -613,10 +617,21 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
             df = df[df['baseMean'] >= self.basemean_spin.value()]
 
         if df.empty:
+            self._last_rank_method = None
             return pd.DataFrame()
 
-        if 'padj' in df.columns:
+        # Top N 랭킹 기준: LRT test statistic(stat)이 있으면 그걸 최우선으로 쓴다 —
+        # padj는 매우 유의한 유전자들이 부동소수점 하한(0)에 뭉쳐 그 안에서 순위를
+        # 못 가리는 문제가 있지만, stat(카이제곱 통계량, 부호 없음)은 그 문제가 없다.
+        if 'stat' in df.columns:
+            stat = pd.to_numeric(df['stat'], errors='coerce').abs()
+            df = df.reindex(stat.sort_values(ascending=False).index)
+            self._last_rank_method = "|stat| (LRT test statistic)"
+        elif 'padj' in df.columns:
             df = df.sort_values('padj')
+            self._last_rank_method = "padj (ascending)"
+        else:
+            self._last_rank_method = None
         df = df.head(self.top_n_spin.value())
 
         return df
@@ -675,11 +690,13 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
         if sample_cols is None:
             sample_cols = [c for c in self.sample_columns if c in self._included_samples]
             sample_cols = self._ordered_sample_cols(sample_cols)
+        rank_method = getattr(self, '_last_rank_method', None)
         title = (
             f"{self.dataset.name}  |  Z-score  |  "
             f"padj≤{self.padj_spin.value():.3g}, "
             f"baseMean≥{self.basemean_spin.value():.3g}"
             + (f", n={n_genes}" if n_genes is not None else "")
+            + (f"  |  Top {self.top_n_spin.value()} ranked by {rank_method}" if rank_method else "")
         )
         return {
             'gene_label_col': 'gene_label',

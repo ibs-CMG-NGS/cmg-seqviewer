@@ -8,30 +8,49 @@ import pandas as pd
 
 
 def _draw_volcano_labels(ax, df, params):
-    """상위 N개(유의성) 또는 커스텀 유전자 이름 레이블."""
+    """상위 N개(유의성) 또는 커스텀 유전자 이름 레이블.
+
+    Returns:
+        top_n 모드에서 실제로 쓰인 랭킹 기준 설명 문자열(플롯에 표시용), 그 외엔 None.
+    """
     mode = params.get('annotation_mode', 'none')
     if mode in (None, '', 'none'):
-        return
+        return None
     gene_col = next((c for c in ('nearest_gene', 'gene_name', 'symbol', 'gene_id')
                      if c in df.columns), None)
     if gene_col is None:
-        return
+        return None
     size = int(params.get('annotation_label_size', 8))
+    rank_method = None
     if mode == 'top_n':
         n = int(params.get('annotation_top_n', 10))
         sig = df[df['regulation'].isin(['up', 'down'])].copy()
         if sig.empty:
-            return
-        sig['_score'] = sig['log2FC'].abs() * sig['-log10(padj)']
+            return None
+        # 랭킹 기준: DESeq2 Wald stat(=log2FC/lfcSE)이 있으면 그걸 최우선으로 쓴다 —
+        # padj는 매우 유의한 유전자들이 부동소수점 하한(0)에 뭉쳐 그 안에서 순위를
+        # 못 가리는 문제가 있지만, stat은 단순 비율이라 그 문제가 없다.
+        stat_col = next((c for c in ('stat', 'Stat', 'STAT') if c in sig.columns), None)
+        lfcse_col = next((c for c in ('lfcse', 'lfcSE', 'LFCSE', 'lfc_se') if c in sig.columns), None)
+        if stat_col:
+            sig['_score'] = pd.to_numeric(sig[stat_col], errors='coerce').abs()
+            rank_method = f"|Wald stat| ({stat_col})"
+        elif lfcse_col:
+            se = pd.to_numeric(sig[lfcse_col], errors='coerce')
+            sig['_score'] = (sig['log2FC'] / se).abs()
+            rank_method = "|log2FC / lfcSE| (computed)"
+        else:
+            sig['_score'] = sig['log2FC'].abs() * sig['-log10(padj)']
+            rank_method = "|log2FC| × -log10(padj)  (no stat/lfcSE available)"
         targets = sig.nlargest(n, '_score')
     else:  # custom
         custom = params.get('annotation_custom_genes') or []
         if not custom:
-            return
+            return None
         wanted = {str(g).upper() for g in custom}
         targets = df[df[gene_col].astype(str).str.upper().isin(wanted)]
         if targets.empty:
-            return
+            return None
     # 각 대상 유전자를 Text로 생성 후 adjustText로 자동 배치(겹침 방지 + 리더선).
     texts = []
     for _, row in targets.iterrows():
@@ -42,7 +61,7 @@ def _draw_volcano_labels(ax, df, params):
             zorder=500,
         ))
     if not texts:
-        return
+        return rank_method
     try:
         from adjustText import adjust_text
         adjust_text(
@@ -54,6 +73,7 @@ def _draw_volcano_labels(ax, df, params):
     except ImportError:
         # adjustText 미설치 환경(일부 번들 재현 등) → 라벨은 점 위에 그대로(겹칠 수 있음)
         pass
+    return rank_method
 
 
 def render_volcano(ax, df, params):
@@ -101,7 +121,13 @@ def render_volcano(ax, df, params):
         ax.set_ylim(float(ymin), float(ymax))
     ax.grid(True, alpha=0.3)
 
-    _draw_volcano_labels(ax, df, params)
+    rank_method = _draw_volcano_labels(ax, df, params)
+    if rank_method:
+        ax.text(
+            0.99, 0.01, f"Top-N ranked by: {rank_method}",
+            transform=ax.transAxes, ha='right', va='bottom',
+            fontsize=7, color='#666666', style='italic', zorder=600,
+        )
 
     # 라벨/범례/틱 (다이얼로그에선 PlotLabelsPanel이 이후 재적용해 우선; 번들에선 이게 최종)
     ax.set_xlabel(params.get('labels_xlabel') or 'Log2 Fold Change')
