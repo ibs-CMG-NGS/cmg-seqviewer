@@ -1,0 +1,16 @@
+[smoke] standardized df: (3053, 16), columns=['term_id', 'gene_count', 'bg_count', 'fdr', 'pvalue', 'gene_ratio', 'bg_ratio', 'gene_symbols', 'gene_set', 'direction', 'ontology', 'engine', 'fold_enrichment', '_gene_set', 'description', 'term']
+[smoke] GOKEGGLoader(converted, input-vocab) _standardize_columns+_parse_gene_symbols OK -> (3053, 17)
+[smoke] std columns: ['Background Count', '_description_check', '_gene_set', 'bg_ratio', 'description', 'direction', 'engine', 'fdr', 'fold_enrichment', 'gene_count', 'gene_ratio', 'gene_set', 'gene_symbols', 'ontology', 'pvalue', 'term', 'term_id']
+[smoke] loader round-trip: 3053 rows, 3053 non-empty _gene_set
+[smoke] Dataset.is_valid = True
+[smoke] GOBarChartDialog: PASS (instantiate+show+processEvents+close, no exception)
+[smoke] GODotPlotDialog: PASS (instantiate+show+processEvents+close, no exception)
+[smoke] GONetworkDialog: PASS (instantiate+show+processEvents+close, no exception)
+[smoke] GOClusteringDialog: PASS (instantiate+show+processEvents+close, no exception)
+[clustering] GOClustering(0.3) -> 103 clusters, 103 non-singleton
+[clustering] max Jaccard pair = 1.0000 -> rows (0, 1916)
+   term_id                                                term gene_set
+GO:0014912 negative regulation of smooth muscle cell migration TOTAL_BP
+GO:0014912 negative regulation of smooth muscle cell migration TOTAL_BP
+[clustering] acceptance (max Jaccard 1.0000 > 0.3): PASS
+[P0-5] ALL PASS

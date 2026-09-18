@@ -1,0 +1,207 @@
+F.FFF..EEE.............                                                  [100%]
+==================================== ERRORS ====================================
+_______ ERROR at setup of TestStatisticalAnalyzer.test_fisher_exact_test _______
+
+self = <test_statistics.TestStatisticalAnalyzer object at 0x7b9da8890da0>
+
+    @pytest.fixture
+    def sample_dataset(self):
+        """샘플 데이터셋 생성"""
+        np.random.seed(42)
+        n = 100
+    
+        df = pd.DataFrame({
+            'gene': [f'GENE{i}' for i in range(n)],
+            'log2fc': np.random.randn(n) * 2,
+            'pvalue': np.random.uniform(0, 1, n),
+            'padj': np.random.uniform(0, 1, n)
+        })
+    
+        # 일부 유전자를 유의미하게 설정
+        df.loc[:20, 'padj'] = 0.01
+        df.loc[:20, 'log2fc'] = np.random.randn(21) * 3 + 2
+    
+>       return Dataset(
+            name="Test Dataset",
+            dataset_type=DatasetType.DIFFERENTIAL_EXPRESSION,
+            dataframe=df,
+            column_mapping={
+                'gene': 'gene_id',
+                'log2fc': 'log2fc',
+                'pvalue': 'pvalue',
+                'padj': 'adj_pvalue'
+            }
+        )
+E       TypeError: Dataset.__init__() got an unexpected keyword argument 'column_mapping'
+
+test/test_statistics.py:32: TypeError
+___________ ERROR at setup of TestStatisticalAnalyzer.test_gsea_lite ___________
+
+self = <test_statistics.TestStatisticalAnalyzer object at 0x7b9da8439d30>
+
+    @pytest.fixture
+    def sample_dataset(self):
+        """샘플 데이터셋 생성"""
+        np.random.seed(42)
+        n = 100
+    
+        df = pd.DataFrame({
+            'gene': [f'GENE{i}' for i in range(n)],
+            'log2fc': np.random.randn(n) * 2,
+            'pvalue': np.random.uniform(0, 1, n),
+            'padj': np.random.uniform(0, 1, n)
+        })
+    
+        # 일부 유전자를 유의미하게 설정
+        df.loc[:20, 'padj'] = 0.01
+        df.loc[:20, 'log2fc'] = np.random.randn(21) * 3 + 2
+    
+>       return Dataset(
+            name="Test Dataset",
+            dataset_type=DatasetType.DIFFERENTIAL_EXPRESSION,
+            dataframe=df,
+            column_mapping={
+                'gene': 'gene_id',
+                'log2fc': 'log2fc',
+                'pvalue': 'pvalue',
+                'padj': 'adj_pvalue'
+            }
+        )
+E       TypeError: Dataset.__init__() got an unexpected keyword argument 'column_mapping'
+
+test/test_statistics.py:32: TypeError
+_______ ERROR at setup of TestStatisticalAnalyzer.test_compare_datasets ________
+
+self = <test_statistics.TestStatisticalAnalyzer object at 0x7b9da8439fd0>
+
+    @pytest.fixture
+    def sample_dataset(self):
+        """샘플 데이터셋 생성"""
+        np.random.seed(42)
+        n = 100
+    
+        df = pd.DataFrame({
+            'gene': [f'GENE{i}' for i in range(n)],
+            'log2fc': np.random.randn(n) * 2,
+            'pvalue': np.random.uniform(0, 1, n),
+            'padj': np.random.uniform(0, 1, n)
+        })
+    
+        # 일부 유전자를 유의미하게 설정
+        df.loc[:20, 'padj'] = 0.01
+        df.loc[:20, 'log2fc'] = np.random.randn(21) * 3 + 2
+    
+>       return Dataset(
+            name="Test Dataset",
+            dataset_type=DatasetType.DIFFERENTIAL_EXPRESSION,
+            dataframe=df,
+            column_mapping={
+                'gene': 'gene_id',
+                'log2fc': 'log2fc',
+                'pvalue': 'pvalue',
+                'padj': 'adj_pvalue'
+            }
+        )
+E       TypeError: Dataset.__init__() got an unexpected keyword argument 'column_mapping'
+
+test/test_statistics.py:32: TypeError
+=================================== FAILURES ===================================
+______________ TestDifferentialExpressionData.test_is_significant ______________
+
+self = <test_models.TestDifferentialExpressionData object at 0x7b9dc71227e0>
+
+    def test_is_significant(self):
+        """유의성 판단 테스트"""
+        de_data = DifferentialExpressionData(
+            gene_id="BRCA1",
+            log2fc=2.5,
+            pvalue=0.001,
+            adj_pvalue=0.01
+        )
+    
+>       assert de_data.is_significant(adj_pvalue_cutoff=0.05, log2fc_cutoff=1.0) is True
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: 'bool' object is not callable
+
+test/test_models.py:29: TypeError
+______________________ TestDataset.test_dataset_creation _______________________
+
+self = <test_models.TestDataset object at 0x7b9dc66f11f0>
+
+    def test_dataset_creation(self):
+        """데이터셋 생성 테스트"""
+        df = pd.DataFrame({
+            'gene': ['BRCA1', 'TP53', 'EGFR'],
+            'log2fc': [2.5, -1.8, 1.2],
+            'pvalue': [0.001, 0.002, 0.05],
+            'padj': [0.01, 0.02, 0.1]
+        })
+    
+>       dataset = Dataset(
+            name="Test Dataset",
+            dataset_type=DatasetType.DIFFERENTIAL_EXPRESSION,
+            dataframe=df,
+            column_mapping={
+                'gene': 'gene_id',
+                'log2fc': 'log2fc',
+                'pvalue': 'pvalue',
+                'padj': 'adj_pvalue'
+            }
+        )
+E       TypeError: Dataset.__init__() got an unexpected keyword argument 'column_mapping'
+
+test/test_models.py:55: TypeError
+______________________ TestDataset.test_get_filtered_data ______________________
+
+self = <test_models.TestDataset object at 0x7b9dc5adecc0>
+
+    def test_get_filtered_data(self):
+        """필터링 테스트"""
+        df = pd.DataFrame({
+            'gene': ['BRCA1', 'TP53', 'EGFR', 'MYC'],
+            'log2fc': [2.5, -1.8, 1.2, 0.5],
+            'padj': [0.01, 0.02, 0.03, 0.1]
+        })
+    
+>       dataset = Dataset(
+            name="Test",
+            dataset_type=DatasetType.DIFFERENTIAL_EXPRESSION,
+            dataframe=df,
+            column_mapping={
+                'gene': 'gene_id',
+                'log2fc': 'log2fc',
+                'padj': 'adj_pvalue'
+            }
+        )
+E       TypeError: Dataset.__init__() got an unexpected keyword argument 'column_mapping'
+
+test/test_models.py:79: TypeError
+__________________________ TestDataset.test_get_genes __________________________
+
+self = <test_models.TestDataset object at 0x7b9dc5add370>
+
+    def test_get_genes(self):
+        """유전자 목록 추출 테스트"""
+        df = pd.DataFrame({
+            'gene': ['BRCA1', 'TP53', 'EGFR'],
+            'log2fc': [2.5, -1.8, 1.2]
+        })
+    
+>       dataset = Dataset(
+            name="Test",
+            dataset_type=DatasetType.DIFFERENTIAL_EXPRESSION,
+            dataframe=df,
+            column_mapping={'gene': 'gene_id', 'log2fc': 'log2fc'}
+        )
+E       TypeError: Dataset.__init__() got an unexpected keyword argument 'column_mapping'
+
+test/test_models.py:101: TypeError
+=========================== short test summary info ============================
+FAILED test/test_models.py::TestDifferentialExpressionData::test_is_significant - TypeError: 'bool' object is not callable
+FAILED test/test_models.py::TestDataset::test_dataset_creation - TypeError: Dataset.__init__() got an unexpected keyword argument 'column_mapping'
+FAILED test/test_models.py::TestDataset::test_get_filtered_data - TypeError: Dataset.__init__() got an unexpected keyword argument 'column_mapping'
+FAILED test/test_models.py::TestDataset::test_get_genes - TypeError: Dataset.__init__() got an unexpected keyword argument 'column_mapping'
+ERROR test/test_statistics.py::TestStatisticalAnalyzer::test_fisher_exact_test - TypeError: Dataset.__init__() got an unexpected keyword argument 'column_mapping'
+ERROR test/test_statistics.py::TestStatisticalAnalyzer::test_gsea_lite - TypeError: Dataset.__init__() got an unexpected keyword argument 'column_mapping'
+ERROR test/test_statistics.py::TestStatisticalAnalyzer::test_compare_datasets - TypeError: Dataset.__init__() got an unexpected keyword argument 'column_mapping'
+4 failed, 16 passed, 3 errors in 5.52s

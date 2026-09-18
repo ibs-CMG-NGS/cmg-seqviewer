@@ -1,0 +1,19 @@
+{
+ "study_n": 4572,
+ "population_n": 30438,
+ "app_ids": 21140,
+ "ref_ids": 10988,
+ "id_overlap": 10286,
+ "id_overlap_pct": 93.6,
+ "desc_overlap_pct": 91.6,
+ "sig": {
+  "both": 55,
+  "app_only": 83,
+  "ref_only": 4793
+ },
+ "top50_fdr_overlap": 1,
+ "top50_app_sig": 138,
+ "shared_terms": 84669,
+ "spearman_rho": 0.23338937389557954,
+ "elapsed_s": 69
+}

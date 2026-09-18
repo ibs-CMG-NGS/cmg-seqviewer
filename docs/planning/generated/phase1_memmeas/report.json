@@ -1,0 +1,29 @@
+{
+ "baseline_kb": 755328,
+ "after_downloads_kb": 755328,
+ "after_obo_kb": 755328,
+ "after_assoc_kb": 755328,
+ "after_mapper_kb": 755328,
+ "after_ns_kb": 781932,
+ "after_run_kb": 788588,
+ "obo_delta_kb": 0,
+ "assoc_delta_kb": 0,
+ "mapper_delta_kb": 0,
+ "ns_delta_kb": 26604,
+ "run_delta_kb": 6656,
+ "local_go_footprint_kb": 33260,
+ "peak_kb": 788588,
+ "timer_s": {
+  "obo": 1.9547984600067139,
+  "gene2go": 79.5843300819397,
+  "gene_info": 106.30505275726318,
+  "obo_parse": 0.552833080291748,
+  "assoc": 2.3536932468414307,
+  "mapper": 1.1965219974517822,
+  "ns_init": 1.139286994934082,
+  "run": 1.135789155960083
+ },
+ "study_n": 39,
+ "results_n": 6736,
+ "cache_dir": "/tmp/cmg_p1mem_h4f96rz7"
+}

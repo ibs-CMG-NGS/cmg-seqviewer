@@ -1,0 +1,44 @@
+parquet rows: 3175 | unique non-empty symbols: 2509 | first 100: 100
+first 10 genes: ['GM29233', 'CTGF', 'GM15725', 'ACTB', 'ACTG2', 'IGFBP7', 'CYR61', 'PAPPA', '2310015A10RIK', 'AC102815.1']
+gene count should be 100 -> 100
+gseapy version: 1.3.1
+GO call wall-time: 1.97s
+GO shape: (723, 10)
+GO columns: ['Gene_set', 'Term', 'Overlap', 'P-value', 'Adjusted P-value', 'Old P-value', 'Old Adjusted P-value', 'Odds Ratio', 'Combined Score', 'Genes']
+KEGG call wall-time: 1.46s
+KEGG shape: (107, 10)
+KEGG columns: ['Gene_set', 'Term', 'Overlap', 'P-value', 'Adjusted P-value', 'Old P-value', 'Old Adjusted P-value', 'Odds Ratio', 'Combined Score', 'Genes']
+=== (a) exact column names (GO) ===
+['Gene_set', 'Term', 'Overlap', 'P-value', 'Adjusted P-value', 'Old P-value', 'Old Adjusted P-value', 'Odds Ratio', 'Combined Score', 'Genes']
+shape GO: (723, 10) | shape KEGG: (107, 10)
+
+=== (b) Overlap format, 3 sample rows (GO) ===
+'3/14'
+'4/42'
+'6/163'
+=== (b) Overlap format, 3 sample rows (KEGG) ===
+'6/152'
+'6/169'
+'5/124'
+
+=== (c) Genes separator, 3 sample rows (GO) ===
+sep ';' in genes: True | sample: IGFBP3;SERPINE1;TPM1
+sep ';' in genes: True | sample: COL1A1;COL3A1;COL1A2;LOXL1
+sep ';' in genes: True | sample: COL3A1;IGFBP3;SERPINE1;TPM1;STC1;CALR
+=== (c) Genes separator, 3 sample rows (KEGG) ===
+sep ';' in genes: True | sample: ITGB1;TUBA1C;TUBA1B;TUBA1A;CALR;ACTB
+sep ';' in genes: True | sample: ITGB1;TUBA1C;TUBA1B;TUBA1A;MYL9;ACTB
+sep ';' in genes: True | sample: COL1A1;ITGB1;COL3A1;COL1A2;ACTB
+
+=== (d) KEGG Term content — 3 verbatim ===
+'Phagosome'
+'Tight junction'
+'Platelet activation'
+KEGG terms starting with hsa\d+: 0 / 107 | containing hsa\d+ anywhere: 0
+
+=== (e) GO Term content — 3 verbatim ===
+'Negative Regulation Of Smooth Muscle Cell Migration (GO:0014912)'
+'Collagen Fibril Organization (GO:0030199)'
+'Negative Regulation Of Cell Migration (GO:0030336)'
+GO Terms containing GO:\d{7}: 723 / 723
+all GO Terms have GO id embedded: False

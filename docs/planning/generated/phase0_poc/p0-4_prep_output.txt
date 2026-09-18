@@ -1,0 +1,10 @@
+docs/planning/generated/phase0_poc/data/go-basic.obo: fmt(1.2) rel(2026-07-26) 41,378 Terms; optional_attrs(relationship)
+obo_names entries: 41378
+HMS:0:00:02.573130 446,674 annotations, 20,363 genes, 17,987 GOs, 1 taxids READ: docs/planning/generated/phase0_poc/data/gene2go_human.tsv 
+9606 genes in assoc: 20363
+count_terms full-assoc wall=0.13s terms=17987
+saved goatools_term_sizes.json entries: 17987
+gmt_go: entries= 5407 universe= 14698
+gmt_kegg: entries= 320 universe= 8078
+GO:0007010 cytoskeleton organization: assoc_size= 143 gmt_size= 111 study_count= 9
+P0-4 prep DONE

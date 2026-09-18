@@ -1,0 +1,56 @@
+{
+ "da": "data/datasets/3D_vs_CONTROL_DA.parquet",
+ "ref": "data/datasets/3D_vs_CONTROL_GO_KEGG.parquet",
+ "cache": "/tmp/val_mouse_cache",
+ "results": {
+  "UP": {
+   "deg_n": 5756,
+   "app_ids": 21140,
+   "ref_ids": 10988,
+   "id_overlap": 10286,
+   "id_overlap_pct": 93.6,
+   "desc_overlap_pct": 91.6,
+   "top50_overlap": 0,
+   "sig": {
+    "both": 55,
+    "app_only": 97,
+    "ref_only": 4793
+   },
+   "shared_n": 84669,
+   "spearman_rho": 0.23640585994481952
+  },
+  "DOWN": {
+   "deg_n": 4340,
+   "app_ids": 21140,
+   "ref_ids": 10988,
+   "id_overlap": 10286,
+   "id_overlap_pct": 93.6,
+   "desc_overlap_pct": 91.6,
+   "top50_overlap": 0,
+   "sig": {
+    "both": 8,
+    "app_only": 53,
+    "ref_only": 4840
+   },
+   "shared_n": 84669,
+   "spearman_rho": 0.15876637383954284
+  },
+  "TOTAL": {
+   "deg_n": 8992,
+   "app_ids": 21140,
+   "ref_ids": 10988,
+   "id_overlap": 10286,
+   "id_overlap_pct": 93.6,
+   "desc_overlap_pct": 91.6,
+   "top50_overlap": 0,
+   "sig": {
+    "both": 62,
+    "app_only": 140,
+    "ref_only": 4786
+   },
+   "shared_n": 84669,
+   "spearman_rho": 0.20885450486180474
+  }
+ },
+ "elapsed_s": 217
+}

@@ -1,0 +1,16 @@
+{
+  "gene_count": 100,
+  "mapped_entrez": 63,
+  "coverage": "63/100",
+  "gene2go_human_rows": 446674,
+  "gene_info_status": "full-pandas-attempt",
+  "obo_load_s": 2.08,
+  "obo_nodes": 41378,
+  "assoc_build_s": 3.85,
+  "ns_init_s": 0.56,
+  "run_study_s": 0.08,
+  "mem_delta_run_KiB": 0,
+  "n_results": 2223,
+  "n_significant_fdr_bh_005": 0,
+  "study_items_symbol_restore": "6566/6566"
+}

@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "kind": "app-automation",
+  "surface": "native",
+  "tool": "pytest-qt (PyQt6 offscreen)",
+  "command": "QT_QPA_PLATFORM=offscreen venv/bin/python -m pytest test/test_enrichment_dialog.py -q",
+  "exitCode": 0,
+  "elapsedSeconds": 2.61,
+  "tests": [
+    "test_source_dataset_run_and_register",
+    "test_source_paste_run",
+    "test_source_meta_run",
+    "test_mapping_error_shown",
+    "test_download_error_first_run_guidance",
+    "test_cancel_discards_partial",
+    "test_offline_kegg_disabled_notice",
+    "test_existing_visualization_no_crash",
+    "test_error_payload_ux[empty-\\uc2e4\\ud589\\ub41c \\ub77c\\uc774\\ube0c\\ub7ec\\ub9ac\\uac00 \\uc5c6\\uc2b5\\ub2c8\\ub2e4]",
+    "test_error_payload_ux[noinput-DEG \\uc720\\uc804\\uc790\\uac00 0\\uac74]"
+  ],
+  "resultLine": "10 passed, 54 warnings in 1.39s",
+  "evidenceRepoFiles": [
+    "src/gui/enrichment_analysis_dialog.py",
+    "src/workers/go_workers.py",
+    "test/test_enrichment_dialog.py"
+  ],
+  "actions": [
+    {
+      "id": "act-01",
+      "surface_area": "source_dataset",
+      "action": "dialog._on_run_clicked() with DE dataset tab",
+      "expected": "EnrichmentWorker started, result registered via presenter",
+      "outcome": "passed",
+      "type": "qt-run",
+      "status": "passed",
+      "timestamp": "2026-09-02T17:26:36.092043+00:00",
+      "selector": "dlg.dataset_combo"
+    },
+    {
+      "id": "act-02",
+      "surface_area": "source_paste",
+      "action": "setPlainText('tp53, jun, fos...') + run",
+      "expected": "request.source=='paste', A6 casing TP53, register",
+      "outcome": "passed",
+      "type": "qt-run",
+      "status": "passed",
+      "timestamp": "2026-09-02T17:26:36.092043+00:00",
+      "selector": "dlg.paste_edit"
+    },
+    {
+      "id": "act-03",
+      "surface_area": "source_meta",
+      "action": "meta tab run with stub Comparison df",
+      "expected": "request.source=='meta', meta_cutoff wired, register",
+      "outcome": "passed",
+      "type": "qt-run",
+      "status": "passed",
+      "timestamp": "2026-09-02T17:26:36.092043+00:00",
+      "selector": "dlg.meta_cutoff_spin"
+    },
+    {
+      "id": "act-04",
+      "surface_area": "error_mapping",
+      "action": "MAPPING ErrorPayload scenario",
+      "expected": "summary shows 매핑 0건 + modal notice",
+      "outcome": "passed",
+      "type": "qt-run",
+      "status": "passed",
+      "timestamp": "2026-09-02T17:26:36.092043+00:00",
+      "selector": "dlg.summary_label"
+    },
+    {
+      "id": "act-05",
+      "surface_area": "error_download",
+      "action": "DOWNLOAD ErrorPayload scenario",
+      "expected": "summary shows 캐시 다운로드 안내 (first-run guidance)",
+      "outcome": "passed",
+      "type": "qt-run",
+      "status": "passed",
+      "timestamp": "2026-09-02T17:26:36.092043+00:00",
+      "selector": "dlg.summary_label"
+    },
+    {
+      "id": "act-06",
+      "surface_area": "cancel",
+      "action": "_on_cancel_clicked during run",
+      "expected": "cancelled flag, no registration (partial discarded)",
+      "outcome": "passed",
+      "type": "qt-run",
+      "status": "passed",
+      "timestamp": "2026-09-02T17:26:36.092043+00:00",
+      "selector": "dlg.worker.cancelled"
+    },
+    {
+      "id": "act-07",
+      "surface_area": "offline_kegg",
+      "action": "offline mode KEGG-only",
+      "expected": "no KEGG rows in result + F3 notice",
+      "outcome": "passed",
+      "type": "qt-run",
+      "status": "passed",
+      "timestamp": "2026-09-02T17:26:36.092043+00:00",
+      "selector": "dlg.engine_combo"
+    },
+    {
+      "id": "act-08",
+      "surface_area": "viz_reuse",
+      "action": "registered GO_ANALYSIS dataset -> GOBar/GODot/GONetwork",
+      "expected": "no crash offscreen",
+      "outcome": "passed",
+      "type": "qt-run",
+      "status": "passed",
+      "timestamp": "2026-09-02T17:26:36.092043+00:00",
+      "selector": "GOBarChartDialog"
+    },
+    {
+      "id": "act-09",
+      "surface_area": "error_empty",
+      "action": "EMPTY_RESULT ErrorPayload scenario",
+      "expected": "summary shows 실행된 라이브러리가 없습니다",
+      "outcome": "passed",
+      "type": "qt-run",
+      "status": "passed",
+      "timestamp": "2026-09-02T17:26:36.092043+00:00",
+      "selector": "dlg.summary_label"
+    },
+    {
+      "id": "act-10",
+      "surface_area": "error_noinput",
+      "action": "NO_INPUT_GENES ErrorPayload scenario",
+      "expected": "summary shows DEG 유전자가 0건",
+      "outcome": "passed",
+      "type": "qt-run",
+      "status": "passed",
+      "timestamp": "2026-09-02T17:26:36.092043+00:00",
+      "selector": "dlg.summary_label"
+    }
+  ]
+}

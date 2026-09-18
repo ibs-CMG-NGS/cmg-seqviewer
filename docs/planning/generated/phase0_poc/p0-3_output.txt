@@ -1,0 +1,78 @@
+[shim] statsmodels.sandbox.stats.multicomp.multipletests -> statsmodels.stats.multitest.multipletests
+[genes] 100 symbols from parquet; first10=['GM29233', 'CTGF', 'GM15725', 'ACTB', 'ACTG2', 'IGFBP7', 'CYR61', 'PAPPA', '2310015A10RIK', 'AC102815.1']
+[gene2go filter] human rows=446674 wall=77.42s mem_delta=0KB file=docs/planning/generated/phase0_poc/data/gene2go_human.tsv
+[gene_info FULL pandas read] rows=72035010 wall=143.12s mem_delta=3018124KB
+[gene_info FULL read] human rows=193814 unique_symbols=193711
+[gene_info mapping parse wall=165.91s final_mem_delta=4371532KB]
+[mapping coverage] 63/100 symbols -> Entrez
+[mapping] unmapped(37): ['GM29233', 'CTGF', 'GM15725', 'CYR61', '2310015A10RIK', 'AC102815.1', 'GM22224', 'GM24877', 'MIR1903', 'GM11175', 'GM4430', 'GM2495', 'QK', 'GM13577', 'GM15796', 'GM11652', 'GM14287', 'GM26803', 'GM6501', 'GM7809']
+docs/planning/generated/phase0_poc/data/go-basic.obo: fmt(1.2) rel(2026-07-26) 41,378 Terms; optional_attrs(relationship)
+[obo] load wall=2.08s mem_delta=0KB nodes=41378
+HMS:0:00:03.505897 446,674 annotations, 20,363 genes, 17,987 GOs, 1 taxids READ: docs/planning/generated/phase0_poc/data/gene2go_human.tsv 
+[assoc] build wall=3.85s mem_delta=0KB ns_assoc_sizes={'MF': 18607, 'CC': 19487, 'BP': 18131}
+
+Load BP Ontology Enrichment Analysis ...
+Propagating term counts up: is_a
+ 92%     58 of     63 population items found in association
+
+Load CC Ontology Enrichment Analysis ...
+Propagating term counts up: is_a
+ 97%     61 of     63 population items found in association
+
+Load MF Ontology Enrichment Analysis ...
+Propagating term counts up: is_a
+ 97%     61 of     63 population items found in association
+[GOEnrichmentStudyNS init] wall=0.56s mem_delta=0KB
+
+Runing BP Ontology Analysis: current study set of 63 IDs.
+ 92%     58 of     63 study items found in association
+100%     63 of     63 study items found in population(63)
+Calculating 1,613 uncorrected p-values using fisher_scipy_stats
+   1,613 terms are associated with     58 of     63 population items
+   1,613 terms are associated with     58 of     63 study items
+  METHOD fdr_bh:
+       0 GO terms found significant (< 0.05=alpha) (  0 enriched +   0 purified): statsmodels fdr_bh
+       0 study items associated with significant GO IDs (enriched)
+       0 study items associated with significant GO IDs (purified)
+
+Runing CC Ontology Analysis: current study set of 63 IDs.
+ 97%     61 of     63 study items found in association
+100%     63 of     63 study items found in population(63)
+Calculating 285 uncorrected p-values using fisher_scipy_stats
+     285 terms are associated with     61 of     63 population items
+     285 terms are associated with     61 of     63 study items
+  METHOD fdr_bh:
+       0 GO terms found significant (< 0.05=alpha) (  0 enriched +   0 purified): statsmodels fdr_bh
+       0 study items associated with significant GO IDs (enriched)
+       0 study items associated with significant GO IDs (purified)
+
+Runing MF Ontology Analysis: current study set of 63 IDs.
+ 97%     61 of     63 study items found in association
+100%     63 of     63 study items found in population(63)
+Calculating 325 uncorrected p-values using fisher_scipy_stats
+     325 terms are associated with     61 of     63 population items
+     325 terms are associated with     61 of     63 study items
+  METHOD fdr_bh:
+       0 GO terms found significant (< 0.05=alpha) (  0 enriched +   0 purified): statsmodels fdr_bh
+       0 study items associated with significant GO IDs (enriched)
+       0 study items associated with significant GO IDs (purified)
+[run_study] wall=0.08s mem_delta=0KB n_results=2223
+[results] significant(fdr_bh<0.05)=0/2223
+            GO  NS                                       name  p_fdr_bh  study_count ratio_in_study
+0   GO:0060048  BP                 cardiac muscle contraction       1.0            1        (1, 63)
+1   GO:0034329  BP                     cell junction assembly       1.0            3        (3, 63)
+2   GO:0007010  BP                  cytoskeleton organization       1.0            9        (9, 63)
+3   GO:0045646  BP  regulation of erythrocyte differentiation       1.0            1        (1, 63)
+4   GO:2000147  BP       positive regulation of cell motility       1.0            7        (7, 63)
+5   GO:0090280  BP  positive regulation of calcium ion import       1.0            1        (1, 63)
+6   GO:0006470  BP                  protein dephosphorylation       1.0            1        (1, 63)
+7   GO:0031175  BP              neuron projection development       1.0            1        (1, 63)
+8   GO:0030048  BP              actin filament-based movement       1.0            1        (1, 63)
+9   GO:0009309  BP                 amine biosynthetic process       1.0            1        (1, 63)
+10  GO:1903708  BP         positive regulation of hemopoiesis       1.0            2        (2, 63)
+11  GO:0051641  BP                      cellular localization       1.0            9        (9, 63)
+[gene contrib] results with study_items (usable for _gene_set): 2223/2223
+[sample result attrs] GO=GO:0060048 NS=BP name='cardiac muscle contraction' study_items=[7168]
+[symbol restore] study items mapped back to symbols: 6566/6566
+[summary] {"gene_count": 100, "mapped_entrez": 63, "coverage": "63/100", "gene2go_human_rows": 446674, "gene_info_status": "full-pandas-attempt", "obo_load_s": 2.08, "obo_nodes": 41378, "assoc_build_s": 3.85, "ns_init_s": 0.56, "run_study_s": 0.08, "mem_delta_run_KiB": 0, "n_results": 2223, "n_significant_fdr_bh_005": 0, "study_items_symbol_restore": "6566/6566"}
+P0-3 DONE

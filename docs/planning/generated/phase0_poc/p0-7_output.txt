@@ -1,0 +1,79 @@
+[mouse] candidates=50 mapped=48 unmapped=['Tp73', 'Hprt']
+docs/planning/generated/phase0_poc/data/go-basic.obo: fmt(1.2) rel(2026-07-26) 41,378 Terms; optional_attrs(relationship)
+[mouse obo] wall=0.75s nodes=41378 rss_delta=0KB
+HMS:0:00:03.361148 595,946 annotations, 26,029 genes, 19,101 GOs, 1 taxids READ: docs/planning/generated/phase0_poc/data/gene2go_mouse.tsv 
+[mouse assoc] wall=3.71s rss_delta=331064KB sizes={'MF': 18769, 'CC': 22199, 'BP': 21342}
+
+Load BP Ontology Enrichment Analysis ...
+Propagating term counts up: is_a
+100%     48 of     48 population items found in association
+
+Load CC Ontology Enrichment Analysis ...
+Propagating term counts up: is_a
+100%     48 of     48 population items found in association
+
+Load MF Ontology Enrichment Analysis ...
+Propagating term counts up: is_a
+100%     48 of     48 population items found in association
+[mouse NS init] wall=0.35s
+
+Runing BP Ontology Analysis: current study set of 48 IDs.
+100%     48 of     48 study items found in association
+100%     48 of     48 study items found in population(48)
+Calculating 3,538 uncorrected p-values using fisher_scipy_stats
+   3,538 terms are associated with     48 of     48 population items
+   3,538 terms are associated with     48 of     48 study items
+  METHOD fdr_bh:
+       0 GO terms found significant (< 0.05=alpha) (  0 enriched +   0 purified): statsmodels fdr_bh
+       0 study items associated with significant GO IDs (enriched)
+       0 study items associated with significant GO IDs (purified)
+
+Runing CC Ontology Analysis: current study set of 48 IDs.
+100%     48 of     48 study items found in association
+100%     48 of     48 study items found in population(48)
+Calculating 335 uncorrected p-values using fisher_scipy_stats
+     335 terms are associated with     48 of     48 population items
+     335 terms are associated with     48 of     48 study items
+  METHOD fdr_bh:
+       0 GO terms found significant (< 0.05=alpha) (  0 enriched +   0 purified): statsmodels fdr_bh
+       0 study items associated with significant GO IDs (enriched)
+       0 study items associated with significant GO IDs (purified)
+
+Runing MF Ontology Analysis: current study set of 48 IDs.
+100%     48 of     48 study items found in association
+100%     48 of     48 study items found in population(48)
+Calculating 470 uncorrected p-values using fisher_scipy_stats
+     470 terms are associated with     48 of     48 population items
+     470 terms are associated with     48 of     48 study items
+  METHOD fdr_bh:
+       0 GO terms found significant (< 0.05=alpha) (  0 enriched +   0 purified): statsmodels fdr_bh
+       0 study items associated with significant GO IDs (enriched)
+       0 study items associated with significant GO IDs (purified)
+[mouse run_study] wall=0.06s rss_delta=60316KB n_results=4343
+[mouse results] total=4343 significant(fdr_bh<0.05)=0
+        GO NS                                                                   name  p_fdr_bh  study_count        symbols
+GO:0010623 BP                     programmed cell death involved in cell development       1.0            2       BAX/IL1B
+GO:0051592 BP                                                response to calcium ion       1.0            3 AKT1/CCND1/JUN
+GO:0061740 BP protein targeting to lysosome involved in chaperone-mediated autophagy       1.0            1          HSPA8
+GO:0032945 BP                  negative regulation of mononuclear cell proliferation       1.0            2   CASP3/CDKN2A
+GO:0043550 BP                                    regulation of lipid kinase activity       1.0            1            RB1
+GO:0007616 BP                                                       long-term memory       1.0            1           MTOR
+GO:0010824 BP                                   regulation of centrosome duplication       1.0            1          SIRT1
+GO:1902570 BP                                      protein localization to nucleolus       1.0            1         CDKN2A
+[mouse libs] get_library_name(mouse) returned 228 libraries in 1.05s
+[mouse libs] libraries containing 'mouse'/'MGI' (10):
+   - HDSigDB_Mouse_2021
+   - JASPAR_PWM_Mouse_2025
+   - KEGG_2019_Mouse
+   - KOMP2_Mouse_Phenotypes_2022
+   - MGI_Mammalian_Phenotype_Level_4_2021
+   - MGI_Mammalian_Phenotype_Level_4_2024
+   - Mouse_Gene_Atlas
+   - PerturbAtlas_MouseGenePerturbationSigs
+   - WikiPathways_2019_Mouse
+   - WikiPathways_2024_Mouse
+[mouse libs] GO/KEGG-named libraries containing 'mouse'/'MGI': 1
+   (GO/KEGG) KEGG_2019_Mouse
+[mouse libs] mouse GO_Biological_Process libraries found: 0 -> []
+[mouse libs] note: GO_Biological_Process_2023 (used in P0-2) is a human gene-symbol library; mouse-specific GO sets are NOT offered by Enrichr (evidence for ADR mouse=local-first)
+P0-7 DONE

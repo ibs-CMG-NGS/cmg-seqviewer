@@ -1,0 +1,112 @@
+Collecting gseapy
+  Downloading gseapy-1.3.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (12 kB)
+Collecting goatools
+  Downloading goatools-1.6.5-py3-none-any.whl.metadata (14 kB)
+Collecting mygene
+  Downloading mygene-3.2.2-py2.py3-none-any.whl.metadata (10 kB)
+Collecting statsmodels
+  Downloading statsmodels-0.15.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (9.6 kB)
+Collecting requests
+  Downloading requests-2.34.2-py3-none-any.whl.metadata (4.8 kB)
+Requirement already satisfied: numpy>=1.13.0 in ./venv/lib/python3.12/site-packages (from gseapy) (2.5.2)
+Requirement already satisfied: scipy in ./venv/lib/python3.12/site-packages (from gseapy) (1.18.1)
+Requirement already satisfied: pandas in ./venv/lib/python3.12/site-packages (from gseapy) (3.0.5)
+Requirement already satisfied: matplotlib>=2.2 in ./venv/lib/python3.12/site-packages (from gseapy) (3.11.1)
+Collecting ftpretty (from goatools)
+  Downloading ftpretty-0.4.0-py2.py3-none-any.whl.metadata (6.6 kB)
+Requirement already satisfied: openpyxl in ./venv/lib/python3.12/site-packages (from goatools) (3.1.5)
+Collecting pydot (from goatools)
+  Downloading pydot-4.0.1-py3-none-any.whl.metadata (11 kB)
+Collecting rich (from goatools)
+  Downloading rich-15.0.0-py3-none-any.whl.metadata (18 kB)
+Requirement already satisfied: setuptools in ./venv/lib/python3.12/site-packages (from goatools) (84.0.0)
+Collecting xlsxwriter (from goatools)
+  Downloading xlsxwriter-3.2.9-py3-none-any.whl.metadata (2.7 kB)
+Collecting biothings-client>=0.2.6 (from mygene)
+  Downloading biothings_client-0.5.1-py3-none-any.whl.metadata (11 kB)
+Collecting patsy>=0.5.6 (from statsmodels)
+  Downloading patsy-1.0.3-py2.py3-none-any.whl.metadata (3.7 kB)
+Requirement already satisfied: packaging>=21.3 in ./venv/lib/python3.12/site-packages (from statsmodels) (26.3)
+Collecting formulaic>=1.1.0 (from statsmodels)
+  Downloading formulaic-1.2.2-py3-none-any.whl.metadata (7.0 kB)
+Collecting charset_normalizer<4,>=2 (from requests)
+  Downloading charset_normalizer-3.5.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (45 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 45.9/45.9 kB 2.9 MB/s eta 0:00:00
+Collecting idna<4,>=2.5 (from requests)
+  Downloading idna-3.19-py3-none-any.whl.metadata (9.2 kB)
+Collecting urllib3<3,>=1.26 (from requests)
+  Downloading urllib3-2.7.0-py3-none-any.whl.metadata (6.9 kB)
+Collecting certifi>=2023.5.7 (from requests)
+  Downloading certifi-2026.7.22-py3-none-any.whl.metadata (2.5 kB)
+Collecting httpx<1.0,>=0.25.0 (from biothings-client>=0.2.6->mygene)
+  Downloading httpx-0.28.1-py3-none-any.whl.metadata (7.1 kB)
+Collecting interface-meta>=1.2.0 (from formulaic>=1.1.0->statsmodels)
+  Downloading interface_meta-2.0.1-py3-none-any.whl.metadata (6.4 kB)
+Requirement already satisfied: narwhals>=1.17 in ./venv/lib/python3.12/site-packages (from formulaic>=1.1.0->statsmodels) (2.25.0)
+Requirement already satisfied: typing-extensions>=4.2.0 in ./venv/lib/python3.12/site-packages (from formulaic>=1.1.0->statsmodels) (4.16.0)
+Collecting wrapt>=1.0 (from formulaic>=1.1.0->statsmodels)
+  Downloading wrapt-2.4.0-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata (7.4 kB)
+Requirement already satisfied: contourpy>=1.0.1 in ./venv/lib/python3.12/site-packages (from matplotlib>=2.2->gseapy) (1.3.3)
+Requirement already satisfied: cycler>=0.10 in ./venv/lib/python3.12/site-packages (from matplotlib>=2.2->gseapy) (0.12.1)
+Requirement already satisfied: fonttools>=4.28.2 in ./venv/lib/python3.12/site-packages (from matplotlib>=2.2->gseapy) (4.64.0)
+Requirement already satisfied: kiwisolver>=1.3.1 in ./venv/lib/python3.12/site-packages (from matplotlib>=2.2->gseapy) (1.5.1)
+Requirement already satisfied: pillow>=9 in ./venv/lib/python3.12/site-packages (from matplotlib>=2.2->gseapy) (12.3.0)
+Requirement already satisfied: pyparsing>=3 in ./venv/lib/python3.12/site-packages (from matplotlib>=2.2->gseapy) (3.3.2)
+Requirement already satisfied: python-dateutil>=2.7 in ./venv/lib/python3.12/site-packages (from matplotlib>=2.2->gseapy) (2.9.0.post0)
+Requirement already satisfied: et-xmlfile in ./venv/lib/python3.12/site-packages (from openpyxl->goatools) (2.0.0)
+Collecting markdown-it-py>=2.2.0 (from rich->goatools)
+  Downloading markdown_it_py-4.2.0-py3-none-any.whl.metadata (7.4 kB)
+Requirement already satisfied: pygments<3.0.0,>=2.13.0 in ./venv/lib/python3.12/site-packages (from rich->goatools) (2.21.0)
+Collecting anyio (from httpx<1.0,>=0.25.0->biothings-client>=0.2.6->mygene)
+  Downloading anyio-4.14.2-py3-none-any.whl.metadata (4.6 kB)
+Collecting httpcore==1.* (from httpx<1.0,>=0.25.0->biothings-client>=0.2.6->mygene)
+  Downloading httpcore-1.0.9-py3-none-any.whl.metadata (21 kB)
+Collecting h11>=0.16 (from httpcore==1.*->httpx<1.0,>=0.25.0->biothings-client>=0.2.6->mygene)
+  Downloading h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)
+Collecting mdurl~=0.1 (from markdown-it-py>=2.2.0->rich->goatools)
+  Downloading mdurl-0.1.2-py3-none-any.whl.metadata (1.6 kB)
+Requirement already satisfied: six>=1.5 in ./venv/lib/python3.12/site-packages (from python-dateutil>=2.7->matplotlib>=2.2->gseapy) (1.17.0)
+Downloading gseapy-1.3.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (689 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 689.9/689.9 kB 14.8 MB/s eta 0:00:00
+Downloading goatools-1.6.5-py3-none-any.whl (15.8 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 15.8/15.8 MB 30.0 MB/s eta 0:00:00
+Downloading mygene-3.2.2-py2.py3-none-any.whl (5.4 kB)
+Downloading statsmodels-0.15.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (12.0 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 12.0/12.0 MB 30.5 MB/s eta 0:00:00
+Downloading requests-2.34.2-py3-none-any.whl (73 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 73.1/73.1 kB 8.1 MB/s eta 0:00:00
+Downloading biothings_client-0.5.1-py3-none-any.whl (52 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 52.1/52.1 kB 5.8 MB/s eta 0:00:00
+Downloading certifi-2026.7.22-py3-none-any.whl (136 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 137.0/137.0 kB 13.4 MB/s eta 0:00:00
+Downloading charset_normalizer-3.5.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (248 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 248.8/248.8 kB 9.4 MB/s eta 0:00:00
+Downloading formulaic-1.2.2-py3-none-any.whl (118 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 118.9/118.9 kB 13.3 MB/s eta 0:00:00
+Downloading idna-3.19-py3-none-any.whl (68 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 68.5/68.5 kB 6.9 MB/s eta 0:00:00
+Downloading patsy-1.0.3-py2.py3-none-any.whl (233 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 233.3/233.3 kB 12.5 MB/s eta 0:00:00
+Downloading urllib3-2.7.0-py3-none-any.whl (131 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 131.1/131.1 kB 14.3 MB/s eta 0:00:00
+Downloading ftpretty-0.4.0-py2.py3-none-any.whl (8.2 kB)
+Downloading pydot-4.0.1-py3-none-any.whl (37 kB)
+Downloading rich-15.0.0-py3-none-any.whl (310 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 310.7/310.7 kB 11.2 MB/s eta 0:00:00
+Downloading xlsxwriter-3.2.9-py3-none-any.whl (175 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 175.3/175.3 kB 9.7 MB/s eta 0:00:00
+Downloading httpx-0.28.1-py3-none-any.whl (73 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 73.5/73.5 kB 7.3 MB/s eta 0:00:00
+Downloading httpcore-1.0.9-py3-none-any.whl (78 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 78.8/78.8 kB 3.1 MB/s eta 0:00:00
+Downloading interface_meta-2.0.1-py3-none-any.whl (15 kB)
+Downloading markdown_it_py-4.2.0-py3-none-any.whl (91 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 91.7/91.7 kB 9.7 MB/s eta 0:00:00
+Downloading wrapt-2.4.0-cp312-cp312-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (227 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 227.8/227.8 kB 8.6 MB/s eta 0:00:00
+Downloading mdurl-0.1.2-py3-none-any.whl (10.0 kB)
+Downloading anyio-4.14.2-py3-none-any.whl (125 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 125.8/125.8 kB 10.2 MB/s eta 0:00:00
+Downloading h11-0.16.0-py3-none-any.whl (37 kB)
+Installing collected packages: xlsxwriter, wrapt, urllib3, pydot, patsy, mdurl, interface-meta, idna, h11, charset_normalizer, certifi, requests, markdown-it-py, httpcore, ftpretty, anyio, rich, httpx, gseapy, formulaic, statsmodels, biothings-client, mygene, goatools
+Successfully installed anyio-4.14.2 biothings-client-0.5.1 certifi-2026.7.22 charset_normalizer-3.5.1 formulaic-1.2.2 ftpretty-0.4.0 goatools-1.6.5 gseapy-1.3.1 h11-0.16.0 httpcore-1.0.9 httpx-0.28.1 idna-3.19 interface-meta-2.0.1 markdown-it-py-4.2.0 mdurl-0.1.2 mygene-3.2.2 patsy-1.0.3 pydot-4.0.1 requests-2.34.2 rich-15.0.0 statsmodels-0.15.0 urllib3-2.7.0 wrapt-2.4.0 xlsxwriter-3.2.9

@@ -1,0 +1,8 @@
+{
+ "terms": 10988,
+ "oneside_rho": 0.9999999999999999,
+ "twoside_rho": 0.9710227107960037,
+ "p_ref_eq_oneside_pct": 1.0,
+ "median_ratio_ref_oneside": 1.0,
+ "median_ratio_ref_twoside": 0.823
+}

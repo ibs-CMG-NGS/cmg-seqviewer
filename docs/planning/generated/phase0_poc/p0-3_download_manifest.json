@@ -1,0 +1,17 @@
+{
+  "go-basic.obo": {
+    "sha256": "b08d45b268b8c24ccb2513dbbbc7d4df9f6521c099b413f79eb31e06e0fa3bcc",
+    "size_bytes": 32227785,
+    "hash_s": 0.3
+  },
+  "gene2go.gz": {
+    "sha256": "3027074743e94174b75cfb475b7c67376d19f5f6831d7758514b75b7f687182e",
+    "size_bytes": 1380328182,
+    "hash_s": 0.8
+  },
+  "gene_info.gz": {
+    "sha256": "6823dcaca8d83586acb610bcfdf6b17e139958486da27179f8eaed91894d508f",
+    "size_bytes": 1573751788,
+    "hash_s": 20.1
+  }
+}
