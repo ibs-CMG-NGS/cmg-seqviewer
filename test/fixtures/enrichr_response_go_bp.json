@@ -1,0 +1,38 @@
+[
+  {
+    "Gene_set": "GO_Biological_Process_2023",
+    "Term": "Negative Regulation Of Smooth Muscle Cell Migration (GO:0014912)",
+    "Overlap": "3/14",
+    "P-value": 4.24e-05,
+    "Adjusted P-value": 0.0206,
+    "Old P-value": 0.0,
+    "Old Adjusted P-value": 0.0,
+    "Odds Ratio": 55.92,
+    "Combined Score": 563.01,
+    "Genes": "IGFBP3;SERPINE1;TPM1"
+  },
+  {
+    "Gene_set": "GO_Biological_Process_2023",
+    "Term": "Collagen Fibril Organization (GO:0030199)",
+    "Overlap": "4/42",
+    "P-value": 5.69e-05,
+    "Adjusted P-value": 0.0206,
+    "Old P-value": 0.0,
+    "Old Adjusted P-value": 0.0,
+    "Odds Ratio": 21.78,
+    "Combined Score": 212.86,
+    "Genes": "COL1A1;COL3A1;COL1A2;LOXL1"
+  },
+  {
+    "Gene_set": "GO_Biological_Process_2023",
+    "Term": "Negative Regulation Of Cell Migration (GO:0030336)",
+    "Overlap": "6/163",
+    "P-value": 7.12e-05,
+    "Adjusted P-value": 0.0206,
+    "Old P-value": 0.0,
+    "Old Adjusted P-value": 0.0,
+    "Odds Ratio": 13.02,
+    "Combined Score": 123.47,
+    "Genes": "ITGB1;TUBA1C;TUBA1B;TUBA1A;CALR;ACTB"
+  }
+]
