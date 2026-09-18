@@ -163,3 +163,10 @@ Thumbs.db
 # Temporary test files
 test.svg
 test_db.py
+
+# Local scratch / generated artifacts (not for the repo)
+.gjc/
+.pybiomart.sqlite
+Filtered_common_deg_heatmap_bundle/
+cmg-smoke.spec
+data/2025-ljh-hiy-mouse-atac/
