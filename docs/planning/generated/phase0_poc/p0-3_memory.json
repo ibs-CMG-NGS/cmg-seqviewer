@@ -1,0 +1,15 @@
+{
+  "baseline_kb": 370168,
+  "after_obo_kb": 370168,
+  "after_assoc_kb": 559436,
+  "after_geneinfo_kb": 3888840,
+  "after_ns_init_kb": 5267820,
+  "after_run_kb": 5267820,
+  "obo_delta_kb": 0,
+  "assoc_delta_kb": 189268,
+  "geneinfo_delta_kb": 3329404,
+  "ns_init_delta_kb": 1378980,
+  "run_delta_kb": 0,
+  "peak_rss_kb": 5267820,
+  "peak_gb": 5.02
+}

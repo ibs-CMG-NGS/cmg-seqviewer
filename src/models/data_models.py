@@ -24,6 +24,20 @@ class DatasetType(Enum):
     UNKNOWN = "unknown"
 
 
+# 외부 분석 파이프라인(R 스크립트 등)이 metadata.json / seqviewer_manifest.json에 쓰는
+# dataset_type 문자열이 앱의 DatasetType.value와 이름이 다를 때의 매핑.
+# PreloadedDatasetMetadata.from_dict()에서 단일 지점으로 적용되어, metadata.json 직접
+# import든 manifest import든 동일하게 적용된다. 일치하는 값은 그대로 통과한다.
+DATASET_TYPE_ALIASES: Dict[str, str] = {
+    'differential_accessibility': DatasetType.ATAC_SEQ.value,
+    # src/analysis/01c_run_masigpro_timeseries.R (maSigPro time-series 결과):
+    # padj 있음 + log2fc 없음 + 샘플 컬럼 3개↑ — 앱에서는 MULTI_GROUP이 이 형태를 담당
+    'time_series': DatasetType.MULTI_GROUP.value,
+    # src/analysis/10_run_coexpression_modules.R (coexpression module 결과): 위와 동일 형태
+    'coexpression_module': DatasetType.MULTI_GROUP.value,
+}
+
+
 class NormalizationType(Enum):
     """발현량 정규화 방법"""
     NORMALIZED_COUNT = "normalized_count"  # DESeq2 normalized counts (기본값)
@@ -58,11 +72,10 @@ class DifferentialExpressionData:
     base_mean: Optional[float] = None
     additional_fields: Dict[str, Any] = field(default_factory=dict)
     
-    @property
-    def is_significant(self, adj_pvalue_cutoff: float = 0.05, 
+    def is_significant(self, adj_pvalue_cutoff: float = 0.05,
                        log2fc_cutoff: float = 1.0) -> bool:
-        """통계적 유의성 판단"""
-        return (abs(self.log2fc) >= log2fc_cutoff and 
+        """통계적 유의성 판단 (메서드 — test 계약: is_significant(cutoff, log2fc))."""
+        return (abs(self.log2fc) >= log2fc_cutoff and
                 self.adj_pvalue <= adj_pvalue_cutoff)
     
     @property
@@ -96,9 +109,8 @@ class GOAnalysisData:
     category: Optional[str] = None  # BP, MF, CC
     additional_fields: Dict[str, Any] = field(default_factory=dict)
     
-    @property
     def is_significant(self, fdr_cutoff: float = 0.05) -> bool:
-        """통계적 유의성 판단"""
+        """통계적 유의성 판단 (메서드 — GOAnalysisData 계약)."""
         return self.fdr <= fdr_cutoff
 
 
@@ -122,9 +134,19 @@ class Dataset:
     # 원본 컬럼명 참고 정보 (표준 컬럼명 -> 원본 컬럼명)
     # 표시 목적으로만 사용, 실제 데이터 접근에는 사용하지 않음
     original_columns: Dict[str, str] = field(default_factory=dict)
+
+    # 원본(raw) 컬럼명 -> 표준 컬럼명 매핑 (선택).
+    # 생성 시 dataframe을 표준 컬럼명으로 rename하는 동작 추가 (test 계약).
+    column_mapping: Dict[str, str] = field(default_factory=dict)
     
     def __post_init__(self):
         """데이터셋 초기화 후 처리"""
+        if self.column_mapping and self.dataframe is not None:
+            rename = {raw: std for raw, std in self.column_mapping.items()
+                      if raw in self.dataframe.columns and raw != std}
+            if rename:
+                self.dataframe = self.dataframe.rename(columns=rename)
+                self.original_columns = {std: raw for raw, std in rename.items()}
         if self.dataframe is not None:
             self.metadata['row_count'] = len(self.dataframe)
             self.metadata['column_count'] = len(self.dataframe.columns)
@@ -431,11 +453,12 @@ class PreloadedDatasetMetadata:
     @staticmethod
     def from_dict(data: Dict[str, Any]) -> 'PreloadedDatasetMetadata':
         """딕셔너리에서 생성"""
+        raw_type = data['dataset_type']
         return PreloadedDatasetMetadata(
             dataset_id=data['dataset_id'],
             alias=data['alias'],
             original_filename=data['original_filename'],
-            dataset_type=DatasetType(data['dataset_type']),
+            dataset_type=DatasetType(DATASET_TYPE_ALIASES.get(raw_type, raw_type)),
             experiment_condition=data.get('experiment_condition', ''),
             cell_type=data.get('cell_type', ''),
             organism=data.get('organism', ''),

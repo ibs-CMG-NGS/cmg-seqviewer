@@ -891,6 +891,8 @@ class VolcanoPlotDialog(QDialog):
             | Qt.WindowType.WindowMaximizeButtonHint
             | Qt.WindowType.WindowMinimizeButtonHint
         )
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(self)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
@@ -1050,6 +1052,15 @@ class HeatmapWidget(QWidget):
         self.fig_width = merged['fig_width']
         self.fig_height = merged['fig_height']
 
+        # Gene List 필터 프레임(_gene_list_rank 보존)이면 정렬 기본값을 입력 순서로 —
+        # 사용자가 넣어준 순서가 해석에 의미 있는 경우가 많다 (padj/clustering은
+        # 사용자가 명시적으로 고를 수 있다). 명시적 sorting 지정이 없을 때만 자동 적용.
+        no_explicit_sorting = plot_params is None or 'sorting' not in (plot_params or {})
+        has_rank = (getattr(self.dataframe, 'columns', None) is not None
+                    and '_gene_list_rank' in self.dataframe.columns)
+        if no_explicit_sorting and has_rank:
+            self.sorting = 'input'
+
         self._init_ui()
 
         # PlotLabelsPanel 기본값 설정 (plot_params 복원 포함)
@@ -1168,9 +1179,12 @@ class HeatmapWidget(QWidget):
         self.sort_combo.addItems([
             "Padj ↑",
             "|Log2FC| ↓",
-            "Clustering"
+            "Clustering",
+            "Input order"
         ])
-        sort_map = {'padj': 0, 'log2fc': 1, 'clustering': 2}
+        # Input order: 데이터셋 행 순서(예: Gene List 필터 입력 순서) 유지 —
+        # _gene_list_rank 열이 있으면 기본 선택으로 자동 전환한다.
+        sort_map = {'padj': 0, 'log2fc': 1, 'clustering': 2, 'input': 3}
         self.sort_combo.setCurrentIndex(sort_map.get(self.sorting, 0))
         self.sort_combo.currentIndexChanged.connect(self._on_settings_changed)
         settings_layout.addRow("Gene Sorting:", self.sort_combo)
@@ -1341,6 +1355,8 @@ class HeatmapWidget(QWidget):
             self.sorting = 'padj'
         elif sort_idx == 1:
             self.sorting = 'log2fc'
+        elif sort_idx == 3:
+            self.sorting = 'input'   # 행 순서 유지 (Gene List 필터 입력 순서)
         else:
             self.sorting = 'clustering'
 
@@ -1565,6 +1581,8 @@ class HeatmapDialog(QDialog):
             | Qt.WindowType.WindowMaximizeButtonHint
             | Qt.WindowType.WindowMinimizeButtonHint
         )
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(self)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)

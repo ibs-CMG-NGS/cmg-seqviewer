@@ -1,19 +1,30 @@
 # -*- mode: python ; coding: utf-8 -*-
 # Single-file executable version (slower startup, easier distribution)
 
+# GO/KEGG Enrichment Engine 번들 (plan §8/G1)
+from PyInstaller.utils.hooks import collect_all, collect_submodules, collect_data_files
+_datas, _binaries, _hidden = [], [], []
+for _pkg in ('gseapy', 'goatools', 'mygene'):
+    _d, _b, _h = collect_all(_pkg)
+    _datas += _d; _binaries += _b; _hidden += _h
+_datas += collect_data_files('goatools')
+_hidden += collect_submodules('statsmodels')
+
 block_cipher = None
 
 a = Analysis(
     ['src/main.py'],
     pathex=[],
-    binaries=[],
+    binaries=_binaries,
     datas=[
         # Pre-loaded datasets 포함
         ('database', 'database'),
         ('src', 'src'),  # 번들 export 재현 스크립트가 render 소스를 inline 하려면 필요
         ('data/orthologs/ortholog_map.csv.gz', 'data/orthologs'),  # cross-species 메타(M2)
-    ],
+        ('docs/user/help', 'docs/user/help'),  # F1 markdown help (HELP_SYSTEM_OVERHAUL)
+    ] + _datas,
     hiddenimports=[
+        *_hidden,
         'PyQt6',
         'PyQt6.QtCore',
         'PyQt6.QtGui',

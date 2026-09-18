@@ -7,7 +7,7 @@ Dataset Import Dialog
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
                             QPushButton, QLineEdit, QTextEdit, QLabel,
                             QComboBox, QMessageBox, QGroupBox)
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 import logging
 from datetime import datetime
 
@@ -38,8 +38,15 @@ class DatasetImportDialog(QDialog):
     def _init_ui(self):
         """UI 초기화"""
         self.setWindowTitle("Import Dataset to Database")
+        self.setWindowFlags(
+            self.windowFlags()
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowMinimizeButtonHint
+        )
         self.setGeometry(150, 150, 600, 700)
-        
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(self)
+
         layout = QVBoxLayout(self)
         
         # 데이터셋 정보 (읽기 전용)

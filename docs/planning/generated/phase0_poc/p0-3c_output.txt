@@ -1,0 +1,57 @@
+genes: 100 entrez: 63
+docs/planning/generated/phase0_poc/data/go-basic.obo: fmt(1.2) rel(2026-07-26) 41,378 Terms; optional_attrs(relationship)
+HMS:0:00:03.806878 446,674 annotations, 20,363 genes, 17,987 GOs, 1 taxids READ: docs/planning/generated/phase0_poc/data/gene2go_human.tsv 
+
+Load BP Ontology Enrichment Analysis ...
+Propagating term counts up: is_a
+ 92%     58 of     63 population items found in association
+
+Load CC Ontology Enrichment Analysis ...
+Propagating term counts up: is_a
+ 97%     61 of     63 population items found in association
+
+Load MF Ontology Enrichment Analysis ...
+Propagating term counts up: is_a
+ 97%     61 of     63 population items found in association
+
+Runing BP Ontology Analysis: current study set of 63 IDs.
+ 92%     58 of     63 study items found in association
+100%     63 of     63 study items found in population(63)
+Calculating 1,613 uncorrected p-values using fisher_scipy_stats
+   1,613 terms are associated with     58 of     63 population items
+   1,613 terms are associated with     58 of     63 study items
+  METHOD fdr_bh:
+       0 GO terms found significant (< 0.05=alpha) (  0 enriched +   0 purified): statsmodels fdr_bh
+       0 study items associated with significant GO IDs (enriched)
+       0 study items associated with significant GO IDs (purified)
+
+Runing CC Ontology Analysis: current study set of 63 IDs.
+ 97%     61 of     63 study items found in association
+100%     63 of     63 study items found in population(63)
+Calculating 285 uncorrected p-values using fisher_scipy_stats
+     285 terms are associated with     61 of     63 population items
+     285 terms are associated with     61 of     63 study items
+  METHOD fdr_bh:
+       0 GO terms found significant (< 0.05=alpha) (  0 enriched +   0 purified): statsmodels fdr_bh
+       0 study items associated with significant GO IDs (enriched)
+       0 study items associated with significant GO IDs (purified)
+
+Runing MF Ontology Analysis: current study set of 63 IDs.
+ 97%     61 of     63 study items found in association
+100%     63 of     63 study items found in population(63)
+Calculating 325 uncorrected p-values using fisher_scipy_stats
+     325 terms are associated with     61 of     63 population items
+     325 terms are associated with     61 of     63 study items
+  METHOD fdr_bh:
+       0 GO terms found significant (< 0.05=alpha) (  0 enriched +   0 purified): statsmodels fdr_bh
+       0 study items associated with significant GO IDs (enriched)
+       0 study items associated with significant GO IDs (purified)
+prep+run wall=5.71s n_results=2223
+rows saved: 2223 | significant: 0
+           GO  NS                                     name  p_fdr_bh  study_count  pop_count  pop_n
+0  GO:0055075  BP                potassium ion homeostasis       1.0            1          1     63
+1  GO:0051641  BP                    cellular localization       1.0            9          9     63
+2  GO:0019218  BP  regulation of steroid metabolic process       1.0            1          1     63
+3  GO:2000146  BP     negative regulation of cell motility       1.0            8          8     63
+4  GO:0043627  BP                     response to estrogen       1.0            1          1     63
+P0-3c DONE

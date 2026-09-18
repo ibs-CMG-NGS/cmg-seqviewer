@@ -274,7 +274,10 @@ class MultiGroupLoader:
         """
         cols_lower = {c.lower() for c in df.columns}
 
-        has_padj = 'padj' in cols_lower or 'p_adj' in cols_lower
+        has_padj = any(k in cols_lower for k in (
+            'padj', 'p_adj', 'p_value', 'p_val'))
+        # coexpression 모듈/타임시리즈 산출물: cluster_id + 샘플 컬럼만 있는 형태
+        has_module = 'cluster_id' in cols_lower
         is_not_de = not any(
             kw in cols_lower
             for kw in ('log2foldchange', 'log2fc', 'log2_fold_change', 'lfc')
@@ -287,4 +290,4 @@ class MultiGroupLoader:
             and pd.api.types.is_numeric_dtype(df[col])
         )
 
-        return has_padj and is_not_de and sample_count >= 3
+        return (has_padj or has_module) and is_not_de and sample_count >= 3

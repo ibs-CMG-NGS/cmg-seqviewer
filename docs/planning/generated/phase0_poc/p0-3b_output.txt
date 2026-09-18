@@ -1,0 +1,60 @@
+[baseline] rss=370168KB
+docs/planning/generated/phase0_poc/data/go-basic.obo: fmt(1.2) rel(2026-07-26) 41,378 Terms; optional_attrs(relationship)
+[obo] wall=1.18s rss_delta=0KB nodes=41378
+HMS:0:00:03.890699 446,674 annotations, 20,363 genes, 17,987 GOs, 1 taxids READ: docs/planning/generated/phase0_poc/data/gene2go_human.tsv 
+[assoc human] wall=4.36s rss_delta=189268KB sizes={'MF': 18607, 'CC': 19487, 'BP': 18131}
+[gene_info full parse] wall=118.95s rss_delta=3329404KB rows=72035010
+[maps] human_symbols=193711 mouse_symbols=111972
+[map save] entrez2sym_human.json entries=63
+[gene2go mouse filter] rows=595946 wall=66.05s
+[mouse map] 48/50 mouse symbols mapped
+
+Load BP Ontology Enrichment Analysis ...
+Propagating term counts up: is_a
+ 92%     58 of     63 population items found in association
+
+Load CC Ontology Enrichment Analysis ...
+Propagating term counts up: is_a
+ 97%     61 of     63 population items found in association
+
+Load MF Ontology Enrichment Analysis ...
+Propagating term counts up: is_a
+ 97%     61 of     63 population items found in association
+[NS init] wall=3.78s rss_delta=1378980KB
+
+Runing BP Ontology Analysis: current study set of 63 IDs.
+ 92%     58 of     63 study items found in association
+100%     63 of     63 study items found in population(63)
+Calculating 1,613 uncorrected p-values using fisher_scipy_stats
+   1,613 terms are associated with     58 of     63 population items
+   1,613 terms are associated with     58 of     63 study items
+  METHOD fdr_bh:
+       0 GO terms found significant (< 0.05=alpha) (  0 enriched +   0 purified): statsmodels fdr_bh
+       0 study items associated with significant GO IDs (enriched)
+       0 study items associated with significant GO IDs (purified)
+
+Runing CC Ontology Analysis: current study set of 63 IDs.
+ 97%     61 of     63 study items found in association
+100%     63 of     63 study items found in population(63)
+Calculating 285 uncorrected p-values using fisher_scipy_stats
+     285 terms are associated with     61 of     63 population items
+     285 terms are associated with     61 of     63 study items
+  METHOD fdr_bh:
+       0 GO terms found significant (< 0.05=alpha) (  0 enriched +   0 purified): statsmodels fdr_bh
+       0 study items associated with significant GO IDs (enriched)
+       0 study items associated with significant GO IDs (purified)
+
+Runing MF Ontology Analysis: current study set of 63 IDs.
+ 97%     61 of     63 study items found in association
+100%     63 of     63 study items found in population(63)
+Calculating 325 uncorrected p-values using fisher_scipy_stats
+     325 terms are associated with     61 of     63 population items
+     325 terms are associated with     61 of     63 study items
+  METHOD fdr_bh:
+       0 GO terms found significant (< 0.05=alpha) (  0 enriched +   0 purified): statsmodels fdr_bh
+       0 study items associated with significant GO IDs (enriched)
+       0 study items associated with significant GO IDs (purified)
+[run_study] wall=0.12s rss_delta=0KB n_results=2223
+[manifest] {"go-basic.obo": {"sha256": "b08d45b268b8c24ccb2513dbbbc7d4df9f6521c099b413f79eb31e06e0fa3bcc", "size_bytes": 32227785, "hash_s": 0.3}, "gene2go.gz": {"sha256": "3027074743e94174b75cfb475b7c67376d19f5f6831d7758514b75b7f687182e", "size_bytes": 1380328182, "hash_s": 0.8}, "gene_info.gz": {"sha256": "6823dcaca8d83586acb610bcfdf6b17e139958486da27179f8eaed91894d508f", "size_bytes": 1573751788, "hash_s": 20.1}}
+[memory] {"baseline_kb": 370168, "after_obo_kb": 370168, "after_assoc_kb": 559436, "after_geneinfo_kb": 3888840, "after_ns_init_kb": 5267820, "after_run_kb": 5267820, "obo_delta_kb": 0, "assoc_delta_kb": 189268, "geneinfo_delta_kb": 3329404, "ns_init_delta_kb": 1378980, "run_delta_kb": 0, "peak_rss_kb": 5267820, "peak_gb": 5.02}
+P0-3b DONE

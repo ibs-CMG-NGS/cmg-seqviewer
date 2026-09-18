@@ -1,0 +1,82 @@
+format-version: 1.2
+data-version: mini-obo/releases/2026-07-26
+ontology: go
+
+[Term]
+id: GO:0000001
+name: root biological process
+namespace: biological_process
+def: "synthetic root BP term for unit tests" []
+
+[Term]
+id: GO:0000002
+name: root cellular component
+namespace: cellular_component
+def: "synthetic root CC term for unit tests" []
+
+[Term]
+id: GO:0000003
+name: root molecular function
+namespace: molecular_function
+def: "synthetic root MF term for unit tests" []
+
+[Term]
+id: GO:0000004
+name: heart contraction
+namespace: biological_process
+def: "synthetic child BP" []
+is_a: GO:0000001 ! root biological process
+
+[Term]
+id: GO:0000005
+name: immune response
+namespace: biological_process
+def: "synthetic child BP 2" []
+is_a: GO:0000001 ! root biological process
+
+[Term]
+id: GO:0000006
+name: muscle cell migration
+namespace: biological_process
+def: "synthetic child BP 3 (merge target)" []
+is_a: GO:0000004 ! heart contraction
+
+[Term]
+id: GO:0000007
+name: cell adhesion
+namespace: biological_process
+def: "synthetic child BP 4" []
+is_a: GO:0000005 ! immune response
+
+[Term]
+id: GO:0000008
+name: receptor binding
+namespace: molecular_function
+def: "synthetic child MF" []
+is_a: GO:0000003 ! root molecular function
+
+[Term]
+id: GO:0000009
+name: structural molecule activity
+namespace: molecular_function
+def: "synthetic child MF 2" []
+is_a: GO:0000003 ! root molecular function
+
+[Term]
+id: GO:0000010
+name: membrane component
+namespace: cellular_component
+def: "synthetic child CC" []
+is_a: GO:0000002 ! root cellular component
+
+[Term]
+id: GO:0000011
+name: cytosol
+namespace: cellular_component
+def: "synthetic child CC 2" []
+is_a: GO:0000002 ! root cellular component
+
+[Typedef]
+id: is_a
+name: is_a
+is_cyclic: true

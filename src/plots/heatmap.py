@@ -13,19 +13,22 @@ def render_heatmap(fig, df, params):
 
     params 키(= HeatmapWidget.get_plot_params()):
       n_genes, normalization('z-score'|'minmax'|'log2'|'none'), transpose(bool),
-      sorting('padj'|'log2fc'|'clustering'), show_dendrogram(bool),
+      sorting('padj'|'log2fc'|'clustering'|'input'), show_dendrogram(bool),
       colormap, colorbar_min, colorbar_max,
       show_colorbar(bool), labels_title/labels_xlabel/labels_ylabel,
       show_xticklabels/show_yticklabels
 
     show_dendrogram=True 이면 계층적 클러스터링으로 행(유전자)을 재정렬하고 히트맵 왼쪽에
     유전자 덴드로그램을 그린다(transpose 시에는 생략). 클러스터링 순서는 scipy 가 자동 계산.
+    sorting='input' 은 DataFrame 행 순서(예: Gene List 필터의 사용자 입력 순서)를 그대로
+    유지한다 — 연구자가 넣어준 순서가 해석에 의미 있는 경우를 위한 옵션.
     """
     # 발현 sample 컬럼이 아닌 것으로 간주할 이름 패턴 (함수 내부 — 번들 inline 자기완결)
     exclude_patterns = [
         'basemean', 'base_mean', 'log2fold', 'log2fc', 'logfc', 'foldchange',
         'lfcse', 'stat', 'statistic', 'pval', 'padj', 'fdr', 'qvalue',
         'gene_id', 'gene', 'symbol', 'dataset', 'description', 'name',
+        'rank',   # _gene_list_rank (Gene List 필터 순서 신호열) 등 순위 열
     ]
     df = df.copy()
 
@@ -67,12 +70,23 @@ def render_heatmap(fig, df, params):
         return None
 
     # 상위 N 유전자 (padj 있으면 그것으로, 없으면 분산)
+    # 선택 기준은 padj/분산이지만, Gene List 필터 프레임(_gene_list_rank 보존)에서는
+    # 표시 순서를 사용자가 넣어준 입력 순서로 유지한다(연구자에게 순서가 의미 있는 경우
+    # 많음 — 클러스터링/padj/log2fc 정렬을 명시적으로 고른 경우엔 그 정렬이 우선).
+    preserve_input_order = '_gene_list_rank' in df.columns
     if 'padj' in df.columns and df.loc[expr_data.index, 'padj'].dropna().shape[0] > 0:
         valid_padj = df.loc[expr_data.index, 'padj'].dropna()
         top_idx = valid_padj.nsmallest(min(n_genes, len(valid_padj))).index
     else:
         variances = expr_data.var(axis=1)
         top_idx = variances.nlargest(min(n_genes, len(expr_data))).index
+    if preserve_input_order:
+        # 입력 순서(_gene_list_rank) 순으로 top-N 선택 — 선택 집합은 padj/분산 기준을
+        # 쓰되 표시 순서는 사용자 순서를 따른다.
+        rank_series = df.loc[expr_data.index, '_gene_list_rank']
+        ranked_idx = rank_series.sort_values().dropna().index
+        top_set = set(top_idx)
+        top_idx = pd.Index([i for i in ranked_idx if i in top_set])
 
     if 'symbol' in df.columns:
         gene_labels = df.loc[top_idx, 'symbol'].tolist()

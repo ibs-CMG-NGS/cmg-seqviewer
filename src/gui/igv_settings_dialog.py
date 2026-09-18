@@ -15,8 +15,15 @@ class IGVSettingsDialog(QDialog):
         super().__init__(parent)
         self.settings = settings
         self.setWindowTitle("IGV Integration Settings")
+        self.setWindowFlags(
+            self.windowFlags()
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowMinimizeButtonHint
+        )
         self.setMinimumWidth(620)
         self.setMinimumHeight(460)
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(self)
         self._build_ui()
         self._load_settings()
 

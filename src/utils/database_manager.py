@@ -18,12 +18,37 @@ import pandas as pd
 from models.data_models import Dataset, PreloadedDatasetMetadata, DatasetType
 from utils.data_path_config import DataPathConfig
 
-# 3차 분석 파이프라인(seqviewer_manifest.json)이 쓰는 dataset_type 문자열 →
-# 앱의 DatasetType.value 매핑. 일치하는 값(go_analysis, chromvar_diff_tf 등)은
-# 그대로 통과하고, 명명이 다른 것만 여기서 변환한다.
-_MANIFEST_TYPE_MAP = {
-    'differential_accessibility': DatasetType.ATAC_SEQ.value,
-}
+def _is_go_dataframe(df) -> bool:
+    """파이프라인/레거시/표준 GO·KEGG parquet 감지 (자동 임포트 스킵 방지).
+
+    인정 어휘:
+    1. 표준: term_id + description + fdr (in-app/표준화 결과)
+    2. 점-구분 레거시: GO.ID + GO.Term (+ ratio/count/pvalue)
+    3. R clusterProfiler(파이프라인): ID + Description + p.adjust + (GeneRatio|BgRatio|geneID+Count)
+    4. 카테고리 지시: ID + Description + ontology(값이 BP/MF/CC/GO/KEGG)
+    """
+    cols_l = {str(c).lower() for c in df.columns}
+    def has(*names):
+        return all(n in cols_l for n in names)
+    if has('term_id', 'description', 'fdr'):
+        return True
+    if has('go.id', 'go.term') and (has('gene.ratio') or has('gene.count') or has('pvalue')):
+        return True
+    if has('id', 'description', 'p.adjust') and \
+            (has('generatio') or has('bgratio') or (has('geneid') and has('count'))):
+        return True
+    if 'ontology' in cols_l and has('id', 'description'):
+        try:
+            vals = {str(v).strip().upper() for v in df['ontology'].dropna().head(50)}
+            if vals & {'BP', 'MF', 'CC', 'GO', 'KEGG'}:
+                return True
+        except Exception:
+            pass
+    return False
+
+# dataset_type 문자열 별칭 매핑(differential_accessibility → atac_seq 등)은
+# PreloadedDatasetMetadata.from_dict()에서 단일 지점으로 적용된다
+# (models.data_models.DATASET_TYPE_ALIASES) — manifest/metadata.json 어느 경로든 동일 적용.
 
 # manifest 필드명 → PreloadedDatasetMetadata 필드명 (값이 없을 때만 보완)
 _MANIFEST_FIELD_FALLBACK = {
@@ -34,11 +59,9 @@ _MANIFEST_FIELD_FALLBACK = {
 
 def _normalize_manifest_item(item: Dict[str, Any]) -> Dict[str, Any]:
     """seqviewer_manifest.json의 datasets[] 항목을 PreloadedDatasetMetadata.from_dict()가
-    이해하는 스키마로 변환한다 (dataset_type 명명 차이, peak_count/significant_peaks 등
-    ATAC 전용 필드명 보완)."""
+    이해하는 스키마로 변환한다 (peak_count/significant_peaks 등 ATAC 전용 필드명 보완).
+    dataset_type 별칭 변환은 from_dict()에서 공통 처리되므로 여기서는 건드리지 않는다."""
     norm = dict(item)
-    raw_type = norm.get('dataset_type', '')
-    norm['dataset_type'] = _MANIFEST_TYPE_MAP.get(raw_type, raw_type)
     for target, source in _MANIFEST_FIELD_FALLBACK.items():
         if not norm.get(target) and norm.get(source):
             norm[target] = norm[source]
@@ -289,11 +312,11 @@ class DatabaseManager:
 
                 cols = set(df.columns)
 
-                # ATAC / DE / GO / chromVAR 자동 판별
+                # ATAC / DE / GO / chromVAR / Multi-Group 자동 판별
                 from utils.atac_seq_loader import ATACSeqLoader
+                from utils.multi_group_loader import MultiGroupLoader
                 atac_required = {'peak_id', 'log2fc', 'adj_pvalue'}
                 de_required = {'gene_id', 'log2fc', 'adj_pvalue'}
-                go_required = {'term_id', 'description', 'fdr'}
                 # seqviewer parquet 형식: tf_name, mean_zscore_compare, delta_zscore, padj
                 chromvar_required_parquet = {'tf_name', 'mean_zscore_compare', 'delta_zscore', 'padj'}
                 # diff_tf.csv → parquet 변환 형식: motif, mean_compare, delta, padj
@@ -303,25 +326,29 @@ class DatabaseManager:
                     dataset_type = DatasetType.ATAC_SEQ
                 elif chromvar_required_parquet.issubset(cols) or chromvar_required_csv.issubset(cols):
                     dataset_type = DatasetType.CHROMVAR_DIFF_TF
+                # Multi-Group (LRT/time-series/coexpression module 등): padj는 있으나 log2fc가
+                # 없고 숫자형 샘플 컬럼이 3개 이상인 형태 — DE 판별보다 먼저 확인해야
+                # (DE는 log2fc를 요구하므로 순서를 바꿔도 오판별 위험은 없지만, xlsx 로더
+                #  (data_loader.py:_detect_dataset_type)와 동일한 우선순위를 유지한다)
+                elif _is_go_dataframe(df):
+                    dataset_type = DatasetType.GO_ANALYSIS
+                elif MultiGroupLoader.is_multi_group_dataframe(df):
+                    dataset_type = DatasetType.MULTI_GROUP
                 elif de_required.issubset(cols):
                     dataset_type = DatasetType.DIFFERENTIAL_EXPRESSION
-                elif go_required.issubset(cols):
-                    dataset_type = DatasetType.GO_ANALYSIS
                 else:
                     self.logger.warning(
                         f"Cannot determine type of '{filename}' "
-                        f"(no ATAC, DE or GO standard columns found). Skipping."
+                        f"(no ATAC, DE, GO or Multi-Group standard columns found). Skipping."
                     )
                     continue
 
                 # ── GO 데이터이고 gene_set 컬럼이 없으면 표준화 파이프라인 실행 후 parquet 재저장
                 if dataset_type == DatasetType.GO_ANALYSIS and 'gene_set' not in cols:
                     try:
-                        from utils.go_kegg_loader import GOKEGGLoader
                         from models.standard_columns import StandardColumns as SC
-                        go_loader = GOKEGGLoader()
-                        df = go_loader._standardize_columns(df)
-                        df = go_loader._extract_direction_ontology(df)
+                        from utils.go_kegg_loader import standardize_go_dataframe
+                        df = standardize_go_dataframe(df)
                         if SC.DIRECTION not in df.columns:
                             df[SC.DIRECTION] = 'UNKNOWN'
                         if SC.ONTOLOGY not in df.columns:
@@ -331,7 +358,8 @@ class DatabaseManager:
                         df.to_parquet(parquet_file, engine='pyarrow', index=False)
                         cols = set(df.columns)
                         self.logger.info(
-                            f"Re-saved '{filename}' with gene_set/direction/ontology columns added"
+                            f"Re-saved '{filename}' with gene_set/direction/ontology/_gene_set "
+                            "columns added (standardized)"
                         )
                     except Exception as _gs_err:
                         self.logger.warning(
@@ -373,6 +401,17 @@ class DatabaseManager:
                     gene_count = row_count  # chromVAR에서는 TF(motif) 개수
                     if 'padj' in cols:
                         try:
+                            significant_genes = int(
+                                (pd.to_numeric(df['padj'], errors='coerce') < 0.05).sum()
+                            )
+                        except Exception:
+                            significant_genes = 0
+
+                elif dataset_type == DatasetType.MULTI_GROUP:
+                    gene_count = row_count
+                    if 'padj' in cols:
+                        try:
+                            # Multi-Group은 log2fc가 없으므로 padj만으로 유의미 유전자 판정
                             significant_genes = int(
                                 (pd.to_numeric(df['padj'], errors='coerce') < 0.05).sum()
                             )
@@ -783,7 +822,17 @@ class DatabaseManager:
                             metadata.significant_genes = int(padj_ok.sum())
                     except Exception:
                         metadata.significant_genes = 0
-            
+            elif dataset.dataset_type == DatasetType.MULTI_GROUP:
+                # Multi-Group은 log2fc가 없으므로 padj만으로 유의미 유전자 판정
+                df = dataset.dataframe
+                if df is not None and 'padj' in df.columns:
+                    try:
+                        metadata.significant_genes = int(
+                            (pd.to_numeric(df['padj'], errors='coerce') < 0.05).sum()
+                        )
+                    except Exception:
+                        metadata.significant_genes = 0
+
             # Parquet 형식으로 저장
             # GO 데이터의 경우 _gene_set 컬럼 (set 타입) 처리
             if dataset.dataframe is None:
@@ -871,6 +920,28 @@ class DatabaseManager:
                 })
                 self.logger.info(
                     f"Loaded chromVAR dataset from database: {metadata.alias} "
+                    f"({len(dataset.dataframe)} rows)"
+                )
+                return dataset
+
+            # Multi-Group (LRT/time-series/coexpression module 등)도 전용 로더로 처리.
+            # sample_columns / sample_groups 메타데이터는 아래 범용 parquet 로딩 경로에서는
+            # 복원되지 않아, Dataset.is_valid 및 Multi-Group Heatmap 등이 깨지므로 필수.
+            if metadata.dataset_type == DatasetType.MULTI_GROUP:
+                from utils.multi_group_loader import MultiGroupLoader
+                dataset = MultiGroupLoader().load_from_parquet(file_path, metadata.alias)
+                dataset.metadata.update({
+                    'experiment_condition': metadata.experiment_condition,
+                    'cell_type': metadata.cell_type,
+                    'organism': metadata.organism,
+                    'tissue': metadata.tissue,
+                    'timepoint': metadata.timepoint,
+                    'import_date': metadata.import_date,
+                    'notes': metadata.notes,
+                    'tags': metadata.tags,
+                })
+                self.logger.info(
+                    f"Loaded multi-group dataset from database: {metadata.alias} "
                     f"({len(dataset.dataframe)} rows)"
                 )
                 return dataset

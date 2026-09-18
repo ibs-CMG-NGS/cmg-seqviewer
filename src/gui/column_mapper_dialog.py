@@ -55,9 +55,16 @@ class ColumnMapperDialog(QDialog):
         self.column_mapping: Dict[str, str] = {}  # 표준 컬럼 -> 원본 컬럼
         
         self.setWindowTitle("Column Mapping")
+        self.setWindowFlags(
+            self.windowFlags()
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowMinimizeButtonHint
+        )
         self.setMinimumWidth(700)
         self.setMinimumHeight(500)
-        
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(self)
+
         self._init_ui()
         self._apply_auto_mapping()
     

@@ -1,9 +1,9 @@
 # CMG-SeqViewer — Publication-Quality Figure & Reproducibility Plan
 
-**Status**: 📋 Planned (not started)
-**Author**: design note
+**Status**: � **Partially Implemented** (P4 bundle export ✅, P1–P3 in progress)
+**Author**: design note + implementation log
 **Scope**: figure 품질(논문/발표용) 세밀 제어 + 그리는 과정의 재현성·재사용성
-**목적**: 지금 당장 구현하지 않더라도, 이 문서만 보면 언제든 착수할 수 있는 포괄적 설계도
+**목적**: 포괄적 설계도 + 구현 추적. 최근 업데이트: [BUNDLE_EXPORT_IMPLEMENTATION.md](BUNDLE_EXPORT_IMPLEMENTATION.md) (P4 완료)
 
 ---
 
@@ -34,12 +34,12 @@ Prism/Origin 내부도 "프로젝트 = 데이터 + 스타일 상태"다. spec을
 
 ## 우선순위 요약 (난이도 / 효과)
 
-| Phase | 주제 | 난이도 | 효과 | 권장 우선순위 |
+| Phase | 주제 | 난이도 | 효과 | 상태 |
 |---|---|---|---|---|
-| **P1** | 중앙 테마 + 정확한 export(단위/DPI/편집가능 벡터) + 팔레트 | 낮음 | 매우 큼 | **즉시** |
-| **P2** | `FigureSpec` 직렬화 + 스타일 프리셋(저장/적용/전체적용) + export에 spec 임베드(round-trip) | 중간 | 큼 | 높음 |
-| **P3** | 유의성/주석 레이어 일반화 + 멀티패널 합성(A/B/C) + 배치 export | 중간 | 큼 | 중간 |
-| **P4** | export-to-script + provenance 메타데이터 + 템플릿 갤러리 | 중상 | 중(신뢰·재현 가치) | 선택 |
+| **P1** | 중앙 테마 + 정확한 export(단위/DPI/편집가능 벡터) + 팔레트 | 낮음 | 매우 큼 | 📋 계획 중 |
+| **P2** | `FigureSpec` 직렬화 + 스타일 프리셋(저장/적용/전체적용) + export에 spec 임베드(round-trip) | 중간 | 큼 | 📋 계획 중 |
+| **P3** | 유의성/주석 레이어 일반화 + 멀티패널 합성(A/B/C) + 배치 export | 중간 | 큼 | 📋 계획 중 |
+| **P4** | export-to-script + provenance 메타데이터 + 템플릿 갤러리 | 중상 | 중(신뢰·재현 가치) | ✅ **구현 완료** |
 
 각 Phase는 독립적으로 가치가 있어 **순서대로 멈춰도 됨**(P1만 해도 전체 figure 품질이 올라감).
 
@@ -126,14 +126,34 @@ Prism/Origin 내부도 "프로젝트 = 데이터 + 스타일 상태"다. spec을
 
 **목표:** 재현성의 최상위(앱 밖 재현, 감사 추적), 신규 사용자 온보딩.
 
-### 필요한 작업
-1. **Export as Python script**: FigureSpec → 독립 실행 matplotlib 스크립트 생성. 리뷰어 신뢰·앱 외 재현. (렌더러가 순수 함수면 자연스럽게 가능)
-2. **Provenance 메타데이터**: 모든 export에 앱 버전·데이터셋·필터·날짜 스탬프(PDF/SVG 메타 또는 사이드카 JSON). `Analysis_Info` 시트 관행과 일치.
-3. **템플릿 갤러리**: 자주 쓰는 figure(volcano/heatmap/bar) 스타일 템플릿 모음 + 미리보기 → 새 분석에 즉시 적용.
+**상태**: ✅ **Export-to-Script + Provenance 구현 완료** (2026-07-09)
+- 참고: [BUNDLE_EXPORT_IMPLEMENTATION.md](BUNDLE_EXPORT_IMPLEMENTATION.md)
 
-### 주의할 점
-- script export는 앱 내부 헬퍼 의존을 끊고 **순수 matplotlib**로 떨어뜨려야 가치(이식성). 렌더러 설계 시 이를 염두.
-- 메타데이터에 절대경로/내부정보 노출 주의(P2와 동일).
+### 구현 완료 항목
+
+1. ✅ **Export as Python script**: FigureSpec → 독립 실행 matplotlib 스크립트 생성
+   - Volcano plot 전용 렌더링 로직 포함
+   - 범용 fallback 스크립트도 준비
+   - 렌더러가 순수 함수 기반 (matplotlib 의존만 있음)
+   
+2. ✅ **Provenance 메타데이터**: 모든 export에 앱 버전·데이터셋·필터·날짜 스탐프
+   - `metadata.yaml`: 플롯 타입, 파라미터, 생성 시간, 데이터셋명 기록
+   - `manifest.json`: 번들 상태/파일 목록/타임스탐프
+   - YAML은 사람 읽기용, JSON은 자동 파싱용
+
+3. 📋 **템플릿 갤러리**: 자주 쓰는 figure 스타일 템플릿 (선택 미래 작업)
+
+### 주의할 점 (구현된 결과)
+- script export는 순수 matplotlib로 독립 실행 가능 ✅
+  - numpy, pandas, matplotlib만 의존
+  - cmg-seqviewer 앱 코드에 의존하지 않음 ✅
+- 메타데이터에 절대경로 노출 없음 ✅
+  - 모든 경로는 상대 경로 (bundle 내부 기준) ✅
+
+### 향후 선택 개선
+- 템플릿 갤러리: UI에서 자주 쓰는 스타일 모음
+- 다른 플롯 타입 지원: heatmap, PCA, GO, MA, ...
+- 번들 압축 + 클라우드 업로드
 
 ---
 
@@ -162,5 +182,14 @@ P4는 P2(렌더러 순수화) 위에서 가장 매끄럽다.
 - **P4**: 생성된 스크립트를 앱 밖 python에서 실행→동일 figure. 메타데이터 판독.
 
 ## 영향받는/신규 파일 (요약)
+
+### P4 구현 완료 (2026-07-09)
+- ✅ 신규: `src/utils/figure_bundle_export.py` (번들 생성 + 스크립트 자동 생성)
+- ✅ 수정: `src/gui/visualization_dialog.py` (VolcanoPlotWidget에 `get_bundle_context()` + `_export_figure_bundle()`)
+- ✅ 수정: `src/gui/main_window.py` (메뉴 File → Export Figure Bundle + `_on_export_figure_bundle()`)
+- ✅ 신규: `test/test_figure_bundle_export.py` (3개 테스트 케이스)
+- 📄 신규: `docs/planning/BUNDLE_EXPORT_IMPLEMENTATION.md` (상세 구현 문서)
+
+### P1–P3 계획 (미구현)
 - 신규: `utils/figure_theme.py`, `utils/figure_export.py`, `models/figure_spec.py`, `utils/style_presets.py`, `utils/figure_annotations.py`, `gui/figure_layout_dialog.py`, `utils/figure_batch.py`, `gui/widgets/figure_style_panel.py`
 - 수정(점진): `src/gui/*_dialog.py` 13종(공용 패널·export·렌더러 적용), `src/utils/project_io.py`(style 블록), `src/gui/main_window.py`(메뉴: Figure Layout, Batch Export, Open Figure; Plot Settings Dock 연계)

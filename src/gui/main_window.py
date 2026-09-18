@@ -65,6 +65,8 @@ class MainWindow(QMainWindow):
         self.presenter.filter_completed.connect(self._on_filter_completed)
         self.presenter.error_occurred.connect(self._on_presenter_error)
         self.presenter.progress_updated.connect(self._on_progress_updated)
+        # DE 데이터셋 로드/등록 시 enrichment 메뉴 활성 갱신 (P2-1)
+        self.presenter.dataset_loaded.connect(self._update_enrichment_action)
         
         # 설정 값
         self.column_display_level = "basic"  # "basic", "de", "full" - 기본값: basic
@@ -465,6 +467,13 @@ class MainWindow(QMainWindow):
         self.gsea_action.triggered.connect(lambda: self._on_analysis_requested("gsea"))
         # 항상 활성화
         analysis_menu.addAction(self.gsea_action)
+        
+        # GO/KEGG Enrichment Analysis (plan §10-2 — GSEA Lite 직후)
+        self.enrichment_action = QAction("🧬 GO/KEGG Enrichment Analysis...", self)
+        self.enrichment_action.triggered.connect(self._on_enrichment_analysis)
+        # DE 데이터셋 로드 시 활성 (P2-1)
+        self.enrichment_action.setEnabled(False)
+        analysis_menu.addAction(self.enrichment_action)
         
         analysis_menu.addSeparator()
         
@@ -1305,20 +1314,23 @@ class MainWindow(QMainWindow):
             if self.data_tabs.tabText(i) == "Whole Dataset":
                 self.data_tabs.setCurrentIndex(i)
                 break
+        self._update_enrichment_action()
     
     def _on_dataset_removed(self, dataset_name: str):
         """데이터셋 제거"""
         if dataset_name in self.presenter.datasets:
             del self.presenter.datasets[dataset_name]
             self.logger.info(f"Dataset removed: {dataset_name}")
-            
-            # 현재 데이터셋이 제거되었다면 다른 데이터셋으로 전환
-            if self.presenter.current_dataset and self.presenter.current_dataset.name == dataset_name:
-                remaining = self.dataset_manager.get_all_datasets()
-                if remaining:
-                    self.presenter.switch_dataset(remaining[0])
-                else:
-                    self.presenter.current_dataset = None
+        # 삭제 시점과 무관하게 항상 갱신 (DE 존재 여부 재평가)
+        self._update_enrichment_action()
+
+        # 현재 데이터셋이 제거되었다면 다른 데이터셋으로 전환
+        if self.presenter.current_dataset and self.presenter.current_dataset.name == dataset_name:
+            remaining = self.dataset_manager.get_all_datasets()
+            if remaining:
+                self.presenter.switch_dataset(remaining[0])
+            else:
+                self.presenter.current_dataset = None
     
     def _on_dataset_renamed(self, old_name: str, new_name: str):
         """데이터셋 이름 변경"""
@@ -3130,6 +3142,7 @@ class MainWindow(QMainWindow):
 
     def _on_dataset_tree_root_added(self, dataset_name: str):
         """루트 노드 추가 후 해당 dataset의 whole 시트를 트리에 등록"""
+        self._update_enrichment_action()
         for tab_index, entry in self.tab_data.items():
             if (entry.get('sheet_type') == 'whole'
                     and entry.get('parent_dataset') == dataset_name
@@ -3269,7 +3282,14 @@ class MainWindow(QMainWindow):
         """About 다이얼로그"""
         dlg = QDialog(self)
         dlg.setWindowTitle("About CMG-SeqViewer")
-        dlg.setFixedWidth(520)
+        dlg.setWindowFlags(
+            dlg.windowFlags()
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowMinimizeButtonHint
+        )
+        dlg.resize(520, 520)
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(dlg, "AboutDialog")
 
         root = QVBoxLayout(dlg)
         root.setContentsMargins(24, 24, 24, 16)
@@ -3291,7 +3311,7 @@ class MainWindow(QMainWindow):
 
         title_label = QLabel(
             "<h2 style='margin:0;'>CMG-SeqViewer</h2>"
-            "<p style='margin:2px 0;'><b>Version 1.2.11</b></p>"
+            "<p style='margin:2px 0;'><b>Version 1.3.0</b></p>"
             "<p style='margin:2px 0; color:#555;'>RNA-Seq Data Analysis &amp; Visualization</p>"
         )
         title_label.setWordWrap(True)
@@ -3304,7 +3324,6 @@ class MainWindow(QMainWindow):
         body = QTextBrowser()
         body.setOpenExternalLinks(True)
         body.setReadOnly(True)
-        body.setMaximumHeight(320)
         body.setHtml(
             "<p><b>Key Features:</b></p>"
             "<ul>"
@@ -3594,8 +3613,15 @@ class MainWindow(QMainWindow):
             
             dialog = QDialog(self)
             dialog.setWindowTitle("Select Datasets for Venn Diagram")
+            dialog.setWindowFlags(
+                dialog.windowFlags()
+                | Qt.WindowType.WindowMaximizeButtonHint
+                | Qt.WindowType.WindowMinimizeButtonHint
+            )
             dialog.setMinimumWidth(400)
-            
+            from utils.dialog_geometry import remember_geometry
+            remember_geometry(dialog, "VennDatasetSelect")
+
             layout = QVBoxLayout(dialog)
             layout.addWidget(QLabel("Select 2 or 3 datasets to compare:"))
             
@@ -3645,7 +3671,14 @@ class MainWindow(QMainWindow):
 
         select_dialog = QDialog(self)
         select_dialog.setWindowTitle(title)
+        select_dialog.setWindowFlags(
+            select_dialog.windowFlags()
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowMinimizeButtonHint
+        )
         select_dialog.setMinimumWidth(420)
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(select_dialog, f"DatasetSelectPrompt/{title}")
 
         layout = QVBoxLayout(select_dialog)
         layout.addWidget(QLabel(prompt))
@@ -3782,6 +3815,32 @@ class MainWindow(QMainWindow):
             self.logger.error(f"Failed to create annotation comparison plot: {e}", exc_info=True)
             QMessageBox.critical(self, "Annotation Comparison Error",
                                f"Failed to create annotation comparison:\n{str(e)}")
+
+    def _update_enrichment_action(self):
+        """P2-1: DE 데이터셋이 하나라도 있으면 enrichment 메뉴 활성.
+
+        다이얼로그의 소스 ① 탭이 presenter.datasets의 모든 DE를 나열하므로
+        현재-데이터셋 타입이 아니라 DE 존재 여부 기준으로 활성화한다.
+        로드/등록/제거 시 각각 갱신된다 (dataset_loaded 시그널 + 트리 이벤트).
+        """
+        if not hasattr(self, "enrichment_action"):
+            return
+        has_de = any(
+            getattr(d, "dataset_type", None) == DatasetType.DIFFERENTIAL_EXPRESSION
+            for d in self.presenter.datasets.values()
+        )
+        self.enrichment_action.setEnabled(has_de)
+
+    def _on_enrichment_analysis(self):
+        """GO/KEGG Enrichment Analysis 다이얼로그 (plan §10-2)."""
+        try:
+            from gui.enrichment_analysis_dialog import EnrichmentAnalysisDialog
+            dlg = EnrichmentAnalysisDialog(self, parent=self)
+            dlg.exec()
+        except Exception as e:
+            self.logger.error(f"Enrichment analysis failed to open: {e}", exc_info=True)
+            QMessageBox.warning(self, "GO/KEGG Enrichment",
+                                f"Failed to open the analysis dialog:\n{str(e)}")
 
     def _on_meta_volcano_requested(self):
         """현재 Comparison: Statistics 시트의 메타 통계로 Meta Volcano 생성."""
@@ -4320,6 +4379,13 @@ class MainWindow(QMainWindow):
         self.dataset_manager.dataset_tree.clear()
         self.dataset_manager._dataset_metadata.clear()
         self.dataset_manager._update_info()
+
+        # 공유 "Whole Dataset" 탭은 앱 시작 시(_init_ui) 딱 한 번만 만들어지고, 이후
+        # 데이터셋 전환 시 내용만 갈아끼우는 구조다(존재를 전제로 여러 곳이 동작 —
+        # 예: MainPresenter._update_view_with_dataset 는 이 이름의 탭을 찾아 채우고,
+        # 없으면 index 0 탭에 폴백하는데 탭이 0개면 그마저 조용히 no-op). 방금 전부 지웠으니
+        # 여기서 다시 만들어 두지 않으면 새 프로젝트를 로드해도 Whole Dataset 탭이 안 뜬다.
+        self._create_data_tab("Whole Dataset")
 
         self._update_comparison_panel_datasets()
         self._set_current_project_path(None)
@@ -5204,21 +5270,35 @@ class MainWindow(QMainWindow):
         atac_padj: float,
         atac_lfc: float,
     ):
-        """MultiOmicsPanel의 integrate_requested 시그널 처리"""
+        """MultiOmicsPanel의 integrate_requested 시그널 처리 — 워크벤치 다이얼로그를 연다.
+        실제 통합/탭 생성은 다이얼로그의 Apply 클릭 시에만 일어난다."""
         self.logger.info(
             f"Integration requested: RNA='{rna_name}' ATAC='{atac_name}' "
             f"method={method}"
         )
-        self.presenter.integrate_datasets(
-            rna_name=rna_name,
-            atac_name=atac_name,
-            method=method,
-            tss_window=tss_window,
-            rna_padj=rna_padj,
-            rna_lfc=rna_lfc,
-            atac_padj=atac_padj,
-            atac_lfc=atac_lfc,
+        if rna_name not in self.presenter.datasets or atac_name not in self.presenter.datasets:
+            QMessageBox.warning(self, "Missing Dataset", "Selected RNA/ATAC dataset not found.")
+            return
+
+        from gui.multi_omics_workbench_dialog import MultiOmicsWorkbenchDialog
+        dialog = MultiOmicsWorkbenchDialog(
+            rna_dataset=self.presenter.datasets[rna_name],
+            atac_dataset=self.presenter.datasets[atac_name],
+            method=method, tss_window=tss_window,
+            rna_padj=rna_padj, rna_lfc=rna_lfc, atac_padj=atac_padj, atac_lfc=atac_lfc,
+            parent=self,
         )
+
+        def _on_apply(rna_name_, atac_name_, method_, tss_window_,
+                      rna_padj_, rna_lfc_, atac_padj_, atac_lfc_):
+            self.presenter.integrate_datasets(
+                rna_name=rna_name_, atac_name=atac_name_, method=method_, tss_window=tss_window_,
+                rna_padj=rna_padj_, rna_lfc=rna_lfc_, atac_padj=atac_padj_, atac_lfc=atac_lfc_,
+            )
+            self.status_label.setText(f"Integrated: {rna_name_} + {atac_name_}")
+
+        dialog.integration_apply_requested.connect(_on_apply)
+        dialog.exec()
 
     def _on_multi_omics_visualization(self, plot_type: str):
         """Multi-Omics 전용 시각화"""
@@ -5241,7 +5321,12 @@ class MainWindow(QMainWindow):
 
         if plot_type == "quadrant":
             from gui.quadrant_plot_dialog import QuadrantPlotDialog
-            dialog = QuadrantPlotDialog(dataframe, title=tab_name, parent=self)
+            recipe = (dataset.metadata or {}).get('integration_recipe') or {}
+            dialog = QuadrantPlotDialog(
+                dataframe, title=tab_name, parent=self,
+                rna_lfc_cutoff=recipe.get('rna_lfc', 1.0),
+                atac_lfc_cutoff=recipe.get('atac_lfc', 1.0),
+            )
             dialog.exec()
         elif plot_type == "heatmap":
             from gui.concordance_heatmap_dialog import ConcordanceHeatmapDialog

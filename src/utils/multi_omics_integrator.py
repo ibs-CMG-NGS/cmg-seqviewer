@@ -25,6 +25,21 @@ from models.multi_omics_dataset import ConcordanceCategory, IntegratedColumns
 
 logger = logging.getLogger(__name__)
 
+# 통합 결과 컬럼 순서 (JOIN 단계에서는 CONCORDANCE/REGULATORY_STATUS 없이,
+# classify 단계 이후에는 전체가 이 순서로 정렬된다)
+_ORDERED_COLS = [
+    IntegratedColumns.GENE_SYMBOL,
+    IntegratedColumns.RNA_LOG2FC,
+    IntegratedColumns.RNA_PADJ,
+    IntegratedColumns.RNA_BASE_MEAN,
+    IntegratedColumns.PEAK_COUNT,
+    IntegratedColumns.ATAC_LOG2FC_MEAN,
+    IntegratedColumns.ATAC_LOG2FC_MAX,
+    IntegratedColumns.ATAC_PADJ_MIN,
+    IntegratedColumns.CONCORDANCE,
+    IntegratedColumns.REGULATORY_STATUS,
+]
+
 
 class MultiOmicsIntegrator:
     """
@@ -75,12 +90,43 @@ class MultiOmicsIntegrator:
 
         ATAC-seq 데이터에 distance_to_tss 컬럼이 있을 때 사용합니다.
         """
+        atac_grouped = self._select_atac_grouped(atac_df, "promoter_only", tss_window)
+        return self._build_integrated(rna_df, atac_grouped)
+
+    def build_joined(
+        self,
+        rna_df: pd.DataFrame,
+        atac_df: pd.DataFrame,
+        method: str = "nearest_gene",
+        tss_window: int = 2000,
+    ) -> pd.DataFrame:
+        """
+        cutoff와 무관한 JOIN만 수행한다 (concordance/regulatory_status 컬럼 없음).
+
+        비싼 부분(groupby + outer merge)만 한 번 실행해두고, 이후
+        classify_dataframe()으로 cutoff를 바꿔가며 저렴하게 재분류할 때 쓴다.
+        """
+        atac_grouped = self._select_atac_grouped(atac_df, method, tss_window)
+        return self._merge_only(rna_df, atac_grouped)
+
+    # ------------------------------------------------------------------ #
+    #  Internal helpers
+    # ------------------------------------------------------------------ #
+
+    def _select_atac_grouped(
+        self, atac_df: pd.DataFrame, method: str, tss_window: int
+    ) -> pd.DataFrame:
+        """method에 따라 ATAC peak을 유전자별로 집계한다 (integrate_by_promoter의
+        라우팅/fallback 로직)."""
+        if method != "promoter_only":
+            return self._group_atac_by_gene(atac_df, gene_col=StandardColumns.NEAREST_GENE)
+
         col_dist = StandardColumns.DISTANCE_TO_TSS
         if col_dist not in atac_df.columns:
             logger.warning(
                 "distance_to_tss column not found; falling back to nearest_gene"
             )
-            return self.integrate_by_nearest_gene(rna_df, atac_df)
+            return self._group_atac_by_gene(atac_df, gene_col=StandardColumns.NEAREST_GENE)
 
         promoter_df = atac_df[atac_df[col_dist].abs() <= tss_window].copy()
         if promoter_df.empty:
@@ -88,14 +134,9 @@ class MultiOmicsIntegrator:
                 f"No peaks within TSS ±{tss_window} bp; "
                 "falling back to nearest_gene"
             )
-            return self.integrate_by_nearest_gene(rna_df, atac_df)
+            return self._group_atac_by_gene(atac_df, gene_col=StandardColumns.NEAREST_GENE)
 
-        atac_grouped = self._group_atac_by_gene(promoter_df, gene_col=StandardColumns.NEAREST_GENE)
-        return self._build_integrated(rna_df, atac_grouped)
-
-    # ------------------------------------------------------------------ #
-    #  Internal helpers
-    # ------------------------------------------------------------------ #
+        return self._group_atac_by_gene(promoter_df, gene_col=StandardColumns.NEAREST_GENE)
 
     def _group_atac_by_gene(
         self, atac_df: pd.DataFrame, gene_col: str
@@ -134,12 +175,12 @@ class MultiOmicsIntegrator:
         )
         return grouped
 
-    def _build_integrated(
+    def _merge_only(
         self, rna_df: pd.DataFrame, atac_grouped: pd.DataFrame
     ) -> pd.DataFrame:
         """
-        RNA-seq DataFrame과 집계된 ATAC DataFrame을 outer JOIN으로 합치고
-        concordance 및 regulatory_status 를 계산합니다.
+        RNA-seq DataFrame과 집계된 ATAC DataFrame을 outer JOIN으로 합친다.
+        cutoff와 무관한 부분만 — concordance/regulatory_status는 아직 없음.
         """
         # RNA 측 컬럼 선택 & 정규화
         rna = self._extract_rna_columns(rna_df)
@@ -153,37 +194,28 @@ class MultiOmicsIntegrator:
             how="outer",
         )
 
-        # Concordance 분류
-        merged[IntegratedColumns.CONCORDANCE] = merged.apply(
-            self._classify_concordance, axis=1
-        )
-
-        # Regulatory status (간단 설명)
-        merged[IntegratedColumns.REGULATORY_STATUS] = merged[IntegratedColumns.CONCORDANCE].map(
-            self._regulatory_label
-        )
-
-        # 컬럼 순서 정리
-        ordered_cols = [
-            IntegratedColumns.GENE_SYMBOL,
-            IntegratedColumns.RNA_LOG2FC,
-            IntegratedColumns.RNA_PADJ,
-            IntegratedColumns.RNA_BASE_MEAN,
-            IntegratedColumns.PEAK_COUNT,
-            IntegratedColumns.ATAC_LOG2FC_MEAN,
-            IntegratedColumns.ATAC_LOG2FC_MAX,
-            IntegratedColumns.ATAC_PADJ_MIN,
-            IntegratedColumns.CONCORDANCE,
-            IntegratedColumns.REGULATORY_STATUS,
-        ]
-        existing = [c for c in ordered_cols if c in merged.columns]
+        existing = [c for c in _ORDERED_COLS if c in merged.columns]
         merged = merged[existing]
+        return merged.reset_index(drop=True)
+
+    def _build_integrated(
+        self, rna_df: pd.DataFrame, atac_grouped: pd.DataFrame
+    ) -> pd.DataFrame:
+        """
+        RNA-seq DataFrame과 집계된 ATAC DataFrame을 outer JOIN으로 합치고
+        concordance 및 regulatory_status 를 계산합니다.
+        """
+        merged = self._merge_only(rna_df, atac_grouped)
+        result = self.classify_dataframe(
+            merged, self.rna_padj_cutoff, self.rna_lfc_cutoff,
+            self.atac_padj_cutoff, self.atac_lfc_cutoff,
+        )
 
         logger.info(
-            f"Integration complete: {len(merged)} genes "
-            f"({merged[IntegratedColumns.CONCORDANCE].value_counts().to_dict()})"
+            f"Integration complete: {len(result)} genes "
+            f"({result[IntegratedColumns.CONCORDANCE].value_counts().to_dict()})"
         )
-        return merged.reset_index(drop=True)
+        return result
 
     def _extract_rna_columns(self, rna_df: pd.DataFrame) -> pd.DataFrame:
         """RNA-seq DataFrame에서 필요한 컬럼만 추출 및 이름 변경"""
@@ -217,48 +249,68 @@ class MultiOmicsIntegrator:
 
         return rna
 
-    def _classify_concordance(self, row: pd.Series) -> str:
+    @staticmethod
+    def classify_dataframe(
+        df: pd.DataFrame,
+        rna_padj_cutoff: float,
+        rna_lfc_cutoff: float,
+        atac_padj_cutoff: float,
+        atac_lfc_cutoff: float,
+    ) -> pd.DataFrame:
         """
-        단일 행에 대해 concordance 카테고리 결정.
+        JOIN된 DataFrame 전체에 concordance/regulatory_status를 벡터화로 채운다.
 
-        Logic:
+        self가 필요 없는 순수 함수 — 인스턴스 생성 없이 바로 호출 가능하며,
+        cutoff를 바꿔가며 반복 호출해도 저렴하다(row-wise .apply 대신 boolean
+        mask + np.select 사용).
+
+        Logic (행별 _classify_concordance와 동일):
           rna_sig  = rna_padj  ≤ cutoff  AND |rna_log2fc|  ≥ cutoff
           atac_sig = atac_padj_min ≤ cutoff AND |atac_log2fc_mean| ≥ cutoff
         """
-        rna_lfc   = row[IntegratedColumns.RNA_LOG2FC]       if IntegratedColumns.RNA_LOG2FC       in row.index else np.nan
-        rna_padj  = row[IntegratedColumns.RNA_PADJ]         if IntegratedColumns.RNA_PADJ         in row.index else np.nan
-        atac_lfc  = row[IntegratedColumns.ATAC_LOG2FC_MEAN] if IntegratedColumns.ATAC_LOG2FC_MEAN in row.index else np.nan
-        atac_padj = row[IntegratedColumns.ATAC_PADJ_MIN]    if IntegratedColumns.ATAC_PADJ_MIN    in row.index else np.nan
+        out = df.copy()
+        rna_lfc   = out.get(IntegratedColumns.RNA_LOG2FC,       pd.Series(np.nan, index=out.index))
+        rna_padj  = out.get(IntegratedColumns.RNA_PADJ,         pd.Series(np.nan, index=out.index))
+        atac_lfc  = out.get(IntegratedColumns.ATAC_LOG2FC_MEAN, pd.Series(np.nan, index=out.index))
+        atac_padj = out.get(IntegratedColumns.ATAC_PADJ_MIN,    pd.Series(np.nan, index=out.index))
 
-        rna_sig  = (
-            pd.notna(rna_padj)  and rna_padj  <= self.rna_padj_cutoff
-            and pd.notna(rna_lfc)  and abs(rna_lfc)  >= self.rna_lfc_cutoff
+        rna_sig = (
+            rna_padj.notna() & (rna_padj <= rna_padj_cutoff)
+            & rna_lfc.notna() & (rna_lfc.abs() >= rna_lfc_cutoff)
         )
         atac_sig = (
-            pd.notna(atac_padj) and atac_padj <= self.atac_padj_cutoff
-            and pd.notna(atac_lfc) and abs(atac_lfc) >= self.atac_lfc_cutoff
+            atac_padj.notna() & (atac_padj <= atac_padj_cutoff)
+            & atac_lfc.notna() & (atac_lfc.abs() >= atac_lfc_cutoff)
+        )
+        rna_up, atac_up = rna_lfc > 0, atac_lfc > 0
+
+        conditions = [
+            ~rna_sig & ~atac_sig,
+            rna_sig & ~atac_sig,
+            atac_sig & ~rna_sig,
+            rna_sig & atac_sig & rna_up & atac_up,
+            rna_sig & atac_sig & ~rna_up & ~atac_up,
+            rna_sig & atac_sig & rna_up & ~atac_up,
+            rna_sig & atac_sig & ~rna_up & atac_up,
+        ]
+        choices = [
+            ConcordanceCategory.NOT_SIGNIFICANT,
+            ConcordanceCategory.RNA_ONLY,
+            ConcordanceCategory.ATAC_ONLY,
+            ConcordanceCategory.CONCORDANT_BOTH_UP,
+            ConcordanceCategory.CONCORDANT_BOTH_DOWN,
+            ConcordanceCategory.DISCORDANT_RNA_UP,
+            ConcordanceCategory.DISCORDANT_RNA_DOWN,
+        ]
+        out[IntegratedColumns.CONCORDANCE] = np.select(
+            conditions, choices, default=ConcordanceCategory.NOT_SIGNIFICANT
+        )
+        out[IntegratedColumns.REGULATORY_STATUS] = out[IntegratedColumns.CONCORDANCE].map(
+            MultiOmicsIntegrator._regulatory_label
         )
 
-        if not rna_sig and not atac_sig:
-            return ConcordanceCategory.NOT_SIGNIFICANT
-
-        if rna_sig and not atac_sig:
-            return ConcordanceCategory.RNA_ONLY
-
-        if atac_sig and not rna_sig:
-            return ConcordanceCategory.ATAC_ONLY
-
-        # 둘 다 유의
-        rna_up  = rna_lfc  > 0
-        atac_up = atac_lfc > 0
-
-        if rna_up and atac_up:
-            return ConcordanceCategory.CONCORDANT_BOTH_UP
-        if not rna_up and not atac_up:
-            return ConcordanceCategory.CONCORDANT_BOTH_DOWN
-        if rna_up and not atac_up:
-            return ConcordanceCategory.DISCORDANT_RNA_UP
-        return ConcordanceCategory.DISCORDANT_RNA_DOWN
+        existing = [c for c in _ORDERED_COLS if c in out.columns]
+        return out[existing]
 
     @staticmethod
     def _regulatory_label(category: str) -> str:

@@ -178,6 +178,8 @@ class GOClusteringDialog(QDialog):
             | Qt.WindowType.WindowMaximizeButtonHint
             | Qt.WindowType.WindowMinimizeButtonHint
         )
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(self)
         self._init_ui()
         
     def _init_ui(self):
@@ -444,12 +446,19 @@ class GOClusteringDialog(QDialog):
         if self._style_dialog is None:
             dlg = QDialog(self)
             dlg.setWindowTitle("Figure Style & Export")
+            dlg.setWindowFlags(
+                dlg.windowFlags()
+                | Qt.WindowType.WindowMaximizeButtonHint
+                | Qt.WindowType.WindowMinimizeButtonHint
+            )
             v = QVBoxLayout(dlg)
             v.addWidget(self._style)   # 재파렌팅 — self._style 객체는 그대로 재사용
             buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
             buttons.rejected.connect(dlg.close)
             buttons.button(QDialogButtonBox.StandardButton.Close).clicked.connect(dlg.close)
             v.addWidget(buttons)
+            from utils.dialog_geometry import remember_geometry
+            remember_geometry(dlg, "GOClusteringFigureStyle")
             self._style_dialog = dlg
         self._style_dialog.show()
         self._style_dialog.raise_()

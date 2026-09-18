@@ -1,0 +1,4 @@
+Negative Regulation Of Smooth Muscle Cell Migration (GO:0014912)		IGFBP3	SERPINE1	TPM1
+Collagen Fibril Organization (GO:0030199)		COL1A1	COL1A3	COL1A2	LOXL1
+Negative Regulation Of Cell Migration (GO:0030336)		ITGB1	TUBA1C	TUBA1B	TUBA1A	CALR	ACTB
+Immune Response (GO:0000005)		TRP53	JUN	FOS

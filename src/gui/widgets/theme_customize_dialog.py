@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
     QDoubleSpinBox, QCheckBox, QLineEdit,
     QDialogButtonBox, QLabel,
 )
-from PyQt6.QtCore import QSettings
+from PyQt6.QtCore import Qt, QSettings
 from utils import figure_theme
 
 
@@ -14,7 +14,14 @@ class ThemeCustomizeDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Edit Custom Theme")
+        self.setWindowFlags(
+            self.windowFlags()
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowMinimizeButtonHint
+        )
         self.setMinimumWidth(340)
+        from utils.dialog_geometry import remember_geometry
+        remember_geometry(self)
 
         settings = QSettings("RNASeqDataView", "MainWindow")
         params = figure_theme.load_custom_params(settings)

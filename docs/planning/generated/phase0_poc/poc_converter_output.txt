@@ -1,0 +1,33 @@
+[converter] merged standardized rows: 3053 (enrichr_GO=723, enrichr_KEGG=107, goatools=2223)
+  A1 _gene_set non-empty (enrichr GO): PASS  (723 rows non-empty)
+  A2 _gene_set non-empty (GOATOOLS): PASS  (2223 rows non-empty)
+  A3 multi-delimiter unit: PASS  (parsed=['GENE1', 'GENE2', 'GENE3', 'GENE4'])
+  B gene_ratio ^\d+/\d+$: PASS  (0 bad rows)
+  C bg_ratio ^\d+/\d+$: PASS  (0 bad rows)
+  D fold finite (non-zero denom): PASS  (0 non-finite with M>0; NaN-fold rows=0 (M=0))
+  E1 direction in {UP,DOWN,TOTAL}: PASS
+  E2 ontology in {BP,CC,MF,KEGG}: PASS
+  E3 label parse mirrors loader: PASS  (0 mismatches)
+  F1 GO rows have GO:\d{7}: PASS  (2946/2946)
+  F2 KEGG term_id empty unless ^hsa\d+: PASS  (observed: hsa=0, empty=107 of 107)
+  G description canonical (no conflict on shared term_ids): PASS  (622 shared ids; conflicts=0)
+  (G detail) shared ids=622; raw enrichr Term differed from obo name for 622 -> canonicalized to obo name; example conflict terms: [('GO:0019221', 'Cytokine-Mediated Signaling Pathway (GO:0019221)', 'cytokine-mediated signaling pathway'), ('GO:0006937', 'Regulation Of Muscle Contraction (GO:0006937)', 'regulation of muscle contraction')]
+
+==== P0-4 CONVERTER SUMMARY ====
+PASS: 12  FAIL: 0
+
+Sample standardized rows (3):
+   term_id                                                term gene_ratio  bg_ratio  fold_enrichment gene_set  gene_count  bg_count      fdr                             engine
+GO:0014912 negative regulation of smooth muscle cell migration       3/14  14/14698         224.9694 TOTAL_BP           3        14 0.020574 enrichr:GO_Biological_Process_2023
+GO:0030199                        collagen fibril organization       4/42  42/14698          33.3288 TOTAL_BP           4        42 0.020574 enrichr:GO_Biological_Process_2023
+GO:0030336               negative regulation of cell migration      6/163 163/14698           3.3192 TOTAL_BP           6       163 0.026495 enrichr:GO_Biological_Process_2023
+
+Fold distribution (inspect non-trivial):
+count    3053.000000
+mean       12.575790
+std        57.541754
+min         0.001200
+25%         0.066700
+50%         0.333300
+75%         1.000000
+max       587.920000

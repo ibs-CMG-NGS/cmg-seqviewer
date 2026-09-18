@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![PyQt6](https://img.shields.io/badge/PyQt-6-green.svg)](https://www.riverbankcomputing.com/software/pyqt/)
-[![Release](https://img.shields.io/badge/release-v1.2.6-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
+[![Release](https://img.shields.io/badge/release-v1.3.0-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
 
 ---
 
@@ -29,7 +29,48 @@
 
 ---
 
-## Latest Update: v1.2.6 (Jul 2026)
+## Latest Update: v1.3.0 (Sep 2026)
+
+- [NEW] **GO/KEGG enrichment analysis engine**: run ORA (over-representation analysis) against online (Enrichr/Speedrichr) or local (GOATOOLS / KEGG GMT) libraries directly from a DEG list, with results normalized into the standard GO dataframe schema
+- [NEW] **F1 help content migrated to Markdown** (`docs/user/help/`), consolidating the in-app help dialog and the standalone user docs into one maintained source
+- [FIX] Multi-Group dataset detection now recognizes coexpression-module output (`cluster_id` + numeric sample columns, no `padj`)
+
+### Previous: v1.2.11 (Aug 2026)
+
+- [NEW] **GO Clustering live tuning + upstream-compatible export**: adjust FDR / k-cut / Top-N thresholds interactively and export in the upstream clustered-GO format (see `docs/UPSTREAM_CLUSTERED_GO_FORMAT.md`)
+- [NEW] **Open Cluster Dot Plot directly on any dataset with a `cluster_id` column** — no need to re-run clustering first
+- [NEW] **Project window title shows the loaded project; Save vs Save As** — opening a project starts a fresh session with a Save / Discard / Cancel prompt
+- [NEW] **Multi-group Heatmap group reordering** (Display → Group order) plus a reproducible bundle export; per-sample include/exclude from v1.2.10
+- [NEW] **Export remembers the last-used folder** across all save/export dialogs
+- [FIX] GO import recognizes the `core_enrichment` column and stamps KEGG sheets missing an Ontology column as `KEGG`; duplicate gene labels no longer crash the Multi-Group Heatmap; Gene Expression Bar+Scatter **Export Data** now includes individual scatter values
+
+### Previous: v1.2.10 (Aug 2026)
+
+- [NEW] **Non-destructive Column Subset sheet**: keeps all rows while showing only the selected columns
+- [NEW] **Per-sample include/exclude** in the Multi-Group Heatmap and PCA (draw a subset of conditions/samples)
+- [NEW] **GO Cluster Dot Plot**: color by fold enrichment, include singletons, choose Top N by FDR or fold enrichment
+- [NEW] **Reproducible bundle export for the Multi-Group Heatmap**; customizable up/down bar colors in the DE/DA Count Summary
+- [FIX] Generated datasets (GO clustering, etc.) now persist across project save/load; dataset rename cascades to all name references
+
+### Previous: v1.2.9 (Aug 2026)
+
+- [NEW] **Ctrl+F keyword search bar** — compact live find across DE/ATAC/GO sheets, with a restorable search-filter recipe
+- [NEW] **PCA for Multi-Group datasets** — group-colored with a Color-by control and an editable Sample Groups table
+- [NEW] **Editable Sample Groups** as the default for the Multi-Group Heatmap
+
+### Previous: v1.2.8 (Aug 2026)
+
+- [FIX] Figure bundles now ship the matplotlib PDF/SVG backends (tolerating a missing one) and inline the render source from the frozen app's bundled `src/plots`
+
+### Previous: v1.2.7 (Aug 2026)
+
+- [NEW] **Transcriptome meta-analysis**: Fisher/Stouffer p-value combination with BH meta-FDR in dataset comparison, **Meta Volcano Plot** (M3), module-level meta-analysis on GO Term Comparison (M4a), and a random-effects effect-size model (M5)
+- [NEW] **Cross-species ortholog harmonization (M2)**: bundled human ortholog map (4 species) for meta-analysis across organisms
+- [NEW] **Figure Bundle Export** for 16+ plot types (renderers extracted as a single source of truth), with a user-renamable bundle folder
+- [NEW] **adjustText auto label placement** (non-overlapping gene/sample labels) in Volcano and PCA plots
+- [NEW] Hierarchical gene dendrogram option in the Heatmap; GO Cluster Dot Plot; minimum gene Count filter for GO/KEGG (default 3)
+
+### Previous: v1.2.6 (Jul 2026)
 
 - [NEW] **Cross-Dataset Comparison menu**: A new `Visualization → 🧩 Cross-Dataset Comparison` submenu groups every plot that combines multiple datasets. Pick datasets in a selection popup — no need to pre-build filtered tabs
 - [NEW] **DE/DA Count Summary**: Stacked up/down significant-count bars across datasets, with in-dialog **FDR** / **|log2FC|** thresholds (3-decimal) and a % toggle. `Visualization → 🧩 Cross-Dataset Comparison → 📊 DE/DA Count Summary`
@@ -93,7 +134,7 @@
 - [NEW] Gene List Filtering on Multi-Group sheets
 - [FIX] Gene list order preservation, cluster_id dtype, save figure error handling
 
-[Full Release Notes](docs/RECENT_UPDATES.md)
+[Full Release Notes](docs/archive/recent-updates.md)
 
 ---
 
@@ -590,7 +631,7 @@ MIT License -- see [LICENSE](LICENSE).
 |----------|------|
 | Releases | [Download Latest](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases) |
 | Documentation | [docs/](docs/) |
-| Recent Updates | [RECENT_UPDATES.md](docs/RECENT_UPDATES.md) |
+| Recent Updates | [RECENT_UPDATES.md](docs/archive/recent-updates.md) |
 | Issue Tracker | [Issues](https://github.com/ibs-CMG-NGS/cmg-seqviewer/issues) |
 | Internal Distribution | [INTERNAL_DISTRIBUTION.md](docs/INTERNAL_DISTRIBUTION.md) |
 | Database Structure | [database/README.md](database/README.md) |

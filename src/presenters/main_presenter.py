@@ -162,10 +162,34 @@ class MainPresenter(QObject):
                         self._store_and_signal_dataset(dataset, start_time)
                         return
 
+                    # ── CSV / Parquet: GO/KEGG 표준 프레임 (엔진 산출/복원 — plan P3-7) ──
+                    # GO 프레임은 MultiGroup 감지(pvalue/fdr 등 통계 컬럼 보유)와 충돌하므로 우선 판별
+                    if _looks_like_go_frame(peek):
+                        from utils.go_kegg_loader import standardize_go_dataframe
+                        df = (pd.read_csv(file_path) if suffix == '.csv'
+                              else pd.read_parquet(file_path))
+                        std = standardize_go_dataframe(df)
+                        from models.data_models import Dataset, DatasetType
+                        dataset = Dataset(name=final_name or file_path.stem,
+                                          dataset_type=DatasetType.GO_ANALYSIS,
+                                          dataframe=std)
+                        self._store_and_signal_dataset(dataset, start_time)
+                        return
+
                     from utils.multi_group_loader import MultiGroupLoader
                     if MultiGroupLoader.is_multi_group_dataframe(peek):
                         loader = MultiGroupLoader()
                         dataset = loader.load(file_path, final_name or file_path.stem)
+                        self._store_and_signal_dataset(dataset, start_time)
+                        return
+                        from utils.go_kegg_loader import standardize_go_dataframe
+                        df = (pd.read_csv(file_path) if suffix == '.csv'
+                              else pd.read_parquet(file_path))
+                        std = standardize_go_dataframe(df)
+                        from models.data_models import Dataset, DatasetType
+                        dataset = Dataset(name=final_name or file_path.stem,
+                                          dataset_type=DatasetType.GO_ANALYSIS,
+                                          dataframe=std)
                         self._store_and_signal_dataset(dataset, start_time)
                         return
                 except Exception as e:
@@ -581,13 +605,14 @@ class MainPresenter(QObject):
         # gene_list 입력 순서를 정렬 키로 사용
         gene_order = {g.strip().lower(): i for i, g in enumerate(gene_list)}
 
-        # 대소문자 무시 매칭 후 sort_key 부여
+        # 대소문자 무시 매칭 후 sort_key 부여 — _gene_list_rank 열은 의도적으로 보존:
+        # 다운스트림(heatmap 등 시각화)이 "입력 순서"를 존중하도록 하는 내부 신호열
+        # (클러스터링을 요청하지 않는 한 사용자가 넣어준 순서대로 표시 — 의도된 동작).
         mask = df[gene_col].astype(str).str.strip().str.lower().isin(gene_order)
         filtered = (
             df[mask]
-            .assign(_sort_key=df.loc[mask, gene_col].astype(str).str.strip().str.lower().map(gene_order))
-            .sort_values('_sort_key')
-            .drop(columns='_sort_key')
+            .assign(_gene_list_rank=df.loc[mask, gene_col].astype(str).str.strip().str.lower().map(gene_order))
+            .sort_values('_gene_list_rank')
             .copy()
         )
         
@@ -1291,7 +1316,54 @@ class MainPresenter(QObject):
         except Exception as e:
             self.logger.error(f"Failed to load GO/KEGG data: {e}", exc_info=True)
             self.error_occurred.emit(f"Failed to load GO/KEGG data:\n{str(e)}")
-    
+
+    def register_enrichment_result(self, result) -> Optional[str]:
+        """
+        enrichment 실행 결과를 Dataset으로 등록 (plan §6.3/G11 — A2/F6).
+
+        - 이름: `Enrichment: {입력명}` (중복 시 unique name 자동 생성)
+        - metadata['enrichment_recipe']에 재실행 요청 직렬화 기록 (v1 non-goal: 자동 재실행 없음)
+        - 등록/탭/시그널/audit 로그는 기존 `load_go_kegg_data` 패턴 재사용
+        """
+        try:
+            from models.data_models import Dataset, DatasetType
+            from models.enrichment_models import EnrichmentResult
+            if not isinstance(result, EnrichmentResult):
+                self.error_occurred.emit("The enrichment result format is invalid.")
+                return None
+
+            dataset = Dataset(
+                name=result.dataset_name or "Enrichment",
+                dataset_type=DatasetType.GO_ANALYSIS,
+                dataframe=result.dataframe,
+                metadata=dict(result.metadata or {}),
+            )
+            unique_name = self.view.dataset_manager._generate_unique_name(dataset.name)
+            dataset.name = unique_name
+            if "enrichment_recipe" not in dataset.metadata:
+                dataset.metadata["enrichment_recipe"] = result.to_recipe_dict()
+            self.datasets[unique_name] = dataset
+            self.current_dataset = dataset
+            self._update_view_with_dataset(dataset)
+            self.view._update_comparison_panel_datasets()
+            self.dataset_loaded.emit(dataset.name, dataset)
+
+            n_terms = len(dataset.dataframe) if dataset.dataframe is not None else 0
+            self.logger.info(
+                "Enrichment result registered: %s (%d rows, engine=%s)",
+                unique_name, n_terms, result.engine_used)
+            self.audit_logger.log_action(
+                "Enrichment Analysis Completed",
+                details={"name": unique_name, "rows": n_terms,
+                         "engine": result.engine_used,
+                         "warnings": result.warnings},
+            )
+            return unique_name
+        except Exception as e:
+            self.logger.error(f"Failed to register enrichment result: {e}", exc_info=True)
+            self.error_occurred.emit(f"Failed to register enrichment result:\n{str(e)}")
+            return None
+
     def cluster_go_terms(self, dataset: Dataset, kappa_threshold: float = 0.4,
                          total_genes: Optional[int] = None):
         """
@@ -1672,3 +1744,13 @@ class MainPresenter(QObject):
             error_msg = f"Failed to filter GO/KEGG data: {str(e)}"
             self.logger.exception(error_msg)
             self.error_occurred.emit(error_msg)
+
+
+def _looks_like_go_frame(df) -> bool:
+    """GO/KEGG 표준(또는 R clusterProfiler 어휘) 프레임 감지 (plan P3-7 복원 경로)."""
+    cols = {str(c).lower() for c in df.columns}
+    idish = bool(cols & {"term_id", "go id", "kegg id", "id", "go.id", "kegg.id"})
+    descish = bool(cols & {"description", "go term", "kegg pathway", "term",
+                           "go.term", "kegg.pathway"})
+    ontish = bool(cols & {"ontology", "direction", "gene_set"})
+    return (idish and descish) or (ontish and descish)
