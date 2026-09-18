@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![PyQt6](https://img.shields.io/badge/PyQt-6-green.svg)](https://www.riverbankcomputing.com/software/pyqt/)
-[![Release](https://img.shields.io/badge/release-v1.2.11-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
+[![Release](https://img.shields.io/badge/release-v1.3.0-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
 
 ---
 
@@ -29,7 +29,13 @@
 
 ---
 
-## Latest Update: v1.2.11 (Aug 2026)
+## Latest Update: v1.3.0 (Sep 2026)
+
+- [NEW] **GO/KEGG enrichment analysis engine**: run ORA (over-representation analysis) against online (Enrichr/Speedrichr) or local (GOATOOLS / KEGG GMT) libraries directly from a DEG list, with results normalized into the standard GO dataframe schema
+- [NEW] **F1 help content migrated to Markdown** (`docs/user/help/`), consolidating the in-app help dialog and the standalone user docs into one maintained source
+- [FIX] Multi-Group dataset detection now recognizes coexpression-module output (`cluster_id` + numeric sample columns, no `padj`)
+
+### Previous: v1.2.11 (Aug 2026)
 
 - [NEW] **GO Clustering live tuning + upstream-compatible export**: adjust FDR / k-cut / Top-N thresholds interactively and export in the upstream clustered-GO format (see `docs/UPSTREAM_CLUSTERED_GO_FORMAT.md`)
 - [NEW] **Open Cluster Dot Plot directly on any dataset with a `cluster_id` column** — no need to re-run clustering first
