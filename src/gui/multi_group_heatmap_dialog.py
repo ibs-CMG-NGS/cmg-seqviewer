@@ -620,18 +620,24 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
             self._last_rank_method = None
             return pd.DataFrame()
 
-        # Top N 랭킹 기준: LRT test statistic(stat)이 있으면 그걸 최우선으로 쓴다 —
-        # padj는 매우 유의한 유전자들이 부동소수점 하한(0)에 뭉쳐 그 안에서 순위를
-        # 못 가리는 문제가 있지만, stat(카이제곱 통계량, 부호 없음)은 그 문제가 없다.
-        if 'stat' in df.columns:
-            stat = pd.to_numeric(df['stat'], errors='coerce').abs()
-            df = df.reindex(stat.sort_values(ascending=False).index)
-            self._last_rank_method = "|stat| (LRT test statistic)"
-        elif 'padj' in df.columns:
-            df = df.sort_values('padj')
-            self._last_rank_method = "padj (ascending)"
+        # Gene List 필터 프레임(_gene_list_rank 보존)이면 입력 순서를 존중한다 —
+        # 연구자가 넣어준 순서가 해석에 의미 있는 경우가 많다. Top N은 rank 순으로 적용.
+        if '_gene_list_rank' in df.columns:
+            df = df.sort_values('_gene_list_rank')
+            self._last_rank_method = "gene list order (input order)"
         else:
-            self._last_rank_method = None
+            # Top N 랭킹 기준: LRT test statistic(stat)이 있으면 그걸 최우선으로 쓴다 —
+            # padj는 매우 유의한 유전자들이 부동소수점 하한(0)에 뭉쳐 그 안에서 순위를
+            # 못 가리는 문제가 있지만, stat(카이제곱 통계량, 부호 없음)은 그 문제가 없다.
+            if 'stat' in df.columns:
+                stat = pd.to_numeric(df['stat'], errors='coerce').abs()
+                df = df.reindex(stat.sort_values(ascending=False).index)
+                self._last_rank_method = "|stat| (LRT test statistic)"
+            elif 'padj' in df.columns:
+                df = df.sort_values('padj')
+                self._last_rank_method = "padj (ascending)"
+            else:
+                self._last_rank_method = None
         df = df.head(self.top_n_spin.value())
 
         return df

@@ -11,6 +11,7 @@ from typing import Optional, Dict, List, Tuple, Callable
 import logging
 from models.data_models import Dataset, DatasetType
 from models.standard_columns import StandardColumns
+from utils.go_kegg_loader import compute_fold_enrichment as _shared_compute_fold_enrichment
 
 
 class DataLoader:
@@ -433,41 +434,8 @@ class DataLoader:
         return df
 
     def _compute_fold_enrichment(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        gene_ratio / bg_ratio 로부터 fold_enrichment 파생 계산.
-        이미 fold_enrichment 컬럼이 있으면 덮어쓰지 않는다.
-        """
-        fe_col = StandardColumns.FOLD_ENRICHMENT
-        gr_col = StandardColumns.GENE_RATIO
-        br_col = StandardColumns.BG_RATIO
-
-        if fe_col in df.columns:
-            return df
-        if gr_col not in df.columns or br_col not in df.columns:
-            return df
-
-        def _parse_ratio(val) -> float:
-            try:
-                if pd.isna(val):
-                    return float('nan')
-                if isinstance(val, (int, float)):
-                    return float(val)
-                parts = str(val).split('/')
-                if len(parts) == 2:
-                    num, den = float(parts[0]), float(parts[1])
-                    return num / den if den > 0 else float('nan')
-            except Exception:
-                pass
-            return float('nan')
-
-        gr = df[gr_col].apply(_parse_ratio)
-        br = df[br_col].apply(_parse_ratio)
-        df[fe_col] = (gr / br.replace(0, float('nan'))).round(4)
-        self.logger.info(
-            f"Computed fold_enrichment for {df[fe_col].notna().sum()}/{len(df)} rows"
-        )
-        return df
-
+        """fold_enrichment 파생 계산 — 공용 구현 위임 (plan §6.5 중복 제거)."""
+        return _shared_compute_fold_enrichment(df, self.logger)
     def _has_required_columns(self, mapping: Dict[str, str], dataset_type: DatasetType) -> bool:
         """
         필수 컬럼이 모두 매핑되었는지 확인

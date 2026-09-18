@@ -26,12 +26,11 @@ setup(
         "Topic :: Scientific/Engineering :: Bio-Informatics",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Operating System :: OS Independent",
     ],
-    python_requires=">=3.9",
+    python_requires=">=3.10",   # pandas 3.x 요구사항 (PoC F11 실측 2026-09-02)
     install_requires=[
         "PyQt6>=6.4.0",
         "pandas>=2.0.0",
@@ -42,6 +41,12 @@ setup(
         "seaborn>=0.12.0",
         "matplotlib-venn>=0.11.0",
         "upsetplot>=0.8.0",
+        # GO/KEGG Enrichment Engine (plan §8, PoC 확정 2026-09-02)
+        "gseapy>=1.1.0",
+        "goatools>=1.6.0",
+        "statsmodels>=0.14.0,<0.15",  # goatools fdr_bh 전용 — 0.15 sandbox.multicomp.multipletests 제거(P0-3)
+        "requests>=2.28.0",
+        "mygene>=3.2.0",
     ],
     extras_require={
         "dev": [

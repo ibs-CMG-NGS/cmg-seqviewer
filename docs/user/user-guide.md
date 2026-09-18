@@ -2,6 +2,8 @@
 
 > 📖 CMG-SeqViewer의 모든 기능을 상세히 설명하는 종합 가이드
 
+> 💡 **앱 내 도움말(F1)**: 섹션 단위 markdown(`docs/user/help/*.md`, 영문)을 렌더합니다. 각 섹션 말미 **See also**로 본 매뉴얼과 FAQ(20. FAQ)를 상호 참조합니다.
+
 ## 목차
 
 1. [개요](#개요)
@@ -895,6 +897,36 @@ J(A, B) = 2/4 = 0.5
 - **NCBI**: https://www.ncbi.nlm.nih.gov/gene?term=GO:0008150
 
 #### KEGG Annotation
+
+## GO/KEGG Enrichment Analysis (v1.3)
+
+로드된 DE 데이터셋(또는 붙여넣은 gene list, `Comparison: Statistics` meta 시트)에서 DEG를
+추출하여 GO(GO BP/CC/MF)와 KEGG 경로 enrichment를 즉석 분석하고, 결과를 기존 GO/KEGG
+Dataset으로 등록합니다 (`Analysis → GO/KEGG Enrichment Analysis...`).
+
+### 엔진 모드
+
+| 모드 | 동작 |
+|---|---|
+| Auto | 온라인 가능 + background 미지정 → Enrichr(온라인); 그 외 → 로컬(GOATOOLS) |
+| 온라인 | Enrichr API 사용 (GO/KEGG 모두) |
+| 로컬 | GOATOOLS 로컬 (GO만; KEGG 비활성 — ADR-1 Option 1) |
+| 오프라인 | 인터넷 미사용 — 사전 캐시(obo/gene2go) 필요, GO만 |
+
+- **custom background 지정 시 로컬 엔진 강제** (온라인 custom background 미지원 — ADR-2 2A).
+- **Mouse**: GO는 로컬 우선 (온라인 mouse GO 라이브러리 없음); 심볼 Title-case 자동 적용.
+- **오프라인 = GO 전용, KEGG 비활성** (v1). 온라인 모드에서만 KEGG 분석.
+- **캐시**: obo/gene2go/gene_info/GMT 최초 실행 시 AppData `cache/`에 다운로드
+  (정기 TTL 자동 갱신). proxy 환경변수(`HTTPS_PROXY`) 존중.
+- **프라이버시**: 온라인 모드는 전송된 DEG 심볼만 Enrichr로 전송됩니다.
+  분석 이력은 Dataset metadata `enrichment_recipe`로 보존(재실행 경로).
+- **Python 버전**: pandas 3.x 요구사항으로 Python 3.10+ 필요 (설치 가이드 참조).
+
+### 명칭 구분 (A7)
+
+- **GSEA Lite (Wilcoxon)**: `Analysis → GSEA Lite` — 자체 유전자 셋, Wilcoxon 기반.
+- **GSEA prerank (gseapy)**: 국제 유전자 셋(GO/KEGG) + gseapy 엔진 (Phase 4 예정).
+  GO/KEGG Enrichment 파이프라인과는 별개 기능입니다.
 
 **트리거**: KEGG 결과에서 KEGG_ID 컬럼 우클릭
 

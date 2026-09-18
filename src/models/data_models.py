@@ -72,11 +72,10 @@ class DifferentialExpressionData:
     base_mean: Optional[float] = None
     additional_fields: Dict[str, Any] = field(default_factory=dict)
     
-    @property
-    def is_significant(self, adj_pvalue_cutoff: float = 0.05, 
+    def is_significant(self, adj_pvalue_cutoff: float = 0.05,
                        log2fc_cutoff: float = 1.0) -> bool:
-        """통계적 유의성 판단"""
-        return (abs(self.log2fc) >= log2fc_cutoff and 
+        """통계적 유의성 판단 (메서드 — test 계약: is_significant(cutoff, log2fc))."""
+        return (abs(self.log2fc) >= log2fc_cutoff and
                 self.adj_pvalue <= adj_pvalue_cutoff)
     
     @property
@@ -110,9 +109,8 @@ class GOAnalysisData:
     category: Optional[str] = None  # BP, MF, CC
     additional_fields: Dict[str, Any] = field(default_factory=dict)
     
-    @property
     def is_significant(self, fdr_cutoff: float = 0.05) -> bool:
-        """통계적 유의성 판단"""
+        """통계적 유의성 판단 (메서드 — GOAnalysisData 계약)."""
         return self.fdr <= fdr_cutoff
 
 
@@ -136,9 +134,19 @@ class Dataset:
     # 원본 컬럼명 참고 정보 (표준 컬럼명 -> 원본 컬럼명)
     # 표시 목적으로만 사용, 실제 데이터 접근에는 사용하지 않음
     original_columns: Dict[str, str] = field(default_factory=dict)
+
+    # 원본(raw) 컬럼명 -> 표준 컬럼명 매핑 (선택).
+    # 생성 시 dataframe을 표준 컬럼명으로 rename하는 동작 추가 (test 계약).
+    column_mapping: Dict[str, str] = field(default_factory=dict)
     
     def __post_init__(self):
         """데이터셋 초기화 후 처리"""
+        if self.column_mapping and self.dataframe is not None:
+            rename = {raw: std for raw, std in self.column_mapping.items()
+                      if raw in self.dataframe.columns and raw != std}
+            if rename:
+                self.dataframe = self.dataframe.rename(columns=rename)
+                self.original_columns = {std: raw for raw, std in rename.items()}
         if self.dataframe is not None:
             self.metadata['row_count'] = len(self.dataframe)
             self.metadata['column_count'] = len(self.dataframe.columns)

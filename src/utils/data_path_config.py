@@ -5,6 +5,7 @@ Data Path Configuration
 빌드 후 사용자가 parquet 파일을 추가할 수 있는 경로를 제공합니다.
 """
 
+import os
 import sys
 import logging
 from pathlib import Path
@@ -19,7 +20,46 @@ class DataPathConfig:
     1. 외부 데이터 폴더 (실행 파일 위치/data)
     2. 레거시 데이터베이스 폴더 (./database) - 하위 호환성
     """
-    
+
+    @staticmethod
+    def get_app_data_dir() -> Path:
+        """
+        쓰기 가능한 앱 데이터 디렉토리 반환 (ADR-3 3A, G2).
+
+        enrichment 캐시(obo/gene2go/GMT/mapping)는 frozen 환경에서도
+        쓰기 가능한 AppDataLocation 아래에 저장한다 (Program Files 무쓰기, G9).
+
+        - Frozen Qt: QStandardPaths.AppDataLocation (Win `%APPDATA%/CMG-SeqViewer`,
+          mac `~/Library/Application Support/CMG-SeqViewer`)
+        - non-Qt/테스트 환경: `~/.cache/cmg_seqviewer` (XDG 폴백 — 기각된 `~/.cmg_seqviewer`와 다름)
+        """
+        if os.environ.get("CMG_SEQVIEWER_APP_DATA_DIR"):
+            # 테스트/포터블 재정의 시임 (실제 AppData 쓰기 방지)
+            p = Path(os.environ["CMG_SEQVIEWER_APP_DATA_DIR"])
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        if getattr(sys, 'frozen', False) or _qt_available():
+            try:
+                from PyQt6.QtCore import QStandardPaths
+                base = QStandardPaths.writableLocation(
+                    QStandardPaths.StandardLocation.AppDataLocation)
+                if base:
+                    p = Path(base)
+                    p.mkdir(parents=True, exist_ok=True)
+                    return p
+            except Exception:
+                pass
+        p = Path.home() / ".cache" / "cmg_seqviewer"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    @staticmethod
+    def get_enrichment_cache_dir() -> Path:
+        """enrichment 캐시 디렉토리 (AppDataLocation/cache — ADR-3 3A)."""
+        p = DataPathConfig.get_app_data_dir() / "cache"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
     @staticmethod
     def get_external_data_dir() -> Path:
         """
@@ -159,3 +199,12 @@ data/
                 logger.warning(f"Failed to create README.txt: {e}")
         
         logger.info(f"External data structure ensured: {external_dir}")
+
+
+def _qt_available() -> bool:
+    """PyQt6 QtCore import 가능 여부 (테스트/headless 환경 감지)."""
+    try:
+        import PyQt6.QtCore  # noqa: F401
+        return True
+    except Exception:
+        return False

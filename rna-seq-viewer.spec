@@ -8,12 +8,24 @@ src_path = str(Path('.').resolve() / 'src')
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
+# GO/KEGG Enrichment Engine 번들 (plan §8/G1 — collect_all 등)
+from PyInstaller.utils.hooks import collect_all, collect_submodules, collect_data_files
+
+_datas, _binaries, _hidden = [], [], []
+for _pkg in ('gseapy', 'goatools', 'mygene'):
+    _d, _b, _h = collect_all(_pkg)
+    _datas += _d
+    _binaries += _b
+    _hidden += _h
+_datas += collect_data_files('goatools')   # obo/gene2go 샘플 데이터 포함
+_hidden += collect_submodules('statsmodels')
+
 block_cipher = None
 
 a = Analysis(
     ['src/main.py'],
     pathex=['src'],  # Add src to Python path
-    binaries=[],
+    binaries=_binaries,
     datas=[
         # Pre-loaded datasets 포함 (레거시 - 하위 호환성)
         ('database', 'database'),  # database 폴더 전체를 배포판에 포함
@@ -26,8 +38,11 @@ a = Analysis(
         ('src', 'src'),
         # Logo image for About dialog
         ('CMG.png', '.'),
-    ],
+        ('docs/user/help', 'docs/user/help'),  # F1 markdown help (HELP_SYSTEM_OVERHAUL)
+    ] + _datas,
     hiddenimports=[
+        # GO/KEGG 엔진 (collect_all/collect_submodules)
+        *_hidden,
         # PyQt6
         'PyQt6',
         'PyQt6.QtCore',
