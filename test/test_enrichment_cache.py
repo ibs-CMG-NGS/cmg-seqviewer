@@ -21,6 +21,7 @@ from utils.enrichment_cache import (
     ENRICHR_LIBRARY_URL,
     GENE2GO_URL,
     GENE_INFO_URL,
+    KEGG_PATHWAY_LIST_URL,
     OBO_URL,
     CacheManager,
 )
@@ -77,7 +78,9 @@ def _assert_no_tmp(cache_dir):
 # ---------------------------------------------------------------------------
 def test_default_ttl_days(tmp_path):
     cm = CacheManager(tmp_path)
-    assert cm.ttl_days == {"obo": 30, "gene2go": 30, "gene_info": 30, "gmt": 90}
+    assert cm.ttl_days == {
+        "obo": 30, "gene2go": 30, "gene_info": 30, "gmt": 90, "kegg_pathway": 90,
+    }
 
 
 def test_ttl_days_override_merges_defaults(tmp_path):
@@ -347,6 +350,34 @@ def test_ensure_gmt_sanitizes_library_name(tmp_path, monkeypatch):
     meta = cm.sidecar(dest)
     assert "Bad%20Name" in meta["source"]  # URL-encoded library name
     _assert_no_tmp(tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# KEGG pathway list (name -> hsa#####/mmu##### mapping source)
+# ---------------------------------------------------------------------------
+def test_ensure_kegg_pathway_list_saves_verbatim(tmp_path, monkeypatch):
+    cm = CacheManager(tmp_path)
+    payload = "path:hsa04145\tPhagosome - Homo sapiens (human)\n"
+    monkeypatch.setattr(cm, "_http_get", lambda url, timeout: FakeResponse(payload=payload.encode()))
+    dest = cm.ensure_kegg_pathway_list("human")
+    assert dest.name == "kegg_pathway_hsa.tsv"
+    assert dest.read_text(encoding="utf-8") == payload
+    meta = cm.sidecar(dest)
+    assert meta["source"] == KEGG_PATHWAY_LIST_URL.format(org_code="hsa")
+    _assert_no_tmp(tmp_path)
+
+
+def test_ensure_kegg_pathway_list_mouse_org_code(tmp_path, monkeypatch):
+    cm = CacheManager(tmp_path)
+    monkeypatch.setattr(cm, "_http_get", lambda url, timeout: FakeResponse(payload=b"x\n"))
+    dest = cm.ensure_kegg_pathway_list("mouse")
+    assert dest.name == "kegg_pathway_mmu.tsv"
+
+
+def test_ensure_kegg_pathway_list_rejects_unknown_organism(tmp_path):
+    cm = CacheManager(tmp_path)
+    with pytest.raises(ValueError):
+        cm.ensure_kegg_pathway_list("zebrafish")
 
 
 # ---------------------------------------------------------------------------

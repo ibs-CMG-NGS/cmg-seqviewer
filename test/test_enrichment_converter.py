@@ -72,6 +72,13 @@ class StubCache:
             dest.write_bytes(b"")
         return dest
 
+    def ensure_kegg_pathway_list(self, organism: str) -> Path:
+        org_code = "hsa" if organism == "human" else "mmu"
+        dest = self.cache_dir / f"kegg_pathway_{org_code}.tsv"
+        if not dest.exists():
+            shutil.copyfile(FIXTURES / f"kegg_pathway_{org_code}.tsv", dest)
+        return dest
+
     def sidecar(self, path: Path) -> dict:
         return {}
 
@@ -129,7 +136,7 @@ class TestEnrichrGoConversion:
         assert df["term_id"].str.fullmatch(r"GO:\d{7}").all()          # G7
         assert df["gene_ratio"].astype(str).str.fullmatch(r"\d+/\d+").all()  # G6
         assert df["bg_ratio"].astype(str).str.fullmatch(r"\d+/\d+").all()    # G6
-        assert (df["gene_set"] == "UP_BP").all()                        # G5
+        assert (df["gene_set"] == "UP").all()                           # G5 (파이프라인 반입 값과 동일 — 정규화된 direction)
         assert (df["direction"] == "UP").all()
         assert (df["ontology"] == "BP").all()
         assert df["_gene_set"].map(len).gt(0).all()                     # G4/A5
@@ -158,18 +165,27 @@ class TestEnrichrGoConversion:
         # mini-obo에 존재 → obo 소문자 이름 우선 (GMT/Enrichr Title-Case 무시)
         assert df.loc[0, "description"] == "immune response"
 
-    def test_kegg_empty_term_id(self, tmp_path):
-        # G7/A1: 온라인 KEGG Term에 hsa id 없음 → term_id 빈 값 (4A)
+    def test_kegg_term_id_from_pathway_list(self, tmp_path):
+        # G7/A1: 온라인 KEGG Term(hsa id 없음, 4A) → 캐싱된 KEGG pathway 목록으로 이름 역매핑
         an = make_ctxt(tmp_path)
         raw = RawResult("TOTAL_KEGG", "enrichr", make_enrichr_df(ENR_KEGG, "KEGG_2021_Human"))
         df, warnings = an.to_standard([raw], organism="human")
-        assert (df["term_id"] == "").all()
         assert (df["ontology"] == "KEGG").all()
         assert (df["direction"] == "TOTAL").all()
-        # KEGG GMT 이름 매칭 (by_name) — Phagosome M=6, universe=3(M=6+7+5→유니크)
         row = df[df["description"] == "Phagosome"].iloc[0]
+        assert row["term_id"] == "hsa04145"
+        # KEGG GMT 이름 매칭 (by_name) — Phagosome M=6, universe=3(M=6+7+5→유니크)
         assert row["gene_ratio"] == "6/152"
         assert row["bg_ratio"].split("/")[0] == "6"
+
+    def test_kegg_term_id_empty_when_pathway_list_unmatched(self, tmp_path, monkeypatch):
+        # 이름이 목록에 없으면 term_id는 빈 값으로 남고 경고가 발생 (조용한 실패 금지, G14)
+        an = make_ctxt(tmp_path)
+        monkeypatch.setattr(an, "_kegg_pathway_map", lambda organism, warnings: {})
+        raw = RawResult("TOTAL_KEGG", "enrichr", make_enrichr_df(ENR_KEGG, "KEGG_2021_Human"))
+        df, warnings = an.to_standard([raw], organism="human")
+        assert (df["term_id"] == "").all()
+        assert any("KEGG pathway ID not found" in w for w in warnings)
 
     def test_gmt_missing_term_m_fallback(self, tmp_path):
         # W1: GMT 스냅샷에 없는 term → M=히트 수 근사 + 경고 (P0 architect finding 해소)

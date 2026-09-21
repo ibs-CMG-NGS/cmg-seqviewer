@@ -63,6 +63,13 @@ class StubCache:
             dest.write_bytes(b"")
         return dest
 
+    def ensure_kegg_pathway_list(self, organism: str) -> Path:
+        org_code = "hsa" if organism == "human" else "mmu"
+        dest = self.cache_dir / f"kegg_pathway_{org_code}.tsv"
+        if not dest.exists():
+            shutil.copyfile(FIXTURES / f"kegg_pathway_{org_code}.tsv", dest)
+        return dest
+
     def sidecar(self, path: Path) -> dict:
         return {}
 
@@ -537,7 +544,7 @@ class TestPrerank:
         assert called["gene_sets"]  # 캐시 GMT 경로 사용 (M4b: gene_sets=캐시 GMT)
         df, _ = an.to_standard(results, organism="human")
         assert "nes" in df.columns and df["nes"].notna().all()       # NES 보존
-        assert df["gene_set"].tolist() == ["TOTAL_BP", "TOTAL_BP"]
+        assert df["gene_set"].tolist() == ["TOTAL", "TOTAL"]
         assert set(df["term_id"]) == {"GO:0030199", "GO:0014912"}
         assert df["gene_ratio"].astype(str).str.fullmatch(r"\d+/\d+").all()
         assert (df["direction"] == "TOTAL").all() and (df["ontology"] == "BP").all()
@@ -677,8 +684,8 @@ class TestPipelineParity:
         app_seq = [c for c in app_df.columns if c in set(shared)]
         assert app_seq == shared, f"공통 컬럼 상대순서 불일치: {app_seq} vs {shared}"
 
-    def test_inapp_kegg_label_matches_pipeline(self, an, monkeypatch, tmp_path):
-        """in-app KEGG gene_set = KEGG_{direction} (파이프라인 시트명과 동일)."""
+    def test_inapp_kegg_gene_set_matches_pipeline(self, an, monkeypatch, tmp_path):
+        """in-app KEGG gene_set = plain direction (파이프라인 반입 시트값과 동일, ontology는 별도 컬럼)."""
         import shutil
         class Res:
             res2d = pd.DataFrame([{"Term": "Phagosome", "NES": 1.0,
@@ -692,10 +699,10 @@ class TestPipelineParity:
         an.cache = cache
         res, _ = an.enrich_prerank([("A", 1.0), ("B", -0.5)],
                                    organism="human", libraries=["KEGG"])
-        assert res[0].label == "KEGG_TOTAL"
+        assert res[0].label == "KEGG_TOTAL"   # 내부 라벨(엔진 라우팅용) — 그대로 유지
         df, _ = an.to_standard(res, organism="human")
         row = df.iloc[0]
-        assert row["gene_set"] == "KEGG_TOTAL"
+        assert row["gene_set"] == "TOTAL"     # 표시용 컬럼은 정규화된 direction만
         assert row["direction"] == "TOTAL" and row["ontology"] == "KEGG"
 
     def test_pipeline_kegg_sheet_labels_parse(self, tmp_path):
