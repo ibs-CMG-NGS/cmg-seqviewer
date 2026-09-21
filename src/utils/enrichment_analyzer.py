@@ -112,8 +112,7 @@ class EnrichmentAnalyzer:
         self.logger = logger or logging.getLogger(__name__)
         self.cache = cache or CacheManager(_default_cache_dir())
         # 세션 캐시: obo 이름 맵/GODag, GMT 파싱 (plan §6.8 프로세스 내 1회 로드)
-        self._obo_names: Optional[Dict[str, str]] = None          # {GO id: name}
-        self._obo_mtime: Optional[float] = None
+        self._obo_names: Optional[Dict[str, str]] = None          # {GO id: name}, 세션 1회 로드
         self._godag = None
         self._godag_mtime: Optional[float] = None
         self._gmt_cache: Dict[str, _GmtInfo] = {}   # lib -> GMT 스냅샷 (성공만 캐시)
@@ -768,15 +767,20 @@ class EnrichmentAnalyzer:
         return _strip_go_suffix(enrichr_term)
 
     def _obo_names_lazy(self, warnings: List[str]) -> Dict[str, str]:
-        """obo [Term] 블록 경량 파싱 (전체 GODag 로드 없이 이름만 — A4)."""
+        """obo [Term] 블록 경량 파싱 (전체 GODag 로드 없이 이름만 — A4).
+
+        세션 캐시(self._obo_names)부터 확인 — 이미 로드됐으면 CacheManager를
+        다시 건드리지 않는다 (_gmt_for와 동일 패턴). 그렇지 않으면 to_standard()
+        호출마다, 결과 행 수만큼 ensure_obo()의 lock/stat/로그가 반복되어
+        (plan §6.8 "프로세스 내 1회 로드" 의도 위반, 대량 W1 아님 — 순수 오버헤드/로그 스팸).
+        """
+        if self._obo_names is not None:
+            return self._obo_names
         try:
             obo_path = self.cache.ensure_obo("human")  # 종 중립 1개 파일
         except Exception as exc:
             warnings.append(f"W1 obo name load failed — keeping Enrichr Term: {exc}")
             return {}
-        mtime = obo_path.stat().st_mtime
-        if self._obo_names is not None and self._obo_mtime == mtime:
-            return self._obo_names
         names: Dict[str, str] = {}
         cur_id, cur_name, in_term = None, None, False
         for line in obo_path.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -791,7 +795,7 @@ class EnrichmentAnalyzer:
                     cur_name = line[6:].strip()
         if in_term and cur_id and cur_name:
             names[cur_id] = cur_name
-        self._obo_names, self._obo_mtime = names, mtime
+        self._obo_names = names
         return names
 
     @staticmethod

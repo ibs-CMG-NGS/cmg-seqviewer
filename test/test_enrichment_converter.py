@@ -165,6 +165,29 @@ class TestEnrichrGoConversion:
         # mini-obo에 존재 → obo 소문자 이름 우선 (GMT/Enrichr Title-Case 무시)
         assert df.loc[0, "description"] == "immune response"
 
+    def test_obo_names_loaded_once_per_session_not_per_row(self, tmp_path, monkeypatch):
+        # 회귀 방지: _obo_names_lazy가 매 row마다 CacheManager.ensure_obo를 다시
+        # 건드리면(lock/stat/로그) 결과 행 수만큼 오버헤드/로그 스팸이 발생한다 (§6.8 "1회 로드").
+        an = make_ctxt(tmp_path)
+        calls = {"n": 0}
+        real_ensure_obo = an.cache.ensure_obo
+
+        def counting_ensure_obo(organism):
+            calls["n"] += 1
+            return real_ensure_obo(organism)
+
+        monkeypatch.setattr(an.cache, "ensure_obo", counting_ensure_obo)
+        df_in = make_enrichr_df([
+            {"Gene_set": "GO_Biological_Process_2023",
+             "Term": f"Term {i} (GO:000000{i})", "Overlap": "2/10",
+             "P-value": 0.01, "Adjusted P-value": 0.05,
+             "Old P-value": 0, "Old Adjusted P-value": 0,
+             "Odds Ratio": 5, "Combined Score": 25, "Genes": "TRP53;JUN"}
+            for i in range(1, 6)
+        ])
+        an.to_standard([RawResult("UP_BP", "enrichr", df_in)], organism="human")
+        assert calls["n"] == 1, f"ensure_obo called {calls['n']} times for 5 rows — should be 1"
+
     def test_kegg_term_id_from_pathway_list(self, tmp_path):
         # G7/A1: 온라인 KEGG Term(hsa id 없음, 4A) → 캐싱된 KEGG pathway 목록으로 이름 역매핑
         an = make_ctxt(tmp_path)
