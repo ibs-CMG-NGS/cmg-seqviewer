@@ -23,7 +23,7 @@ from PyQt6.QtWidgets import (
 )
 
 from models.data_models import Dataset, DatasetType
-from models.enrichment_models import EnrichmentRequest, VALID_ENGINES
+from models.enrichment_models import DIRECTION_ALL, EnrichmentRequest, VALID_ENGINES
 from workers.go_workers import EnrichmentWorker, ErrorPayload
 
 logger = logging.getLogger(__name__)
@@ -169,8 +169,13 @@ class EnrichmentAnalysisDialog(QDialog):
         self.fdr_max_spin.setValue(0.05)
         form.addRow("adj_pvalue ≤", self.fdr_max_spin)
         self.direction_combo = QComboBox()
-        for d in ("TOTAL", "UP", "DOWN"):
-            self.direction_combo.addItem(d, d)
+        self.direction_combo.addItem("TOTAL only", "TOTAL")
+        self.direction_combo.addItem("UP", "UP")
+        self.direction_combo.addItem("DOWN", "DOWN")
+        self.direction_combo.addItem("UP + DOWN + TOTAL", DIRECTION_ALL)
+        self.direction_combo.setToolTip(
+            "UP + DOWN + TOTAL runs all three and merges them into one dataset "
+            "(matches the pipeline-import Excel format — one dataset with UP/DOWN/TOTAL rows).")
         form.addRow("Direction", self.direction_combo)
         return w
 

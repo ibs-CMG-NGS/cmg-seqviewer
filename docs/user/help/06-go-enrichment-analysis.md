@@ -28,8 +28,16 @@ published dot plot.
 
 3. **Choose the source and thresholds** (Current DE tab):
  - DE Dataset: `Acute 1D vs Control`
- - |log2FC| ≥ 1.0, adj_pvalue ≤ 0.05, Direction: TOTAL
+ - |log2FC| ≥ 1.0, adj_pvalue ≤ 0.05, Direction: **TOTAL only**
  - Species: Human (default); Libraries: GO BP/CC/MF + KEGG
+
+ The **Direction** dropdown has four choices: **TOTAL only** (all significant
+ genes regardless of sign), **UP**, **DOWN**, or **UP + DOWN + TOTAL** (runs
+ all three and merges them into a single dataset — use this to match the
+ pipeline-import Excel format, which always has UP/DOWN/TOTAL sheets side by
+ side). UP/DOWN/TOTAL-combined is only available for the Current DE Dataset
+ source, since Paste/Comparison inputs are a flat gene list with no
+ per-gene fold-change to split by direction.
 
 4. **Engine mode — pick your context:**
  - **Auto** (recommended): online Enrichr when the network is available and no
@@ -47,8 +55,9 @@ published dot plot.
 6. **Visualize with the existing tools** (the new dataset feeds the same pipeline
  as imported GO/KEGG results — identical standard columns and order):
  - *Visualization → GO/KEGG Dot Plot* (or the other GO menus)
- - Terms carry `gene_set` labels `TOTAL_BP / TOTAL_CC / TOTAL_MF / KEGG_TOTAL`
- so the direction/ontology filters work exactly like pipeline-imported sheets.
+ - Terms carry a plain `gene_set` value of `UP` / `DOWN` / `TOTAL` (ontology is
+ a separate column) — the same values pipeline-imported Excel sheets use, so
+ the direction/ontology filters work identically either way.
 
 7. **Export** the result tab (Excel/CSV/Parquet) — the exported file includes the
  standard contract columns plus `_gene_set`.
