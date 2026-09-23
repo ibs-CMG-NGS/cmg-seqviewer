@@ -18,15 +18,51 @@ QDialog는 기본적으로 열릴 때마다 코드에 지정된 초기 크기로
 key를 생략하면 클래스명을 사용한다. main_window.py 안에서 만드는 이름 없는
 QDialog(self)처럼 클래스가 전부 "QDialog"로 겹치는 경우에는 명시적으로
 구분되는 key를 넘긴다 (예: remember_geometry(dlg, "AboutDialog")).
+
+저장된 geometry는 그걸 저장했던 화면(해상도/DPI 배율)을 기억하지 않는다.
+외장 모니터(100%)에서 크게 띄워놓고 저장한 뒤, 노트북 내장 고해상도 화면
+(150% 등 — 물리 해상도는 크지만 논리 해상도는 오히려 더 작을 수 있음)에서
+그대로 복원하면 창이 화면보다 커지거나 일부가 밖으로 나가 잘려 보인다.
+Qt의 restoreGeometry()는 "완전히 화면 밖으로 나가는 것"만 막아줄 뿐 크기를
+현재 화면에 맞게 재조정해주지 않으므로, clamp_to_current_screen()으로 직접
+보정한다 (dialog/main window 양쪽에서 재사용).
 """
 
 from typing import Optional
 
 from PyQt6.QtCore import QSettings
-from PyQt6.QtWidgets import QDialog
+from PyQt6.QtWidgets import QApplication, QDialog, QWidget
 
 _ORG = "RNASeqDataView"
 _APP = "MainWindow"
+
+
+def clamp_to_current_screen(widget: QWidget) -> None:
+    """widget의 현재 geometry가 지금 화면보다 크거나 화면 밖으로 나가면 안으로 보정한다.
+
+    widget 자신의 setMinimumSize()보다 작게 줄이지는 않는다 — Qt의 setGeometry가
+    요청 크기가 최소 크기보다 작으면 자동으로 최소 크기를 쓰기 때문에 별도 계산이
+    필요 없다. 화면 정보를 얻을 수 없으면 아무것도 하지 않는다.
+    """
+    try:
+        screen = widget.screen()
+    except Exception:
+        screen = None
+    if screen is None:
+        screen = QApplication.primaryScreen()
+    if screen is None:
+        return
+
+    avail = screen.availableGeometry()
+    geo = widget.geometry()
+
+    width = min(geo.width(), avail.width())
+    height = min(geo.height(), avail.height())
+    x = min(max(geo.x(), avail.x()), avail.x() + avail.width() - width)
+    y = min(max(geo.y(), avail.y()), avail.y() + avail.height() - height)
+
+    if (width, height) != (geo.width(), geo.height()) or (x, y) != (geo.x(), geo.y()):
+        widget.setGeometry(x, y, width, height)
 
 
 def remember_geometry(dialog: QDialog, key: Optional[str] = None) -> None:
@@ -49,6 +85,7 @@ def remember_geometry(dialog: QDialog, key: Optional[str] = None) -> None:
             dialog.restoreGeometry(saved)
         except Exception:
             pass
+    clamp_to_current_screen(dialog)
 
     def _save(*_args) -> None:
         try:
