@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![PyQt6](https://img.shields.io/badge/PyQt-6-green.svg)](https://www.riverbankcomputing.com/software/pyqt/)
-[![Release](https://img.shields.io/badge/release-v1.3.0-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
+[![Release](https://img.shields.io/badge/release-v1.3.1-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
 
 ---
 
@@ -29,7 +29,14 @@
 
 ---
 
-## Latest Update: v1.3.0 (Sep 2026)
+## Latest Update: v1.3.1 (Oct 2026)
+
+- [NEW] **GO/KEGG enrichment analysis: UP + DOWN + TOTAL combined run** — runs all three directions and merges them into one dataset, matching the pipeline-import Excel format
+- [FIX] In-app GO/KEGG enrichment results now match the pipeline-import format exactly: `gene_set` shows plain `UP`/`DOWN`/`TOTAL` (was the internal routing label), and KEGG term IDs (`hsa#####`) are resolved from KEGG's official pathway list instead of being left blank
+- [FIX] Enrichment analysis no longer reloads the GO name cache for every result row (was causing log spam and unnecessary overhead on large results)
+- [FIX] Window and dialog positions/sizes saved on one display no longer get cramped or clipped when restored on a different screen or DPI scale (e.g. switching between an external monitor and a laptop's high-DPI panel)
+
+### Previous: v1.3.0 (Sep 2026)
 
 - [NEW] **GO/KEGG enrichment analysis engine**: run ORA (over-representation analysis) against online (Enrichr/Speedrichr) or local (GOATOOLS / KEGG GMT) libraries directly from a DEG list, with results normalized into the standard GO dataframe schema
 - [NEW] **F1 help content migrated to Markdown** (`docs/user/help/`), consolidating the in-app help dialog and the standalone user docs into one maintained source
