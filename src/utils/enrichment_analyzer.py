@@ -65,8 +65,8 @@ _GMT_RESOLVE = {
 }
 
 _GO_ID_RE = re.compile(r"\bGO:\d{7}\b")
-_HSA_RE = re.compile(r"^hsa\d+")
 _GENE_SPLIT_RE = re.compile(r"[;/,]")
+_KEGG_NAME_SUFFIX_RE = re.compile(r"\s*-\s*(homo sapiens|mus musculus)\b.*$")
 
 
 class EnrichmentError(Exception):
@@ -112,12 +112,12 @@ class EnrichmentAnalyzer:
         self.logger = logger or logging.getLogger(__name__)
         self.cache = cache or CacheManager(_default_cache_dir())
         # 세션 캐시: obo 이름 맵/GODag, GMT 파싱 (plan §6.8 프로세스 내 1회 로드)
-        self._obo_names: Optional[Dict[str, str]] = None          # {GO id: name}
-        self._obo_mtime: Optional[float] = None
+        self._obo_names: Optional[Dict[str, str]] = None          # {GO id: name}, 세션 1회 로드
         self._godag = None
         self._godag_mtime: Optional[float] = None
         self._gmt_cache: Dict[str, _GmtInfo] = {}   # lib -> GMT 스냅샷 (성공만 캐시)
         self._assoc_cache: Dict[str, Dict[str, int]] = {}  # 'assoc:<org>' -> {GO id: size}
+        self._kegg_pathway_cache: Dict[str, Dict[str, str]] = {}  # organism -> {normalized name: pathway id}
         self._mapper: Optional[SymbolMapper] = None
         self._current_organism: Optional[str] = None
 
@@ -503,6 +503,7 @@ class EnrichmentAnalyzer:
         df = raw.data
         lib_name = ONLINE_LIBRARY_NAMES.get(organism, {}).get(ontology) or df["Gene_set"].iloc[0]
         gmt = self._gmt_for(lib_name, warnings)   # _GmtInfo | None on failure
+        kegg_map = self._kegg_pathway_map(organism, warnings) if ontology == "KEGG" else None
 
         out_rows = []
         for _, r in df.iterrows():
@@ -511,8 +512,11 @@ class EnrichmentAnalyzer:
                 m = _GO_ID_RE.search(term_raw)
                 term_id = m.group(0) if m else ""
             else:
-                m = _HSA_RE.match(term_raw)
-                term_id = m.group(0) if m else ""          # 4A: 기본 빈 값 (A1)
+                # Enrichr KEGG Term text has no embedded ID (e.g. "Phagosome") —
+                # look up the pathway ID by name in the cached KEGG pathway list.
+                term_id = (kegg_map or {}).get(_normalize_kegg_name(term_raw), "")
+                if not term_id:
+                    warnings.append(f"W1 KEGG pathway ID not found for term: {term_raw!r}")
             overlap = str(r["Overlap"])                    # 'k/n'
             k, n = _parse_overlap(overlap)
             m_size = None
@@ -548,7 +552,7 @@ class EnrichmentAnalyzer:
                 "bg_count": m_size,
                 "odds_ratio": _num(r.get("Odds Ratio")),
                 "combined_score": _num(r.get("Combined Score")),
-                StandardColumns.GENE_SET: raw.label,
+                StandardColumns.GENE_SET: direction,
                 StandardColumns.DIRECTION: direction,
                 StandardColumns.ONTOLOGY: ontology,
                 "_engine": "enrichr",
@@ -587,7 +591,7 @@ class EnrichmentAnalyzer:
                 "bg_count": m_size,
                 "odds_ratio": None,
                 "combined_score": None,
-                StandardColumns.GENE_SET: raw.label,
+                StandardColumns.GENE_SET: direction,
                 StandardColumns.DIRECTION: direction,
                 StandardColumns.ONTOLOGY: ontology,
                 "_engine": "goatools",
@@ -607,6 +611,7 @@ class EnrichmentAnalyzer:
         if not gmt_key and "Gene_set" in df.columns:
             gmt_key = str(df["Gene_set"].iloc[0])
         gmt = self._gmt_for(gmt_key or ontology, warnings)
+        kegg_map = self._kegg_pathway_map(organism, warnings) if ontology == "KEGG" else None
         n_all = len(raw.meta.get("population", [])) if raw.meta else len(df)
 
         term_col = _col(df, ["Term", "term"])
@@ -627,8 +632,9 @@ class EnrichmentAnalyzer:
                 m = _GO_ID_RE.search(term_raw)
                 term_id = m.group(0) if m else ""
             else:
-                m = _HSA_RE.match(term_raw)
-                term_id = m.group(0) if m else ""
+                term_id = (kegg_map or {}).get(_normalize_kegg_name(term_raw), "")
+                if not term_id:
+                    warnings.append(f"W1 KEGG pathway ID not found for term: {term_raw!r}")
             k = 0
             if genes_col is not None and pd.notna(r[genes_col]):
                 k = len([g for g in _GENE_SPLIT_RE.split(str(r[genes_col])) if g.strip()])
@@ -658,7 +664,7 @@ class EnrichmentAnalyzer:
                 "bg_count": m_size,
                 "nes": _num(r[nes_col]) if nes_col else None,
                 "fwer_pvalue": _num(r[fwer_col]) if fwer_col else None,
-                StandardColumns.GENE_SET: raw.label,
+                StandardColumns.GENE_SET: direction,
                 StandardColumns.DIRECTION: direction,
                 StandardColumns.ONTOLOGY: ontology,
                 "_engine": "prerank",
@@ -684,6 +690,32 @@ class EnrichmentAnalyzer:
         except Exception as exc:
             warnings.append(f"W1 GOATOOLS assoc term-size computation failed — M approximated by hit count: {exc}")
             self._assoc_cache[key] = {}
+            return {}
+
+    def _kegg_pathway_map(self, organism: str, warnings: List[str]) -> Dict[str, str]:
+        """KEGG pathway 이름(정규화) → ID (hsa#####/mmu#####). 세션 캐시.
+
+        Enrichr KEGG Term 텍스트엔 ID가 없으므로(4A), KEGG 공식 pathway 목록
+        (rest.kegg.jp/list/pathway/<org>)을 캐싱해 이름으로 역매핑한다 (G4).
+        """
+        if organism in self._kegg_pathway_cache:
+            return self._kegg_pathway_cache[organism]
+        try:
+            path = self.cache.ensure_kegg_pathway_list(organism)
+            mapping: Dict[str, str] = {}
+            for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+                parts = line.rstrip("\n").split("\t")
+                if len(parts) < 2:
+                    continue
+                pathway_id = parts[0].split(":", 1)[-1].strip()  # 'path:hsa04110' -> 'hsa04110'
+                name = _normalize_kegg_name(parts[1])
+                if pathway_id and name:
+                    mapping[name] = pathway_id
+            self._kegg_pathway_cache[organism] = mapping
+            return mapping
+        except Exception as exc:
+            warnings.append(f"W1 KEGG pathway list load failed — term_id left empty: {exc}")
+            self._kegg_pathway_cache[organism] = {}
             return {}
 
     def _gmt_for(self, library_name: str,
@@ -735,15 +767,20 @@ class EnrichmentAnalyzer:
         return _strip_go_suffix(enrichr_term)
 
     def _obo_names_lazy(self, warnings: List[str]) -> Dict[str, str]:
-        """obo [Term] 블록 경량 파싱 (전체 GODag 로드 없이 이름만 — A4)."""
+        """obo [Term] 블록 경량 파싱 (전체 GODag 로드 없이 이름만 — A4).
+
+        세션 캐시(self._obo_names)부터 확인 — 이미 로드됐으면 CacheManager를
+        다시 건드리지 않는다 (_gmt_for와 동일 패턴). 그렇지 않으면 to_standard()
+        호출마다, 결과 행 수만큼 ensure_obo()의 lock/stat/로그가 반복되어
+        (plan §6.8 "프로세스 내 1회 로드" 의도 위반, 대량 W1 아님 — 순수 오버헤드/로그 스팸).
+        """
+        if self._obo_names is not None:
+            return self._obo_names
         try:
             obo_path = self.cache.ensure_obo("human")  # 종 중립 1개 파일
         except Exception as exc:
             warnings.append(f"W1 obo name load failed — keeping Enrichr Term: {exc}")
             return {}
-        mtime = obo_path.stat().st_mtime
-        if self._obo_names is not None and self._obo_mtime == mtime:
-            return self._obo_names
         names: Dict[str, str] = {}
         cur_id, cur_name, in_term = None, None, False
         for line in obo_path.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -758,7 +795,7 @@ class EnrichmentAnalyzer:
                     cur_name = line[6:].strip()
         if in_term and cur_id and cur_name:
             names[cur_id] = cur_name
-        self._obo_names, self._obo_mtime = names, mtime
+        self._obo_names = names
         return names
 
     @staticmethod
@@ -927,6 +964,13 @@ def _genes_to_slash(genes) -> str:
 def _strip_go_suffix(term: str) -> str:
     """'Name (GO:0000000)' → 'Name' (표시 description용)."""
     return re.sub(r"\s*\(GO:\d{7}\)\s*$", "", str(term)).strip()
+
+
+def _normalize_kegg_name(term: str) -> str:
+    """KEGG pathway 이름 정규화 (대소문자/organism 접미사 제거) — Enrichr Term ↔
+    KEGG list/pathway 이름 매칭용 (둘 다 organism 접미사 표기가 다를 수 있음:
+    'Phagosome' vs 'Phagosome - Homo sapiens (human)')."""
+    return _KEGG_NAME_SUFFIX_RE.sub("", str(term).strip().lower()).strip()
 
 
 def _num(val):

@@ -42,12 +42,19 @@ GENE2GO_URL = "https://ftp.ncbi.nih.gov/gene/DATA/gene2go.gz"
 GENE_INFO_URL = "https://ftp.ncbi.nih.gov/gene/DATA/gene_info.gz"
 ENRICHR_LIBRARY_URL = "https://maayanlab.cloud/Enrichr/geneSetLibrary?mode=text&libraryName={name}"
 ENRICHR_PROBE_URL = "https://maayanlab.cloud/Enrichr/"
+KEGG_PATHWAY_LIST_URL = "https://rest.kegg.jp/list/pathway/{org_code}"
 
 GENE2GO_KEY = "gene2go_%s.gz"
 GENE_INFO_KEY = "gene_info_%s.tsv.gz"
 
+# KEGG organism code (Enrichr Term names have no embedded ID — the pathway
+# list is the only source of a name -> hsa#####/mmu##### mapping, G4).
+_KEGG_ORG_CODE = {"human": "hsa", "mouse": "mmu"}
+
 # F7: TTL defaults (days) — NCBI/GO assets 30, Enrichr GMT libs 90.
-DEFAULT_TTL_DAYS: Dict[str, int] = {"obo": 30, "gene2go": 30, "gene_info": 30, "gmt": 90}
+DEFAULT_TTL_DAYS: Dict[str, int] = {
+    "obo": 30, "gene2go": 30, "gene_info": 30, "gmt": 90, "kegg_pathway": 90,
+}
 
 MAX_DOWNLOAD_ATTEMPTS = 3
 BACKOFF_SECONDS = (0.5, 1.0, 2.0)  # sleep before retry attempts 2 and 3
@@ -144,6 +151,14 @@ class CacheManager:
             raise ValueError("library_name must not be empty")
         rel = f"{_safe_library_name(library_name)}.gmt"
         return self._ensure(rel, "gmt", lambda dest: self._download_gmt(dest, library_name))
+
+    def ensure_kegg_pathway_list(self, organism: str) -> Path:
+        """KEGG pathway name -> ID list (Enrichr KEGG Term text has no embedded ID)."""
+        org_code = self._kegg_org_code(organism)
+        rel = f"kegg_pathway_{org_code}.tsv"
+        return self._ensure(
+            rel, "kegg_pathway", lambda dest: self._download_kegg_pathway_list(dest, org_code)
+        )
 
     def has(self, relative_key: str) -> Optional[Path]:
         """Resolve <cache_dir>/<key> if it exists, else None."""
@@ -248,6 +263,15 @@ class CacheManager:
 
     def _download_gmt(self, dest: Path, library_name: str) -> None:
         url = ENRICHR_LIBRARY_URL.format(name=quote(library_name, safe=""))
+        resp = self._http_get(url, self._timeout())
+        try:
+            resp.raise_for_status()
+            self._run_download(dest, url, self._plain_writer(resp, decompress=False))
+        finally:
+            _close_resp(resp)
+
+    def _download_kegg_pathway_list(self, dest: Path, org_code: str) -> None:
+        url = KEGG_PATHWAY_LIST_URL.format(org_code=org_code)
         resp = self._http_get(url, self._timeout())
         try:
             resp.raise_for_status()
@@ -379,6 +403,15 @@ class CacheManager:
                 f"unsupported organism {organism!r}; expected 'human' or 'mouse'"
             )
         return taxid
+
+    @staticmethod
+    def _kegg_org_code(organism: str) -> str:
+        org_code = _KEGG_ORG_CODE.get(organism.lower()) if isinstance(organism, str) else None
+        if org_code is None:
+            raise ValueError(
+                f"unsupported organism {organism!r}; expected 'human' or 'mouse'"
+            )
+        return org_code
 
     @staticmethod
     def _timeout() -> tuple:

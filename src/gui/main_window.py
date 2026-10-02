@@ -3311,7 +3311,7 @@ class MainWindow(QMainWindow):
 
         title_label = QLabel(
             "<h2 style='margin:0;'>CMG-SeqViewer</h2>"
-            "<p style='margin:2px 0;'><b>Version 1.3.0</b></p>"
+            "<p style='margin:2px 0;'><b>Version 1.3.1</b></p>"
             "<p style='margin:2px 0; color:#555;'>RNA-Seq Data Analysis &amp; Visualization</p>"
         )
         title_label.setWordWrap(True)
@@ -5598,16 +5598,23 @@ class MainWindow(QMainWindow):
             geometry = self.settings.value("geometry")
             if geometry:
                 self.restoreGeometry(geometry)
-            
+
             window_state = self.settings.value("windowState")
             if window_state:
                 self.restoreState(window_state)
-            
-            # Splitter 상태
+
+            # 저장된 geometry가 다른 화면(다른 해상도/DPI 배율)에서 저장됐을 수 있음 —
+            # 지금 화면보다 크거나 밖으로 나가면 안으로 보정 (첫 실행의 하드코딩된
+            # 기본 크기가 작은 화면엔 클 때도 동일하게 적용됨).
+            from utils.dialog_geometry import clamp_to_current_screen
+            clamp_to_current_screen(self)
+
+            # Splitter 상태 (창 크기가 위에서 이미 현재 화면에 맞게 보정된 뒤 복원 —
+            # QSplitter가 stretch factor에 따라 알아서 재분배함)
             splitter_state = self.settings.value("mainSplitter")
             if splitter_state:
                 self.main_splitter.restoreState(splitter_state)
-            
+
             self.logger.debug("UI settings restored")
         except Exception as e:
             self.logger.error(f"Failed to restore UI settings: {e}")

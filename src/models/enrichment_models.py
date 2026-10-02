@@ -29,8 +29,14 @@ class ErrorKind(str, Enum):
     UNKNOWN = "unknown"
 
 
-# direction 값 (유효성 검증용)
+# direction 값 (유효성 검증용) — DegInput/deg_input.extract_deg_from_dataset가 실제로
+# 생성하는 단일 방향 (항상 이 셋 중 하나, test_deg_input.py로 고정).
 VALID_DIRECTIONS = ("UP", "DOWN", "TOTAL")
+# 파이프라인 반입 결과와 동일하게 UP/DOWN/TOTAL을 한 번에 실행해 하나의 데이터셋으로
+# 병합하는 EnrichmentRequest 전용 선택지 (worker가 3회 추출/실행 후 합침 — DegInput에는 등장하지 않음).
+DIRECTION_ALL = "UP_DOWN_TOTAL"
+# EnrichmentRequest.direction 유효성 검증용 (DIRECTION_ALL 포함).
+REQUEST_DIRECTIONS = VALID_DIRECTIONS + (DIRECTION_ALL,)
 # ontology 값
 VALID_ONTOLOGIES = ("BP", "CC", "MF", "KEGG")
 # 엔진 모드
@@ -69,8 +75,11 @@ class EnrichmentRequest:
         problems = []
         if self.source not in ("dataset", "paste", "meta"):
             problems.append(f"unknown source: {self.source}")
-        if self.direction not in VALID_DIRECTIONS:
+        if self.direction not in REQUEST_DIRECTIONS:
             problems.append(f"invalid direction: {self.direction}")
+        if self.direction == DIRECTION_ALL and self.source != "dataset":
+            problems.append(f"direction={DIRECTION_ALL!r} requires source='dataset' "
+                            "(paste/meta have no per-direction fold-change data)")
         if self.organism not in VALID_ORGANISMS:
             problems.append(f"invalid organism: {self.organism}")
         if self.engine not in VALID_ENGINES:
