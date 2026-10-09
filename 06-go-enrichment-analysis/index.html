@@ -1,0 +1,1099 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="CMG-SeqViewer user documentation (same content as the in-app F1 help)">
+      
+      
+      
+        <link rel="canonical" href="https://ibs-cmg-ngs.github.io/cmg-seqviewer/06-go-enrichment-analysis/">
+      
+      
+        <link rel="prev" href="../05-go-kegg-analysis/">
+      
+      
+        <link rel="next" href="../07-go-term-comparison/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>6. GO/KEGG Enrichment Analysis - CMG-SeqViewer Help</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#6-gokegg-enrichment-analysis" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="CMG-SeqViewer Help" class="md-header__button md-logo" aria-label="CMG-SeqViewer Help" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            CMG-SeqViewer Help
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              6. GO/KEGG Enrichment Analysis
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/ibs-CMG-NGS/cmg-seqviewer" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    ibs-CMG-NGS/cmg-seqviewer
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+  
+
+<nav class="md-nav md-nav--primary md-nav--integrated" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="CMG-SeqViewer Help" class="md-nav__button md-logo" aria-label="CMG-SeqViewer Help" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    CMG-SeqViewer Help
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/ibs-CMG-NGS/cmg-seqviewer" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    ibs-CMG-NGS/cmg-seqviewer
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../01-getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    1. Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../02-loading-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2. Loading Data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../03-dataset-database/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    3. Dataset Database
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../04-data-filtering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4. Data Filtering
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../05-go-kegg-analysis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    5. GO/KEGG Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    6. GO/KEGG Enrichment Analysis
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    6. GO/KEGG Enrichment Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#61-end-to-end-workflow-example-acute-1d-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1 End-to-end workflow example (Acute 1D data)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#62-meta-signature-enrichment-comparison-statistics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2 Meta-signature enrichment (Comparison: Statistics)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#63-engine-modes-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.3 Engine modes (summary)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#64-cache-reproducibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.4 Cache &amp; reproducibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../07-go-term-comparison/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    7. GO Term Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../08-statistical-analysis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    8. Statistical Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../09-visualization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    9. Visualization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../10-export-clipboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    10. Export &amp; Clipboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../11-dataset-comparison/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    11. Dataset Comparison
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../12-gene-annotation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    12. Gene Annotation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../13-atac-seq-analysis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    13. ATAC-seq Analysis
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../14-multi-omics-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    14. Multi-Omics Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../15-multi-group-heatmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    15. Multi-Group Heatmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../16-pca-plot/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    16. PCA Plot
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../17-project-save-load/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    17. Project Save/Load
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../18-igv-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    18. IGV Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../19-tips-shortcuts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    19. Tips &amp; Shortcuts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../20-faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    20. FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="6-gokegg-enrichment-analysis">6. GO/KEGG Enrichment Analysis<a class="headerlink" href="#6-gokegg-enrichment-analysis" title="Permanent link">&para;</a></h1>
+<p>Extracts DEGs from a loaded DE dataset (or a pasted gene list, or a
+Comparison: Statistics meta sheet) and runs on-the-fly GO (BP/CC/MF) and KEGG
+pathway enrichment.</p>
+<ol>
+<li>Prepare a DE dataset (or the current Comparison: Statistics sheet), then select
+ <strong>Analysis → GO/KEGG Enrichment Analysis...</strong></li>
+<li>Choose the input source tab (Current DE / Paste / Comparison), thresholds,
+ species (Human/Mouse), libraries, and engine mode</li>
+<li>On completion an "Enrichment: …" Dataset is registered and can be reused in the
+ existing Bar / Dot / Clustering / Network visualizations</li>
+</ol>
+<p><img alt="Enrichment Analysis dialog" src="../assets/06-enrichment-dialog.png" />
+<em>Enrichment Analysis dialog with the Paste Gene List source selected.</em></p>
+<h2 id="61-end-to-end-workflow-example-acute-1d-data">6.1 End-to-end workflow example (Acute 1D data)<a class="headerlink" href="#61-end-to-end-workflow-example-acute-1d-data" title="Permanent link">&para;</a></h2>
+<p>A complete round trip with the bundled example data, from DE results to a
+published dot plot.</p>
+<ol>
+<li>
+<p><strong>Load the DE result.</strong> Use <em>File → Load Data...</em> and pick
+ <code>examples/Acute_1D_vs_Control_DA.parquet</code> (already registered by the database
+ auto-loader in most installs; you can also use any loaded DE dataset).</p>
+</li>
+<li>
+<p><strong>Open the analysis dialog.</strong> <code>Analysis → GO/KEGG Enrichment Analysis...</code>
+ (enabled whenever a DE dataset is present).</p>
+</li>
+<li>
+<p><strong>Choose the source and thresholds</strong> (Current DE tab):</p>
+</li>
+<li>DE Dataset: <code>Acute 1D vs Control</code></li>
+<li>|log2FC| ≥ 1.0, adj_pvalue ≤ 0.05, Direction: <strong>TOTAL only</strong></li>
+<li>Species: Human (default); Libraries: GO BP/CC/MF + KEGG</li>
+</ol>
+<p>The <strong>Direction</strong> dropdown has four choices: <strong>TOTAL only</strong> (all significant
+ genes regardless of sign), <strong>UP</strong>, <strong>DOWN</strong>, or <strong>UP + DOWN + TOTAL</strong> (runs
+ all three and merges them into a single dataset — use this to match the
+ pipeline-import Excel format, which always has UP/DOWN/TOTAL sheets side by
+ side). UP/DOWN/TOTAL-combined is only available for the Current DE Dataset
+ source, since Paste/Comparison inputs are a flat gene list with no
+ per-gene fold-change to split by direction.</p>
+<ol>
+<li><strong>Engine mode — pick your context:</strong></li>
+<li><strong>Auto</strong> (recommended): online Enrichr when the network is available and no
+ custom background is set; otherwise GOATOOLS local.</li>
+<li><strong>Online</strong>: Enrichr for GO + KEGG (enrichr fixed universe is the background).</li>
+<li><strong>Local / Offline</strong>: GOATOOLS with the full DE table as the population;
+ KEGG is inactive offline (v1, ADR-1 Option 1).</li>
+<li>
+<p>A <strong>custom background file</strong> forces the local engine (ADR-2 2A).</p>
+</li>
+<li>
+<p><strong>Run.</strong> The progress bar advances through DEG extraction → mapping →
+ enrichment → standardization. On success the dialog shows
+ <code>Done: N terms (engine=...)</code> and registers <strong><code>Enrichment: Acute 1D vs Control</code></strong>
+ under <em>GO_ANALYSIS</em>.</p>
+</li>
+<li>
+<p><strong>Visualize with the existing tools</strong> (the new dataset feeds the same pipeline
+ as imported GO/KEGG results — identical standard columns and order):</p>
+</li>
+<li><em>Visualization → GO/KEGG Dot Plot</em> (or the other GO menus)</li>
+<li>
+<p>Terms carry a plain <code>gene_set</code> value of <code>UP</code> / <code>DOWN</code> / <code>TOTAL</code> (ontology is
+ a separate column) — the same values pipeline-imported Excel sheets use, so
+ the direction/ontology filters work identically either way.</p>
+</li>
+<li>
+<p><strong>Export</strong> the result tab (Excel/CSV/Parquet) — the exported file includes the
+ standard contract columns plus <code>_gene_set</code>.</p>
+</li>
+</ol>
+<blockquote>
+<p><strong>Interpretation note</strong>: online (Enrichr), local (GOATOOLS), and prerank engines
+use different statistical methods and backgrounds — numbers differ across modes
+by design; compare trends, not absolute p-values (engine-difference caveat, plan P3-4).</p>
+</blockquote>
+<h2 id="62-meta-signature-enrichment-comparison-statistics">6.2 Meta-signature enrichment (Comparison: Statistics)<a class="headerlink" href="#62-meta-signature-enrichment-comparison-statistics" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Run <em>Analysis → Compare Datasets</em> with 2+ datasets; open the
+ <strong>Comparison: Statistics</strong> tab.</li>
+<li>Open the enrichment dialog and switch to the <strong>Comparison: Statistics</strong> tab.</li>
+<li>Set the meta FDR cutoff (default 0.05); optionally require <code>meta_direction</code>
+ concordant rows.</li>
+<li>Choose the analysis method:</li>
+<li><strong>ORA (over-representation)</strong> — meta-DEG → Enrichr/GOATOOLS ORA.</li>
+<li><strong>GSEA prerank (gseapy, international gene sets)</strong> — meta ranking
+ (<code>meta_z</code> or <code>−log10(p) × sign(effect)</code>) → <code>gseapy.prerank</code> against cached
+ GMT snapshots (works offline). Results preserve <strong>NES / FWER</strong> columns.</li>
+<li>The result registers as usual; metadata records <code>meta_combined_datasets</code> and
+ <code>gsea_method</code>.</li>
+</ol>
+<blockquote>
+<p><strong>Name distinction (A7)</strong>: <em>GSEA Lite (Wilcoxon)</em> in the Analysis menu is the
+built-in rank-based GSEA on predefined in-app gene sets; <em>GSEA prerank (gseapy)</em>
+above is the GO/KEGG enrichment pipeline's prerank path with international
+gene sets (GO/KEGG) and is a separate feature.</p>
+</blockquote>
+<h2 id="63-engine-modes-summary">6.3 Engine modes (summary)<a class="headerlink" href="#63-engine-modes-summary" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Online (Enrichr)</strong>: fastest, database-rich; sends only the DEG symbols; no
+ custom background (2A forces local).</li>
+<li><strong>Local (GOATOOLS)</strong>: full offline-capable GO; uses the DE table as population;
+ recommended for mouse (no online mouse GO library).</li>
+<li><strong>Offline</strong>: no network; requires the cache (obo/gene2go) from any previous run;
+ KEGG inactive.</li>
+<li><strong>Auto</strong>: online when possible without a custom background, else local.</li>
+<li><strong>Background file</strong>: custom gene list as population → local engine only.</li>
+</ul>
+<h2 id="64-cache-reproducibility">6.4 Cache &amp; reproducibility<a class="headerlink" href="#64-cache-reproducibility" title="Permanent link">&para;</a></h2>
+<ul>
+<li>First run downloads <code>go-basic.obo</code>, <code>gene2go</code>, <code>gene_info</code>, and GMT snapshots into
+ the AppData cache (<code>HTTPS_PROXY</code> respected, sha256-verified, TTL auto-refresh).</li>
+<li>Every result's metadata keeps an <code>enrichment_recipe</code> (serialized request) so the
+ same analysis can be re-run or audited; <strong>auto re-run on load is a v1 non-goal</strong> —
+ export the table for long-term storage.</li>
+</ul>
+<p><strong>Annotation snapshot pinning (reproducibility)</strong> — GO p-values depend on the
+date of the <code>gene2go</code>/GMT annotation snapshot, so results shift when the cache
+auto-refreshes (validated: pipeline vs current snapshot differ in term sizes M
+and hit counts k, which shifts significance). For reproducible or
+pipeline-comparable runs:</p>
+<ul>
+<li>Pin the snapshot: <code>CacheManager(..., pin_snapshots=True)</code> — an existing cached
+  file is then never TTL-refreshed; the same sha256 snapshot is reused. Delete
+  the cache file to refresh explicitly.</li>
+<li>Every result records the used snapshots under metadata <code>annotation_snapshots</code>
+  ({kind: file, sha256, fetched_at, source}).</li>
+<li>To match an older pipeline exactly, pin the same annotation version it used
+  (same-source <code>gene2go</code> date or the pipeline GMT snapshot).</li>
+</ul>
+<p><strong>Statistic (one-sided vs two-sided)</strong> — Local GOATOOLS uses <strong>two-sided</strong> Fisher
+by default (more conservative). The pipeline/clusterProfiler convention is
+<strong>one-sided (enrichment)</strong> Fisher; on identical annotation counts the two agree
+(ρ=1.000). To match pipeline p-values, enable <strong>“One-sided Fisher (enrichment,
+matches pipeline statistics — local GO)”</strong> in the analysis dialog
+(<code>enrich_ora(..., one_sided=True)</code>). The used statistic is recorded in metadata
+<code>stat_test</code> (<code>fisher_one_sided</code> / <code>fisher_two_sided</code>).</p>
+<hr />
+<p><strong>See also</strong>: <a href="../user-guide.md">User Guide</a> · <a href="../20-faq/">FAQ</a></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "search.suggest", "toc.integrate"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
