@@ -5,40 +5,54 @@ Project-specific instructions for Claude Code when working in this repository.
 ## In-app help (F1) must stay in sync with GUI changes
 
 The F1 help dialog (`src/gui/help_dialog.py`) is the only documentation most
-users (non-programmer researchers) ever see. It is currently a set of
-`_get_<section>()` methods that each return a hardcoded HTML string, keyed
-off a table-of-contents list in `_load_content()` / `_on_toc_selection_changed()`.
+users (non-programmer researchers) ever see. Since the Markdown migration
+(`docs/planning/HELP_SYSTEM_OVERHAUL_PLAN.md`), its content lives entirely in
+`docs/user/help/NN-slug.md` — one file per numbered section, rendered at
+runtime via `QTextBrowser.setMarkdown()`. The dialog builds its table of
+contents by listing that directory (filename order) and reading each file's
+first `# ` heading as the title; there is no separate TOC list to maintain
+in Python anymore.
 
 **Whenever you add or change a user-visible GUI feature** — a new menu
 action, dialog, keyboard shortcut, or a meaningfully changed workflow in
-`src/gui/*.py` — check whether `src/gui/help_dialog.py` needs a matching
+`src/gui/*.py` — check whether a `docs/user/help/*.md` file needs a matching
 update:
-- New menu action / shortcut → add it to the relevant section AND to the
-  shortcut table in "13. Tips & Shortcuts".
-- New dialog / workflow → add or extend the relevant numbered section (the
-  TOC already uses letter suffixes like `5b`, `5c`, `7b` for features added
-  after the original numbering — follow that pattern rather than
-  renumbering everything).
+- New menu action / shortcut → add it to the relevant section's `.md` AND to
+  the shortcut table in `19-tips-shortcuts.md`.
+- New dialog / workflow → add or extend the relevant file, or add a new
+  `NN-slug.md` (the existing numbering has gaps from past insertions — match
+  that pattern rather than renumbering everything).
 - Changed workflow (e.g. a dialog that used to act immediately now opens a
   settings step first) → update the existing prose, don't just append.
+- New images referenced via `![...](assets/foo.png)` go in
+  `docs/user/help/assets/`.
 
-Do not assume this is covered elsewhere: `docs/user/*.md` is a **separate,
-independently-maintained set of docs** (not loaded by the app) that already
-drifted out of sync with `help_dialog.py` once before (see e.g.
-`docs/user/igv-integration-guide.md` and
-`docs/user/atac-rna-integration-analysis-guide.md`, which existed for a
-while with zero corresponding content in the F1 dialog). Treat the two as
-independent surfaces that both need updating, unless/until they're
-consolidated (see below).
+`docs/user/*.md` **outside** the `help/` subfolder (e.g.
+`docs/user/igv-integration-guide.md`,
+`docs/user/atac-rna-integration-analysis-guide.md`, `user-guide.md`) is a
+**separate, independently-maintained set of docs** that is not loaded by the
+app and has drifted out of sync before. Only `docs/user/help/*.md` is the
+synced source — don't assume an edit there is covered by also editing (or
+not editing) the broader `docs/user/*.md` set, or vice versa.
 
-## Known format issue (deferred, not yet scheduled)
+## Help docs are also published as a website
 
-`help_dialog.py`'s HTML-strings-in-Python-methods format is harder to
-review/diff than plain text and is the reason it drifted. The considered
-fix — consolidating `help_dialog.py` and `docs/user/*.md` into one set of
-Markdown files rendered at runtime via Qt's built-in `QTextEdit.setMarkdown()`
-(no new dependency) — was intentionally deferred (2026-08-26) to keep a
-large content-refresh pass low-risk. If asked to do a bigger doc
-infrastructure pass, that migration is the recommended direction; it would
-also require updating PyInstaller data bundling (`*.spec`, `build.ps1`,
-`build-macos.sh`) to ship the markdown files.
+`docs/user/help/*.md` — the exact same files the F1 dialog renders — are
+also built into a static site (`mkdocs.yml`) and deployed to GitHub Pages by
+`.github/workflows/docs.yml` on every push to `master` that touches
+`docs/user/help/**`. `mkdocs.yml` has no `nav:` on purpose: MkDocs falls
+back to auto-generating navigation from the file listing sorted by filename,
+using each page's first `# ` heading — the same rule `help_dialog.py` uses
+for its TOC. This means editing/adding `docs/user/help/*.md` files updates
+both surfaces automatically; don't add a `nav:` list or an `index.md` to
+`docs/user/help/` to fix a site-navigation issue, since either would
+desync it from the in-app TOC (the one exception — the generated site's
+root-redirect `index.html` — is injected at deploy time by the workflow
+itself, not committed to `docs/user/help/`).
+
+Known gap: every help page's "See also" line links to `../user-guide.md`,
+which is outside `docs/user/help/` (and thus outside the website's scope) —
+that link renders fine in-app but 404s on the website.
+`mkdocs.yml`'s `validation.links.not_found: ignore` exists specifically to
+keep that known, intentional gap from failing `mkdocs build --strict` in CI;
+don't tighten it without also resolving the underlying link.

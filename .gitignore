@@ -170,3 +170,6 @@ test_db.py
 Filtered_common_deg_heatmap_bundle/
 cmg-smoke.spec
 data/2025-ljh-hiy-mouse-atac/
+
+# MkDocs build output (docs.yml builds+deploys this to gh-pages)
+/site/

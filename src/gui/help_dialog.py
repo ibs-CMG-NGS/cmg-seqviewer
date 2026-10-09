@@ -136,9 +136,14 @@ class HelpDialog(QDialog):
 
     @staticmethod
     def _slug_of(text: str) -> str:
-        """헤딩 텍스트 → 앵커 슬러그 (예: '5.1 Overview' → '5-1-overview')."""
-        slug = "".join(ch.lower() if ch.isalnum() else "-" for ch in text)
-        return "-".join(p for p in slug.split("-") if p)
+        """헤딩 텍스트 → 앵커 슬러그. docs/user/help/*.md는 MkDocs(웹)로도 빌드되므로
+        (mkdocs.yml) GitHub/MkDocs와 동일한 규칙을 쓴다 — 구두점은 구분자 삽입 없이
+        제거하고(마침표 등), 기존 하이픈은 보존하고, 남은 공백만 하이픈으로 치환.
+        예: '5.1 Overview' -> '51-overview', '6.3 Engine modes (summary)' ->
+        '63-engine-modes-summary'. 예전 방식(모든 비영숫자 -> 하이픈)은 마침표에서
+        MkDocs와 슬러그가 달라져 같은 앵커가 앱/웹 중 한쪽에서만 동작했다."""
+        kept = "".join(ch.lower() for ch in text if ch.isalnum() or ch in " -")
+        return "-".join(p for p in kept.split(" ") if p)
 
     def _on_anchor_clicked(self, url):
         """링크 처리: http(s)는 외부 브라우저; 로컬 .md는 인앱 렌더(+앵커 스크롤)."""
@@ -167,7 +172,7 @@ class HelpDialog(QDialog):
             self._scroll_to_heading(fragment)
 
     def _scroll_to_heading(self, fragment: str):
-        """슬러그 프래그먼트(#5-1-overview)로 헤딩 찾아 스크롤."""
+        """슬러그 프래그먼트(#51-overview)로 헤딩 찾아 스크롤."""
         target = self._slug_of(fragment.replace("-", " "))
         doc = self.content_browser.document()
         blk = doc.begin()

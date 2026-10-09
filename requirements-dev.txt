@@ -1,2 +1,6 @@
 # Development and build dependencies
 pyinstaller>=6.0.0
+
+# Help docs site (mkdocs.yml, .github/workflows/docs.yml) — builds
+# docs/user/help/*.md (same source as the in-app F1 help) into a static site
+mkdocs-material>=9.0

@@ -169,22 +169,27 @@ class TestHelpNavigation:
             assert f"({f.name})" in md, f.name
 
     def test_see_also_anchor_links(self):
+        # 앵커는 HelpDialog._slug_of()와 MkDocs(웹)의 슬러그 규칙이 일치해야 양쪽에서
+        # 다 동작한다 — GitHub/MkDocs 식: 구두점 제거(구분자 없이), 공백만 하이픈.
         md5 = (REPO_HELP / "05-go-kegg-analysis.md").read_text(encoding="utf-8")
-        assert "06-go-enrichment-analysis.md#6-3-engine-modes-summary" in md5
+        assert "06-go-enrichment-analysis.md#63-engine-modes-summary" in md5
         md13 = (REPO_HELP / "13-atac-seq-analysis.md").read_text(encoding="utf-8")
         assert "14-multi-omics-integration.md" in md13
 
     def test_slug_of(self):
         from gui.help_dialog import HelpDialog
-        assert HelpDialog._slug_of("5.1 Overview") == "5-1-overview"
-        assert HelpDialog._slug_of("6.3 Engine modes (summary)") == "6-3-engine-modes-summary"
+        assert HelpDialog._slug_of("5.1 Overview") == "51-overview"
+        assert HelpDialog._slug_of("6.3 Engine modes (summary)") == "63-engine-modes-summary"
+        # 하이픈이 있는 단어는 보존 — MkDocs가 실제로 빌드하는 id와 동일해야 함.
+        assert (HelpDialog._slug_of("6.1 End-to-end workflow example (Acute 1D data)")
+                == "61-end-to-end-workflow-example-acute-1d-data")
 
     def test_anchor_clicked_opens_md_and_selects_row(self, qtbot):
         from PyQt6.QtCore import QUrl
         dlg = HelpDialog(help_dir=REPO_HELP)
         qtbot.addWidget(dlg)
         url = QUrl.fromLocalFile(str((REPO_HELP / "06-go-enrichment-analysis.md").resolve()))
-        url.setFragment("6-3-engine-modes-summary")
+        url.setFragment("63-engine-modes-summary")
         dlg._on_anchor_clicked(url)
         qtbot.wait(0)
         row = dlg.toc_list.currentRow()
