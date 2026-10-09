@@ -4,12 +4,15 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![PyQt6](https://img.shields.io/badge/PyQt-6-green.svg)](https://www.riverbankcomputing.com/software/pyqt/)
 [![Release](https://img.shields.io/badge/release-v1.3.1-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
+[![Docs](https://img.shields.io/badge/docs-online%20guide-blue.svg)](https://ibs-cmg-ngs.github.io/cmg-seqviewer/)
 
 ---
 
 ## Overview
 
 **CMG-SeqViewer** is a desktop application for multi-omics data analysis and visualization. It supports RNA-seq differential expression (DE), ATAC-seq differential accessibility (DA), and GO/KEGG pathway enrichment results. Built with Python and PyQt6, it provides an Excel-like interface for biologists to explore genomic data without programming.
+
+📖 **[Online user guide](https://ibs-cmg-ngs.github.io/cmg-seqviewer/)** — the same content as the in-app F1 help, browsable without installing.
 
 ![CMG-SeqViewer main window](docs/images/main-window.png)
 
