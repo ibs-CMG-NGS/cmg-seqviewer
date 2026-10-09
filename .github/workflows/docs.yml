@@ -1,0 +1,62 @@
+name: Deploy Help Docs
+
+# docs/user/help/*.md is the single source of truth shared with the in-app
+# F1 help dialog (src/gui/help_dialog.py) — this workflow just republishes
+# the same files as a static site (mkdocs.yml), it doesn't fork content.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'docs/user/help/**'
+      - 'mkdocs.yml'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: '3.11'
+
+      - name: Install MkDocs
+        run: pip install mkdocs-material
+
+      - name: Build
+        run: mkdocs build --strict
+
+      # mkdocs intentionally has no nav/index.md (see mkdocs.yml comment) so
+      # new help sections never need a matching config edit — but that means
+      # there's no landing page at the site root. Inject one at deploy time
+      # only, instead of adding an index.md to docs/user/help/ that would
+      # also show up (out of place) in the in-app F1 help TOC.
+      - name: Add root redirect to the first section
+        run: |
+          first=$(ls docs/user/help/*.md | sort | head -1 | xargs basename | sed 's/\.md$//')
+          cat > site/index.html <<HTML
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta http-equiv="refresh" content="0; url=${first}/">
+            <link rel="canonical" href="${first}/">
+          </head>
+          <body>
+            <p>Redirecting to <a href="${first}/">the CMG-SeqViewer help</a>…</p>
+          </body>
+          </html>
+          HTML
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site

@@ -1,0 +1,39 @@
+site_name: CMG-SeqViewer Help
+site_description: CMG-SeqViewer user documentation (same content as the in-app F1 help)
+site_url: https://ibs-cmg-ngs.github.io/cmg-seqviewer/
+repo_url: https://github.com/ibs-CMG-NGS/cmg-seqviewer
+repo_name: ibs-CMG-NGS/cmg-seqviewer
+
+# docs/user/help/*.md is the single source of truth shared with the in-app F1
+# help dialog (src/gui/help_dialog.py) — do not fork content here, edit the
+# source files. `nav` is intentionally omitted: MkDocs then auto-generates
+# navigation from the file listing sorted by filename, using each page's
+# first `#` heading as the title — the exact same rule help_dialog.py uses
+# to build its TOC, so new sections never need a matching mkdocs.yml edit.
+docs_dir: docs/user/help
+site_dir: site
+
+# Every help page links to ../user-guide.md (docs/user/user-guide.md) in its
+# "See also" line — intentionally outside docs_dir/this site's scope (that
+# broader docs/user/*.md set is a separate, not-yet-synced doc surface, see
+# CLAUDE.md). Keep that one link class as a warning instead of a --strict
+# build failure; any other broken internal link should still fail CI.
+validation:
+  links:
+    not_found: ignore
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+  features:
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - toc.integrate
+
+markdown_extensions:
+  - tables
+  - toc:
+      permalink: true

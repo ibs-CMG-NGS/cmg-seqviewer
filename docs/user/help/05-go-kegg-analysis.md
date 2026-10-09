@@ -236,4 +236,4 @@ GO:0008150
             Re-filter Filtered tabs to narrow down results further
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](20-faq.md) · [6.3 Engine modes](06-go-enrichment-analysis.md#6-3-engine-modes-summary)
+**See also**: [User Guide](../user-guide.md) · [FAQ](20-faq.md) · [6.3 Engine modes](06-go-enrichment-analysis.md#63-engine-modes-summary)
