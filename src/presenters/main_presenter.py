@@ -178,7 +178,11 @@ class MainPresenter(QObject):
             # ── CSV / Parquet: ATAC / MultiGroup 빠른 감지 ───────────────────
             if suffix in ('.csv', '.parquet'):
                 try:
-                    import pandas as pd
+                    # pd는 모듈 상단에서 이미 import됨 — 여기서 다시 로컬 import하면
+                    # 함수 전체 스코프에서 pd가 로컬 변수 취급돼 아래 Excel 분기의
+                    # pd.read_excel()이 UnboundLocalError로 죽는다 (§load_dataset
+                    # dataset_type_hint 작업 중 동일 버그를 ATAC 분기에서 이미 한 번
+                    # 고쳤음 — 여기 또 하나 남아 있었다).
                     peek = pd.read_csv(file_path, nrows=5) if suffix == '.csv' \
                            else pd.read_parquet(file_path)
 

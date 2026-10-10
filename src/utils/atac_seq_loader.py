@@ -166,15 +166,21 @@ class ATACSeqLoader:
     def _map_columns(self, df: pd.DataFrame) -> Dict[str, str]:
         """
         {원본 컬럼명: 표준 컬럼명} 매핑 반환.
-        1단계: 완전 일치 우선, 2단계: 부분 포함 매칭.
+
+        전체 완전 일치를 먼저 한 바퀴 돈 다음, 남은 것만 부분 포함으로 2바퀴째 돈다
+        (표준 컬럼 단위로 완전일치->부분일치를 순서대로 처리하면, COLUMN_PATTERNS 뒤쪽
+        표준 컬럼의 완전 일치 대상을 앞쪽 표준 컬럼의 부분 포함 단계가 먼저 가로채는
+        버그가 있었다 — 예: 'adj_pvalue' 헤더가 자기 패턴 목록에 'adj_pvalue'를 갖고
+        있어도, 'pvalue' 표준 컬럼의 부분 포함(「pvalue」 in 「adj_pvalue」)이 먼저 돌아서
+        뺏겼다. data_loader.py의 동일 버그와 같은 원인 — §반입 일반성 감사 후속.)
         """
         mapping: Dict[str, str] = {}
         cols_lower = {col: col.lower().replace(' ', '_').replace('.', '_')
                       for col in df.columns}
         already_mapped: set = set()
 
+        # 1단계: 전체 표준 컬럼에 대해 완전 일치부터
         for standard_col, patterns in COLUMN_PATTERNS.items():
-            # 1단계: 완전 일치
             for original_col, lower_col in cols_lower.items():
                 if original_col in already_mapped:
                     continue
@@ -182,15 +188,18 @@ class ATACSeqLoader:
                     mapping[original_col] = standard_col
                     already_mapped.add(original_col)
                     break
-            else:
-                # 2단계: 부분 포함
-                for original_col, lower_col in cols_lower.items():
-                    if original_col in already_mapped:
-                        continue
-                    if any(p in lower_col for p in patterns):
-                        mapping[original_col] = standard_col
-                        already_mapped.add(original_col)
-                        break
+
+        # 2단계: 완전 일치로 못 찾은 표준 컬럼만 부분 포함으로
+        for standard_col, patterns in COLUMN_PATTERNS.items():
+            if standard_col in mapping.values():
+                continue
+            for original_col, lower_col in cols_lower.items():
+                if original_col in already_mapped:
+                    continue
+                if any(p in lower_col for p in patterns):
+                    mapping[original_col] = standard_col
+                    already_mapped.add(original_col)
+                    break
 
         return mapping
 

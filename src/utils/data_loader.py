@@ -36,7 +36,7 @@ class DataLoader:
             'symbol': ['symbol', 'gene_symbol', 'gene', 'gene_name'],
             'log2fc': ['log2fc', 'log2foldchange', 'logfc', 'fold_change', 'fc'],
             'pvalue': ['pvalue', 'p.value', 'p_value', 'pval'],
-            'adj_pvalue': ['padj', 'adj.p.value', 'adj_p_value', 'fdr', 'q_value', 'qvalue'],
+            'adj_pvalue': ['adj_pvalue', 'padj', 'adj.p.value', 'adj_p_value', 'fdr', 'q_value', 'qvalue'],
             'base_mean': ['basemean', 'base_mean', 'mean', 'avg_expression'],
             'lfcse': ['lfcse', 'lfc_se', 'lfcstderr', 'log2fc_se'],
             'stat': ['stat', 'statistic', 'test_stat'],
@@ -47,7 +47,7 @@ class DataLoader:
             'description': ['description', 'term', 'go_term', 'go term', 'kegg_pathway', 'kegg pathway', 'pathway', 'term_name', 'go.term', 'kegg.pathway'],
             'gene_count': ['gene_count', 'gene count', 'count', 'size', 'n_genes', 'gene.count'],
             'pvalue': ['pvalue', 'p.value', 'p_value', 'p-value', 'pval'],
-            'fdr': ['fdr', 'padj', 'adj.p.value', 'adjusted p-value', 'adjusted_p-value',
+            'fdr': ['fdr', 'adj_pvalue', 'padj', 'adj.p.value', 'adjusted p-value', 'adjusted_p-value',
                     'adjusted.p-value', 'adjusted.p.value', 'adjusted.pvalue', 'adjusted p.value'],
             'qvalue': ['qvalue', 'q-value', 'q_value'],
             'gene_symbols': ['gene_symbols', 'gene symbols', 'genes', 'gene_list', 'geneid', 'gene id', 'gene.symbols'],
@@ -285,33 +285,40 @@ class DataLoader:
         else:
             return mapping
         
-        # 각 표준 컬럼에 대해 매칭되는 실제 컬럼 찾기
+        # 전체 완전 일치를 먼저 한 바퀴 돈 다음, 남은 것만 부분 포함으로 2바퀴째 돈다
+        # (표준 컬럼 단위로 완전일치->부분일치를 순서대로 처리하면, dict 뒤쪽 표준 컬럼의
+        # 완전 일치 대상을 앞쪽 표준 컬럼의 부분 포함 단계가 먼저 가로채는 버그가 있었다 —
+        # 예: 'adj_pvalue' 헤더가 'pvalue' 패턴의 부분 포함(「pvalue」 in 「adj_pvalue」)에
+        # 'adj_pvalue' 표준 컬럼보다 먼저 뺏겨 버림. 전역 완전 일치 우선으로 바꾸면
+        # 'adj_pvalue' 헤더가 adj_pvalue 패턴 목록의 완전 일치 후보가 있을 때 항상 이긴다.)
         already_mapped = set()  # 이미 다른 표준 컬럼에 할당된 원본 컬럼 추적
+
+        # 1단계: 전체 표준 컬럼에 대해 완전 일치부터
         for standard_col, pattern_list in patterns.items():
-            matched = False
-            # 1단계: 완전 일치 우선 (lower_col == pattern)
             for original_col, lower_col in columns_lower.items():
                 if original_col in already_mapped:
                     continue
                 if any(lower_col == pattern for pattern in pattern_list):
                     mapping[original_col] = standard_col
                     already_mapped.add(original_col)
+                    break
+
+        # 2단계: 완전 일치로 못 찾은 표준 컬럼만 부분 포함으로
+        for standard_col, pattern_list in patterns.items():
+            if standard_col in mapping.values():
+                continue
+            matched = False
+            for original_col, lower_col in columns_lower.items():
+                if original_col in already_mapped:
+                    continue
+                if any(pattern in lower_col for pattern in pattern_list):
+                    mapping[original_col] = standard_col
+                    already_mapped.add(original_col)
                     matched = True
                     break
-            # 2단계: 완전 일치 없으면 부분 포함 매칭
-            if not matched:
-                for original_col, lower_col in columns_lower.items():
-                    if original_col in already_mapped:
-                        continue
-                    if any(pattern in lower_col for pattern in pattern_list):
-                        mapping[original_col] = standard_col
-                        already_mapped.add(original_col)
-                        matched = True
-                        break
-
             if not matched:
                 self.logger.debug(f"No match found for standard column: {standard_col}")
-        
+
         return mapping
     
     def _standardize_columns(self, df: pd.DataFrame, 

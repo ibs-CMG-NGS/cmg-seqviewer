@@ -61,3 +61,15 @@ class TestATACSeqLoaderValidation:
         dataset = ATACSeqLoader().load(f)
         assert dataset.dataset_type == DatasetType.ATAC_SEQ
         assert dataset.is_valid
+
+    def test_literal_adj_pvalue_header_not_stolen_by_pvalue_pattern(self, tmp_path):
+        # 회귀 방지: 'pvalue' 패턴의 부분 포함 단계가 'adj_pvalue' 헤더를 먼저
+        # 가로채던 버그 (§반입 일반성 감사 후속, Phase 0 CLI 타당성 검증 중 발견).
+        df = pd.DataFrame([
+            {"peak_id": "Interval_1", "log2FoldChange": 1.2, "adj_pvalue": 0.01},
+        ])
+        f = tmp_path / "canonical_header_atac.parquet"
+        df.to_parquet(f)
+        dataset = ATACSeqLoader().load(f)
+        assert dataset.dataframe.loc[0, "adj_pvalue"] == 0.01
+        assert dataset.is_valid
