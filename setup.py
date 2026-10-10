@@ -60,6 +60,7 @@ setup(
     entry_points={
         "console_scripts": [
             "rna-seq-analyzer=main:main",
+            "cmg-seqviewer-cli=cli:main",
         ],
     },
     include_package_data=True,

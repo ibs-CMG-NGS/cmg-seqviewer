@@ -143,104 +143,18 @@ class MainPresenter(QObject):
             return None
 
         try:
-            file_path = Path(file_path)
-            suffix = file_path.suffix.lower()
-
-            # ── 명시적 타입 힌트: 자동 감지 체인을 건너뛰고 직행 (§감사 finding #5) ──
-            if dataset_type_hint == DatasetType.ATAC_SEQ:
-                from utils.atac_seq_loader import ATACSeqLoader
-                dataset = ATACSeqLoader().load(file_path, final_name or file_path.stem,
-                                               column_mapper_callback)
-                self._store_and_signal_dataset(dataset, start_time)
-                return
-
-            # ── CSV / Parquet: chromVAR diff TF 감지 ─────────────────────────
-            if suffix in ('.csv', '.parquet'):
-                from utils.chromvar_loader import ChromVARLoader
-                if ChromVARLoader.is_chromvar_file(file_path):
-                    dataset = ChromVARLoader().load(file_path, final_name or file_path.stem)
-                    self._store_and_signal_dataset(dataset, start_time)
-                    return
-
-            # ── TXT / TSV: Motif enrichment 또는 TF Footprint 파일 감지 ────────
-            if suffix in ('.txt', '.tsv'):
-                from utils.footprint_loader import FootprintLoader
-                if FootprintLoader.is_footprint_file(file_path):
-                    dataset = FootprintLoader().load(file_path, final_name or file_path.stem)
-                    self._store_and_signal_dataset(dataset, start_time)
-                    return
-                from utils.motif_loader import MotifLoader
-                if MotifLoader.is_motif_file(file_path):
-                    dataset = MotifLoader().load(file_path, final_name or file_path.stem)
-                    self._store_and_signal_dataset(dataset, start_time)
-                    return
-
-            # ── CSV / Parquet: ATAC / MultiGroup 빠른 감지 ───────────────────
-            if suffix in ('.csv', '.parquet'):
-                try:
-                    # pd는 모듈 상단에서 이미 import됨 — 여기서 다시 로컬 import하면
-                    # 함수 전체 스코프에서 pd가 로컬 변수 취급돼 아래 Excel 분기의
-                    # pd.read_excel()이 UnboundLocalError로 죽는다 (§load_dataset
-                    # dataset_type_hint 작업 중 동일 버그를 ATAC 분기에서 이미 한 번
-                    # 고쳤음 — 여기 또 하나 남아 있었다).
-                    peek = pd.read_csv(file_path, nrows=5) if suffix == '.csv' \
-                           else pd.read_parquet(file_path)
-
-                    from utils.atac_seq_loader import ATACSeqLoader
-                    if ATACSeqLoader.is_atac_dataframe(peek):
-                        loader = ATACSeqLoader()
-                        dataset = loader.load(file_path, final_name or file_path.stem,
-                                              column_mapper_callback)
-                        self._store_and_signal_dataset(dataset, start_time)
-                        return
-
-                    # ── CSV / Parquet: GO/KEGG 표준 프레임 (엔진 산출/복원 — plan P3-7) ──
-                    # GO 프레임은 MultiGroup 감지(pvalue/fdr 등 통계 컬럼 보유)와 충돌하므로 우선 판별
-                    if _looks_like_go_frame(peek):
-                        from utils.go_kegg_loader import standardize_go_dataframe
-                        df = (pd.read_csv(file_path) if suffix == '.csv'
-                              else pd.read_parquet(file_path))
-                        std = standardize_go_dataframe(df)
-                        dataset = Dataset(name=final_name or file_path.stem,
-                                          dataset_type=DatasetType.GO_ANALYSIS,
-                                          dataframe=std)
-                        self._store_and_signal_dataset(dataset, start_time)
-                        return
-
-                    from utils.multi_group_loader import MultiGroupLoader
-                    if MultiGroupLoader.is_multi_group_dataframe(peek):
-                        loader = MultiGroupLoader()
-                        dataset = loader.load(file_path, final_name or file_path.stem)
-                        self._store_and_signal_dataset(dataset, start_time)
-                        return
-                except Exception as e:
-                    self.logger.warning(f"Quick detection failed: {e}, falling through")
-
-            # ── Excel: GO/KEGG 또는 DE 감지 ──────────────────────────────────
-            try:
-                test_df = pd.read_excel(file_path, nrows=10)
-                detected_type = self.data_loader._detect_dataset_type(test_df)
-                self.logger.debug(f"Quick type detection: {detected_type.value}")
-
-                if detected_type == DatasetType.GO_ANALYSIS:
-                    from utils.go_kegg_loader import GOKEGGLoader
-                    loader = GOKEGGLoader()
-                    dataset = loader.load_from_excel(
-                        file_path, final_name or file_path.stem,
-                        column_mapper_callback=column_mapper_callback)
-                    self._store_and_signal_dataset(dataset, start_time)
-                    return
-            except Exception as e:
-                self.logger.warning(f"Quick type detection failed: {e}, using standard loader")
-
-            # ── 기본: DE 데이터셋 로더 ────────────────────────────────────────
-            dataset = self.data_loader.load_from_excel(
-                file_path,
-                final_name,
-                column_mapper_callback=column_mapper_callback
+            # 파일 -> Dataset 판별/로딩 자체는 CLI와 공유하는 단일 진실원천
+            # (utils.dataset_detection.load_any_dataset) — GUI는 그 결과를 받아
+            # 탭/시그널 갱신만 한다.
+            from utils.dataset_detection import load_any_dataset
+            dataset = load_any_dataset(
+                Path(file_path), self.data_loader, name=final_name,
+                dataset_type_hint=dataset_type_hint,
+                column_mapper_callback=column_mapper_callback,
+                logger=self.logger,
             )
             self._store_and_signal_dataset(dataset, start_time)
-            
+
         except Exception as e:
             self.logger.error(f"Failed to load dataset: {e}", exc_info=True)
             self.fsm.trigger(Event.DATA_LOAD_FAILED)
@@ -1767,13 +1681,3 @@ class MainPresenter(QObject):
             error_msg = f"Failed to filter GO/KEGG data: {str(e)}"
             self.logger.exception(error_msg)
             self.error_occurred.emit(error_msg)
-
-
-def _looks_like_go_frame(df) -> bool:
-    """GO/KEGG 표준(또는 R clusterProfiler 어휘) 프레임 감지 (plan P3-7 복원 경로)."""
-    cols = {str(c).lower() for c in df.columns}
-    idish = bool(cols & {"term_id", "go id", "kegg id", "id", "go.id", "kegg.id"})
-    descish = bool(cols & {"description", "go term", "kegg pathway", "term",
-                           "go.term", "kegg.pathway"})
-    ontish = bool(cols & {"ontology", "direction", "gene_set"})
-    return (idish and descish) or (ontish and descish)
