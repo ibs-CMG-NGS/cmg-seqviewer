@@ -85,3 +85,26 @@ class TestDatasetTypeHint:
         ds = captured.get("ds")
         assert ds is not None
         assert ds.dataset_type == DatasetType.GO_ANALYSIS
+
+
+class TestLoadDatasetNoShadowedPandas:
+    def test_excel_de_load_does_not_unboundlocalerror(self, tmp_path):
+        # 회귀 방지: load_dataset()의 csv/parquet 분기 안에 있던 로컬
+        # `import pandas as pd`가 (그 분기가 실행되는지와 무관하게, 파이썬 스코프
+        # 규칙상 함수 전체의 pd를 로컬로 만들어) 뒤쪽 Excel 분기의 pd.read_excel()을
+        # UnboundLocalError로 깨뜨리고 있었다 — .xlsx 파일 하나만 로드해도 100% 재현
+        # (Phase 0 CLI 타당성 검증 중 발견. dataset_type_hint 작업 때 같은 패턴을
+        # ATAC 분기에서 한 번 고쳤는데 csv/parquet 분기에 하나 더 남아 있었다).
+        xlsx_df = pd.DataFrame({
+            "gene_id": ["G1", "G2"], "log2fc": [1.0, -2.0], "adj_pvalue": [0.01, 0.02],
+        })
+        xlsx_f = tmp_path / "de.xlsx"
+        xlsx_df.to_excel(xlsx_f, index=False)
+
+        presenter, captured = _make_presenter()
+        presenter.load_dataset(xlsx_f, custom_name="DE")
+
+        ds = captured.get("ds")
+        assert ds is not None, "Excel load failed (pd shadowing regression)"
+        assert ds.dataset_type == DatasetType.DIFFERENTIAL_EXPRESSION
+        assert ds.is_valid
