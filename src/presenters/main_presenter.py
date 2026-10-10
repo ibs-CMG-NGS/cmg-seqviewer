@@ -97,35 +97,62 @@ class MainPresenter(QObject):
         self.logger.error(f"Error state: {error_msg}")
         self.error_occurred.emit(error_msg)
     
-    def load_dataset(self, file_path: Path, dataset_name: Optional[str] = None, custom_name: Optional[str] = None):
+    def load_dataset(self, file_path: Path, dataset_name: Optional[str] = None, custom_name: Optional[str] = None,
+                     dataset_type_hint: Optional[DatasetType] = None):
         """
         데이터셋 로드 (비동기)
-        
+
         Args:
             file_path: Excel / CSV / Parquet 파일 경로
             dataset_name: 데이터셋 이름 (None이면 파일명 사용) - deprecated, use custom_name
             custom_name: 사용자 지정 이름 (우선순위 최상위)
+            dataset_type_hint: "Open ATAC-seq Dataset..." 같은 타입-전용 메뉴에서 넘기는
+                              명시적 타입 힌트. 지정되면 자동 감지(스니핑) 체인을 전부
+                              건너뛰고 해당 타입 로더로 직행한다 — 파일의 peak_id 등
+                              컬럼명이 인식 패턴과 안 맞아 감지 휴리스틱이 실패해도(§감사
+                              finding #5) 사용자가 명시한 타입으로 강제하고, 필수 컬럼이
+                              없으면 (감지가 아니라) 컬럼 매퍼로 수동 매핑하게 한다.
+                              현재 DatasetType.ATAC_SEQ만 지원.
         """
         import time
         start_time = time.time()
-        
+
         # custom_name이 있으면 우선 사용
         final_name = custom_name or dataset_name
-        
+
         # 상태 전환
         if not self.fsm.trigger(Event.LOAD_DATA):
             self.logger.warning("Cannot load data in current state")
             return
-        
+
         # Audit log
         self.audit_logger.log_action(
             "Load Dataset",
             details={'file': str(file_path), 'name': final_name or file_path.stem}
         )
-        
+
+        def column_mapper_callback(df, dataset_type, auto_mapping):
+            from gui.column_mapper_dialog import ColumnMapperDialog
+            dialog = ColumnMapperDialog(df, dataset_type, auto_mapping, self.view)
+            if dialog.exec():
+                mapping = dialog.get_mapping()
+                if dialog.should_save_mapping():
+                    self.data_loader.save_custom_mapping(dataset_type, mapping)
+                    self.logger.debug("User mapping saved for future use")
+                return mapping
+            return None
+
         try:
             file_path = Path(file_path)
             suffix = file_path.suffix.lower()
+
+            # ── 명시적 타입 힌트: 자동 감지 체인을 건너뛰고 직행 (§감사 finding #5) ──
+            if dataset_type_hint == DatasetType.ATAC_SEQ:
+                from utils.atac_seq_loader import ATACSeqLoader
+                dataset = ATACSeqLoader().load(file_path, final_name or file_path.stem,
+                                               column_mapper_callback)
+                self._store_and_signal_dataset(dataset, start_time)
+                return
 
             # ── CSV / Parquet: chromVAR diff TF 감지 ─────────────────────────
             if suffix in ('.csv', '.parquet'):
@@ -158,7 +185,8 @@ class MainPresenter(QObject):
                     from utils.atac_seq_loader import ATACSeqLoader
                     if ATACSeqLoader.is_atac_dataframe(peek):
                         loader = ATACSeqLoader()
-                        dataset = loader.load(file_path, final_name or file_path.stem)
+                        dataset = loader.load(file_path, final_name or file_path.stem,
+                                              column_mapper_callback)
                         self._store_and_signal_dataset(dataset, start_time)
                         return
 
@@ -169,7 +197,6 @@ class MainPresenter(QObject):
                         df = (pd.read_csv(file_path) if suffix == '.csv'
                               else pd.read_parquet(file_path))
                         std = standardize_go_dataframe(df)
-                        from models.data_models import Dataset, DatasetType
                         dataset = Dataset(name=final_name or file_path.stem,
                                           dataset_type=DatasetType.GO_ANALYSIS,
                                           dataframe=std)
@@ -182,16 +209,6 @@ class MainPresenter(QObject):
                         dataset = loader.load(file_path, final_name or file_path.stem)
                         self._store_and_signal_dataset(dataset, start_time)
                         return
-                        from utils.go_kegg_loader import standardize_go_dataframe
-                        df = (pd.read_csv(file_path) if suffix == '.csv'
-                              else pd.read_parquet(file_path))
-                        std = standardize_go_dataframe(df)
-                        from models.data_models import Dataset, DatasetType
-                        dataset = Dataset(name=final_name or file_path.stem,
-                                          dataset_type=DatasetType.GO_ANALYSIS,
-                                          dataframe=std)
-                        self._store_and_signal_dataset(dataset, start_time)
-                        return
                 except Exception as e:
                     self.logger.warning(f"Quick detection failed: {e}, falling through")
 
@@ -200,28 +217,19 @@ class MainPresenter(QObject):
                 test_df = pd.read_excel(file_path, nrows=10)
                 detected_type = self.data_loader._detect_dataset_type(test_df)
                 self.logger.debug(f"Quick type detection: {detected_type.value}")
-                
+
                 if detected_type == DatasetType.GO_ANALYSIS:
                     from utils.go_kegg_loader import GOKEGGLoader
                     loader = GOKEGGLoader()
-                    dataset = loader.load_from_excel(file_path, final_name or file_path.stem)
+                    dataset = loader.load_from_excel(
+                        file_path, final_name or file_path.stem,
+                        column_mapper_callback=column_mapper_callback)
                     self._store_and_signal_dataset(dataset, start_time)
                     return
             except Exception as e:
                 self.logger.warning(f"Quick type detection failed: {e}, using standard loader")
-            
+
             # ── 기본: DE 데이터셋 로더 ────────────────────────────────────────
-            def column_mapper_callback(df, dataset_type, auto_mapping):
-                from gui.column_mapper_dialog import ColumnMapperDialog
-                dialog = ColumnMapperDialog(df, dataset_type, auto_mapping, self.view)
-                if dialog.exec():
-                    mapping = dialog.get_mapping()
-                    if dialog.should_save_mapping():
-                        self.data_loader.save_custom_mapping(dataset_type, mapping)
-                        self.logger.debug("User mapping saved for future use")
-                    return mapping
-                return None
-            
             dataset = self.data_loader.load_from_excel(
                 file_path,
                 final_name,
@@ -1283,15 +1291,26 @@ class MainPresenter(QObject):
         """
         try:
             from utils.go_kegg_loader import GOKEGGLoader
-            
+
             loader = GOKEGGLoader()
-            
+
+            def column_mapper_callback(df, dataset_type, auto_mapping):
+                from gui.column_mapper_dialog import ColumnMapperDialog
+                dialog = ColumnMapperDialog(df, dataset_type, auto_mapping, self.view)
+                if dialog.exec():
+                    return dialog.get_mapping()
+                return None
+
             if is_excel:
                 # 단일 Excel 파일
-                dataset = loader.load_from_excel(file_paths[0], name=dataset_name)
+                dataset = loader.load_from_excel(
+                    file_paths[0], name=dataset_name,
+                    column_mapper_callback=column_mapper_callback)
             else:
                 # 여러 CSV 파일
-                dataset = loader.load_from_csv_files(file_paths, name=dataset_name)
+                dataset = loader.load_from_csv_files(
+                    file_paths, name=dataset_name,
+                    column_mapper_callback=column_mapper_callback)
             
             # 데이터셋 저장 (고유 이름 생성)
             unique_name = self.view.dataset_manager._generate_unique_name(dataset.name)

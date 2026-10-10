@@ -36,13 +36,20 @@ Excel 파일을 불러오면 프로그램이 자동으로 컬럼을 분석합니
 - `adj_pvalue`: padj, adj.p.value, adj_p_value, fdr, q_value, qvalue
 - `base_mean`: basemean, base_mean, mean, avg_expression
 
-**GO Analysis 데이터 인식 패턴:**
+**GO Analysis 데이터 인식 패턴 (File → Open Dataset으로 연 Excel이 GO로 자동 분류된 경우):**
 - `term`: term, go_term, pathway, description, term_name
 - `term_id`: term_id, go_id, pathway_id, id
 - `gene_count`: gene_count, count, size, n_genes
 - `pvalue`: pvalue, p.value, p_value, pval
 - `fdr`: fdr, padj, adj.p.value, q_value, qvalue
 - `genes`: genes, gene_list, geneid, gene_symbols
+
+> ⚠️ **File → Open GO/KEGG Results... (Ctrl+G)로 여는 경우는 위 패턴을 쓰지 않습니다.**
+> 이 메뉴는 clusterProfiler/gseapy/Enrichr 관례의 리터럴 헤더(`GO ID`, `KEGG.Pathway`,
+> `p.adjust`, `core_enrichment` 등 — 소스는 `go_kegg_loader.py`의 `standardize_columns()`)만
+> 정확히 일치시킵니다. 인식되는 헤더 목록에 없는 파이프라인 출력(예: 파이썬 GSEApy/goatools를
+> 직접 돌린 결과)을 이 메뉴로 열면, 필수 컬럼이 비게 되는 시점에 **컬럼 매핑 대화상자**가
+> 자동으로 떠서 수동으로 매핑할 수 있습니다 — 이 가이드의 "수동 매핑" 절차와 동일합니다.
 
 ### 2단계: 필수 컬럼 확인
 
@@ -54,9 +61,14 @@ Excel 파일을 불러오면 프로그램이 자동으로 컬럼을 분석합니
 - ✅ Adjusted p-value (adj_pvalue)
 
 **GO 데이터 필수 컬럼:**
-- ✅ Term (term)
+- ✅ Description (description — GO Term/Pathway 설명)
 - ✅ Gene Count (gene_count)
 - ✅ FDR (fdr)
+
+**ATAC-seq 데이터 필수 컬럼** (File → Open ATAC-seq Dataset...):
+- ✅ Peak ID (peak_id)
+- ✅ log2 Fold Change (log2fc)
+- ✅ Adjusted p-value (adj_pvalue)
 
 ### 3단계: 사용자 매핑 (필요 시)
 

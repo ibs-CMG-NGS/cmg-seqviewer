@@ -69,11 +69,16 @@ class StandardColumns:
     def get_de_required(cls) -> list[str]:
         """
         Differential Expression 분석에 필수인 컬럼 반환
-        
+
+        symbol은 포함하지 않는다 — Dataset.is_valid / DataLoader._has_required_columns /
+        ColumnMapperDialog가 전부 이 셋을 최소 요구사항으로 이미 합의하고 있었고(§반입
+        일반성 감사), 이 메서드만 symbol을 추가로 요구하는 네 번째 정의였다. 이제 넷 다
+        이 메서드 하나를 단일 진실원천으로 쓴다.
+
         Returns:
             필수 컬럼명 리스트
         """
-        return [cls.GENE_ID, cls.SYMBOL, cls.LOG2FC, cls.ADJ_PVALUE]
+        return [cls.GENE_ID, cls.LOG2FC, cls.ADJ_PVALUE]
     
     @classmethod
     def get_de_basic(cls) -> list[str]:
@@ -118,11 +123,17 @@ class StandardColumns:
     def get_go_required(cls) -> list[str]:
         """
         GO/KEGG Analysis에 필수인 컬럼 반환
-        
+
+        term_id는 포함하지 않는다 — 온라인 KEGG(Enrichr) 결과처럼 이름은 있지만 공식
+        ID를 못 찾은 경우도 유효한 데이터로 취급해 왔다(enrichment_analyzer 경고만
+        남기고 통과). Dataset.is_valid / ColumnMapperDialog도 이미 term_id 없이
+        description/gene_count/fdr만 요구하고 있었다(§반입 일반성 감사) — 이 메서드가
+        term_id를 추가로 요구하는 유일한 정의였다.
+
         Returns:
             필수 컬럼명 리스트
         """
-        return [cls.TERM_ID, cls.DESCRIPTION, cls.GENE_COUNT, cls.FDR]
+        return [cls.DESCRIPTION, cls.GENE_COUNT, cls.FDR]
     
     @classmethod
     def get_go_all(cls) -> list[str]:
