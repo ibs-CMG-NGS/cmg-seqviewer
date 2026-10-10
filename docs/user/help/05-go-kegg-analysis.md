@@ -6,7 +6,12 @@ CMG-SeqViewer provides specialized tools for Gene Ontology (GO) and KEGG pathway
 
 ## 5.2 Loading GO/KEGG Data
 
-Load enrichment results from Excel files. The tool automatically detects GO/KEGG data by column names.
+Load enrichment results via **File → Open GO/KEGG Results... (Ctrl+G)**. The loader recognizes
+common clusterProfiler/gseapy/Enrichr header conventions (`GO ID`, `KEGG.Pathway`, `p.adjust`,
+`core_enrichment`, and similar variants) automatically. If a file's headers aren't recognized —
+e.g. output from a different enrichment tool — a **Column Mapping** dialog opens automatically so
+you can map the file's columns (term/description, gene count, FDR) to the required fields by hand
+instead of the load silently failing.
 
 ## 5.3 Filtering GO/KEGG Results
 

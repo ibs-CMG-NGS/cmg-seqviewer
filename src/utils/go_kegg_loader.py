@@ -352,23 +352,68 @@ def standardize_go_dataframe(df: pd.DataFrame, logger: Optional[logging.Logger] 
     return reorder_standard_go_frame(df)
 
 
+def ensure_go_required_columns(df: pd.DataFrame, column_mapper_callback=None,
+                                logger: Optional[logging.Logger] = None) -> pd.DataFrame:
+    """GO/KEGG 필수 컬럼 존재 확인 — 없으면 column_mapper_callback으로 수동 매핑을
+    요청하거나, 콜백이 없으면 실제 사용 가능한 컬럼 목록을 포함한 명확한 에러를 낸다.
+
+    standardize_columns()의 ~45개 리터럴 컬럼명 매핑은 clusterProfiler/gseapy/Enrichr
+    관례에 한정된다(§8). 그 목록에 없는 헤더를 쓰는 파이프라인(예: 파이썬 GSEApy/goatools를
+    직접 돌린 결과)은 과거엔 여기서 조용히 통과해 description/gene_count/fdr이 빈 Dataset이
+    만들어졌다 — DataLoader._standardize_columns가 DE에 대해 이미 하던 필수 컬럼 검증을
+    GOKEGGLoader에도 동일하게 적용한다 (G4 단일 진실원천 원칙과 별개로, 이 검증 자체는
+    기존에 빠져 있었음).
+    """
+    logger = _resolve_logger(logger)
+    required = StandardColumns.get_go_required()
+    missing = [c for c in required if c not in df.columns]
+    if not missing:
+        return df
+
+    if column_mapper_callback:
+        from models.data_models import DatasetType
+        auto_mapping = {c: c for c in df.columns if c in required}
+        user_mapping = column_mapper_callback(df, DatasetType.GO_ANALYSIS, auto_mapping)
+        if not user_mapping:
+            raise ValueError("Column mapping cancelled by user")
+        rename = {orig: std for std, orig in user_mapping.items() if orig}
+        df = df.rename(columns=rename)
+        still_missing = [c for c in required if c not in df.columns]
+        if still_missing:
+            raise ValueError(
+                f"Missing required GO/KEGG columns after manual mapping: {still_missing}")
+        logger.info(f"User-provided GO/KEGG column mapping: {user_mapping}")
+        return df
+
+    raise ValueError(
+        f"Missing required GO/KEGG columns after standardization: {missing}. "
+        f"Available columns: {list(df.columns)}. "
+        "Recognized header aliases are listed in standardize_columns() (go_kegg_loader.py) — "
+        "rename the source columns to match one of them, or re-load with a column mapper."
+    )
+
+
 class GOKEGGLoader:
     """GO/KEGG 분석 결과 로딩 클래스"""
     
     def __init__(self):
         self.logger = logging.getLogger(__name__)
     
-    def load_from_excel(self, file_path: Path, name: Optional[str] = None) -> Dataset:
+    def load_from_excel(self, file_path: Path, name: Optional[str] = None,
+                        column_mapper_callback=None) -> Dataset:
         """
         Excel 파일에서 GO/KEGG 결과 로딩 (여러 시트)
-        
+
         Direction과 Ontology는 데이터 내부 컬럼에서 읽어옴.
         시트 이름은 gene_set으로만 사용.
-        
+
         Args:
             file_path: Excel 파일 경로
             name: 데이터셋 이름 (기본값: 파일명)
-            
+            column_mapper_callback: 필수 컬럼이 인식되지 않을 때 수동 매핑 UI 콜백
+                                   (df, dataset_type, auto_mapping) -> {표준: 원본} 매핑
+                                   (DataLoader.load_from_excel과 동일 계약, G4)
+
         Returns:
             통합된 Dataset 객체
         """
@@ -481,7 +526,10 @@ class GOKEGGLoader:
             merged_df = self._parse_gene_symbols(merged_df)
             # 표준 헤더 순서 정합 (in-app 결과와 동일 순서 — 파이프라인 반입/분석 결과 일관)
             merged_df = reorder_standard_go_frame(merged_df)
-            
+
+            # 필수 컬럼 확인 — 인식 못 한 헤더는 조용히 넘어가지 않고 매핑 요청/명확한 에러
+            merged_df = ensure_go_required_columns(merged_df, column_mapper_callback, self.logger)
+
             # Dataset 객체 생성
             dataset_name = name or file_path.stem
             dataset = Dataset(
@@ -499,16 +547,19 @@ class GOKEGGLoader:
             self.logger.error(f"Failed to load GO/KEGG Excel file: {e}")
             raise
     
-    def load_from_csv_files(self, file_paths: List[Path], name: str = "GO/KEGG Analysis") -> Dataset:
+    def load_from_csv_files(self, file_paths: List[Path], name: str = "GO/KEGG Analysis",
+                            column_mapper_callback=None) -> Dataset:
         """
         여러 CSV 파일에서 GO/KEGG 결과 로딩
-        
+
         Direction과 Ontology는 데이터 내부 컬럼에서 읽어옴.
-        
+
         Args:
             file_paths: CSV 파일 경로 리스트
             name: 데이터셋 이름
-            
+            column_mapper_callback: 필수 컬럼이 인식되지 않을 때 수동 매핑 UI 콜백
+                                   (load_from_excel과 동일 계약)
+
         Returns:
             통합된 Dataset 객체
         """
@@ -585,7 +636,10 @@ class GOKEGGLoader:
         # Gene Symbols를 set으로 파싱
         merged_df = self._parse_gene_symbols(merged_df)
         merged_df = reorder_standard_go_frame(merged_df)
-        
+
+        # 필수 컬럼 확인 — 인식 못 한 헤더는 조용히 넘어가지 않고 매핑 요청/명확한 에러
+        merged_df = ensure_go_required_columns(merged_df, column_mapper_callback, self.logger)
+
         # Dataset 객체 생성
         dataset = Dataset(
             name=name,

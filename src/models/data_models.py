@@ -157,13 +157,16 @@ class Dataset:
         if self.dataframe is None or self.dataframe.empty:
             return False
         
-        # 타입별 필수 컬럼 검사 (표준 컬럼명 사용)
+        # 타입별 필수 컬럼 검사 (StandardColumns가 단일 진실원천 — §반입 일반성 감사:
+        # 이전엔 이 메서드, ColumnMapperDialog, DataLoader가 각자 하드코딩한 리스트를
+        # 따로 썼고 GO는 'term'이라는 실재하지 않는 키라 검사가 사실상 무력화돼 있었다)
+        from models.standard_columns import StandardColumns
         if self.dataset_type == DatasetType.DIFFERENTIAL_EXPRESSION:
-            required = ['gene_id', 'log2fc', 'adj_pvalue']
+            required = StandardColumns.get_de_required()
         elif self.dataset_type == DatasetType.ATAC_SEQ:
-            required = ['peak_id', 'log2fc', 'adj_pvalue']
+            required = StandardColumns.get_atac_required()
         elif self.dataset_type == DatasetType.GO_ANALYSIS:
-            required = ['term', 'gene_count', 'fdr']
+            required = StandardColumns.get_go_required()
         elif self.dataset_type == DatasetType.MULTI_GROUP:
             # gene_id + padj + 3개 이상의 샘플 컬럼
             stat_cols = {'gene_id', 'basemean', 'stat', 'pvalue', 'padj', 'gene_symbol'}

@@ -139,10 +139,10 @@ class DataLoader:
                 dataset_type = self._detect_dataset_type(df)
                 self.logger.debug(f"Detected dataset type: {dataset_type.value}")
 
-            # ATAC-seq 타입은 전용 로더로 위임
+            # ATAC-seq 타입은 전용 로더로 위임 (필수 컬럼 누락 시 동일 콜백으로 매핑 요청)
             if dataset_type == DatasetType.ATAC_SEQ:
                 from utils.atac_seq_loader import ATACSeqLoader
-                return ATACSeqLoader().load(file_path, dataset_name)
+                return ATACSeqLoader().load(file_path, dataset_name, column_mapper_callback)
 
             # Motif enrichment 타입은 전용 로더로 위임
             if dataset_type == DatasetType.MOTIF_ENRICHMENT:
@@ -448,12 +448,12 @@ class DataLoader:
             필수 컬럼 모두 매핑되었으면 True
         """
         if dataset_type == DatasetType.DIFFERENTIAL_EXPRESSION:
-            required = ['gene_id', 'log2fc', 'adj_pvalue']
+            required = StandardColumns.get_de_required()
         elif dataset_type == DatasetType.GO_ANALYSIS:
-            required = ['description', 'gene_count', 'fdr']
+            required = StandardColumns.get_go_required()
         else:
             return True
-        
+
         return all(std_col in mapping for std_col in required)
     
     # 파일 시그니처(magic bytes) → 사람이 읽을 이름. "Open Gene List"는 순수 텍스트만

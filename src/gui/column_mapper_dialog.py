@@ -36,7 +36,18 @@ class ColumnMapperDialog(QDialog):
             'pvalue': 'p-value (선택)',
             'fdr': 'FDR (필수)',
             'gene_symbols': 'Gene Symbols (선택)',
-        }
+        },
+        DatasetType.ATAC_SEQ: {
+            'peak_id': 'Peak ID (필수)',
+            'log2fc': 'log2 Fold Change (필수)',
+            'adj_pvalue': 'Adjusted p-value (필수)',
+            'pvalue': 'p-value (선택)',
+            'chromosome': 'Chromosome (선택)',
+            'peak_start': 'Peak Start (선택)',
+            'peak_end': 'Peak End (선택)',
+            'nearest_gene': 'Nearest Gene (선택)',
+            'annotation': 'Annotation (선택)',
+        },
     }
     
     def __init__(self, dataframe: pd.DataFrame, dataset_type: DatasetType,
@@ -255,11 +266,19 @@ class ColumnMapperDialog(QDialog):
         self.accept()
     
     def _get_required_fields(self) -> List[str]:
-        """필수 필드 목록 반환"""
+        """필수 필드 목록 반환 — StandardColumns가 단일 진실원천(Dataset.is_valid와 동일 기준).
+
+        예전엔 여기 하드코딩된 리스트를 따로 썼고, GO는 'term'이라는 STANDARD_COLUMNS의
+        실제 키('description')와 일치하지 않는 값이라 이 체크가 무력화돼 있었다
+        (description 매핑 누락이 걸러지지 않는 버그 — §반입 일반성 감사).
+        """
+        from models.standard_columns import StandardColumns
         if self.dataset_type == DatasetType.DIFFERENTIAL_EXPRESSION:
-            return ['gene_id', 'log2fc', 'adj_pvalue']
+            return StandardColumns.get_de_required()
         elif self.dataset_type == DatasetType.GO_ANALYSIS:
-            return ['term', 'gene_count', 'fdr']
+            return StandardColumns.get_go_required()
+        elif self.dataset_type == DatasetType.ATAC_SEQ:
+            return StandardColumns.get_atac_required()
         return []
     
     def get_mapping(self) -> Dict[str, str]:

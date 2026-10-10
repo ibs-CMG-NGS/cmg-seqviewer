@@ -64,16 +64,21 @@ class ATACSeqLoader:
     #  Public interface
     # ------------------------------------------------------------------ #
 
-    def load(self, path: Path, name: Optional[str] = None) -> Dataset:
-        """확장자에 따라 Excel 또는 Parquet 자동 선택."""
+    def load(self, path: Path, name: Optional[str] = None,
+            column_mapper_callback=None) -> Dataset:
+        """확장자에 따라 Excel 또는 Parquet 자동 선택.
+
+        column_mapper_callback: 필수 컬럼(peak_id/log2fc/adj_pvalue)이 인식되지
+        않을 때 수동 매핑 UI 콜백 — (df, dataset_type, auto_mapping) -> {표준: 원본}.
+        """
         path = Path(path)
         name = name or path.stem
         suffix = path.suffix.lower()
 
         if suffix in ('.xlsx', '.xls'):
-            return self._load_excel(path, name)
+            return self._load_excel(path, name, column_mapper_callback)
         elif suffix == '.parquet':
-            return self._load_parquet(path, name)
+            return self._load_parquet(path, name, column_mapper_callback)
         else:
             raise ValueError(f"Unsupported file format for ATAC-seq loader: {suffix}")
 
@@ -95,28 +100,30 @@ class ATACSeqLoader:
     #  Private loaders
     # ------------------------------------------------------------------ #
 
-    def _load_excel(self, path: Path, name: str) -> Dataset:
+    def _load_excel(self, path: Path, name: str, column_mapper_callback=None) -> Dataset:
         """DA_Results 시트(또는 DA 키워드를 가진 첫 번째 시트) 로드."""
         xl = pd.ExcelFile(path)
         sheet = self._select_da_sheet(xl.sheet_names)
         self.logger.debug(f"ATAC Excel: using sheet '{sheet}' from {path.name}")
         df = pd.read_excel(xl, sheet_name=sheet)
-        return self._map_and_build(df, name, path)
+        return self._map_and_build(df, name, path, column_mapper_callback)
 
-    def _load_parquet(self, path: Path, name: str) -> Dataset:
+    def _load_parquet(self, path: Path, name: str, column_mapper_callback=None) -> Dataset:
         """Parquet 파일 로드 (동일 COLUMN_PATTERNS 적용)."""
         df = pd.read_parquet(path)
         self.logger.debug(f"ATAC Parquet: {path.name}, shape={df.shape}")
-        return self._map_and_build(df, name, path)
+        return self._map_and_build(df, name, path, column_mapper_callback)
 
     # ------------------------------------------------------------------ #
     #  Core: mapping + build
     # ------------------------------------------------------------------ #
 
-    def _map_and_build(self, df: pd.DataFrame, name: str, file_path: Path) -> Dataset:
-        """컬럼 매핑 → peak_width 계산 → Dataset 생성."""
+    def _map_and_build(self, df: pd.DataFrame, name: str, file_path: Path,
+                       column_mapper_callback=None) -> Dataset:
+        """컬럼 매핑 → 필수 컬럼 확인 → peak_width 계산 → Dataset 생성."""
         mapping = self._map_columns(df)
         df = df.rename(columns=mapping)
+        df = self._ensure_required_columns(df, column_mapper_callback)
 
         # peak_width 계산 (peak_start / peak_end 있을 때)
         if 'peak_start' in df.columns and 'peak_end' in df.columns:
@@ -186,6 +193,39 @@ class ATACSeqLoader:
                         break
 
         return mapping
+
+    def _ensure_required_columns(self, df: pd.DataFrame, column_mapper_callback=None) -> pd.DataFrame:
+        """필수 컬럼(peak_id/log2fc/adj_pvalue) 확인 — 없으면 column_mapper_callback으로
+        수동 매핑을 요청하거나, 콜백이 없으면 사용 가능한 컬럼 목록을 포함한 명확한
+        에러를 낸다. COLUMN_PATTERNS에 없는 헤더를 쓰는 파이프라인은 과거엔 여기서
+        조용히 통과해 peak_id/log2fc/adj_pvalue가 빈 Dataset이 만들어졌다."""
+        from models.standard_columns import StandardColumns
+        required = StandardColumns.get_atac_required()
+        missing = [c for c in required if c not in df.columns]
+        if not missing:
+            return df
+
+        if column_mapper_callback:
+            from models.data_models import DatasetType
+            auto_mapping = {c: c for c in df.columns if c in required}
+            user_mapping = column_mapper_callback(df, DatasetType.ATAC_SEQ, auto_mapping)
+            if not user_mapping:
+                raise ValueError("Column mapping cancelled by user")
+            rename = {orig: std for std, orig in user_mapping.items() if orig}
+            df = df.rename(columns=rename)
+            still_missing = [c for c in required if c not in df.columns]
+            if still_missing:
+                raise ValueError(
+                    f"Missing required ATAC-seq columns after manual mapping: {still_missing}")
+            self.logger.info(f"User-provided ATAC-seq column mapping: {user_mapping}")
+            return df
+
+        raise ValueError(
+            f"Missing required ATAC-seq columns after standardization: {missing}. "
+            f"Available columns: {list(df.columns)}. "
+            "Recognized header aliases are listed in COLUMN_PATTERNS (atac_seq_loader.py) — "
+            "rename the source columns to match one of them, or re-load with a column mapper."
+        )
 
     def _select_da_sheet(self, sheet_names: List[str]) -> str:
         """DA 결과 시트를 우선 선택. 없으면 첫 번째 시트."""

@@ -1188,7 +1188,9 @@ class MainWindow(QMainWindow):
 
         name = dataset_name.strip() or default_name
         self._add_recent_file(file_path)
-        self.presenter.load_dataset(Path(file_path), custom_name=name)
+        from models.data_models import DatasetType
+        self.presenter.load_dataset(Path(file_path), custom_name=name,
+                                    dataset_type_hint=DatasetType.ATAC_SEQ)
 
     def _on_open_motif_results(self):
         """HOMER knownResults.txt 또는 MEME AME ame.tsv 열기."""
