@@ -18,7 +18,7 @@ class TestHelpDir:
         files = sorted(REPO_HELP.glob("*.md"))
         assert len(files) >= 18          # H1: 섹션 전부 (재구성 후 19개)
         assert files[0].name == "01-getting-started.md"
-        assert files[-1].name == "20-faq.md"              # 19->20 (FAQ 추가)
+        assert files[-1].name == "21-command-line-interface.md"  # 20->21 (CLI 추가)
 
     def test_all_sections_are_english(self):
         # 한글/영문 정리: 도움말 전체(19개) 영문 단일화
@@ -124,10 +124,10 @@ class TestHelpImages:
 
 
 class TestHelpStructure:
-    def test_last_section_is_faq(self):
+    def test_last_section_is_cli(self):
         files = sorted(REPO_HELP.glob("*.md"))
-        assert files[-1].name == "20-faq.md"          # ② 20번째 FAQ 신설
-        assert len(files) == 20
+        assert files[-1].name == "21-command-line-interface.md"  # ② 21번째 CLI 신설
+        assert len(files) == 21
 
     def test_second_level_numbering(self):
         """④ ## N.M 계층 넘버링: 각 파일의 ## 헤딩이 {N}.{k} 형식."""
@@ -162,7 +162,7 @@ class TestHelpStructure:
 
 class TestHelpNavigation:
     def test_toc_page_lists_all_sections(self):
-        """④ 01에 번호 기반 목차(섹션 1페이지) — 20개 전부 파일명 링크."""
+        """④ 01에 번호 기반 목차(섹션 1페이지) — 전부 파일명 링크."""
         md = (REPO_HELP / "01-getting-started.md").read_text(encoding="utf-8")
         assert "## 1.1 Table of Contents" in md
         for f in sorted(REPO_HELP.glob("*.md")):

@@ -86,5 +86,13 @@ English). Edit the markdown files directly; images live in
 `docs/user/user-guide.md`. See the **README/planning** docs for the overhaul
 design (`docs/planning/HELP_SYSTEM_OVERHAUL_PLAN.md`).
 
+## 20.12 Can I run CMG-SeqViewer without opening the GUI — e.g. on a server?
+
+Yes — the `cmg-seqviewer-cli` command loads, filters, and exports files
+without ever creating a GUI/`QApplication`, so it runs headless on a server
+or HPC node. It reuses the same loading/filtering logic as the desktop app,
+and a YAML **recipe** file lets you replay a confirmed filtering procedure
+across many files at once (`batch`). See **21. Command Line Interface**.
+
 ---
 **See also**: [User Guide](../user-guide.md)

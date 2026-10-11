@@ -47,6 +47,7 @@ setup(
         "statsmodels>=0.14.0,<0.15",  # goatools fdr_bh 전용 — 0.15 sandbox.multicomp.multipletests 제거(P0-3)
         "requests>=2.28.0",
         "mygene>=3.2.0",
+        "PyYAML>=6.0",  # CLI recipe files (src/cli.py `run`/`batch`)
     ],
     extras_require={
         "dev": [

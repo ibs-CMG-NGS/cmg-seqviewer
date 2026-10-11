@@ -214,6 +214,10 @@
 - **Integrated Volcano**: Combined RNA + ATAC significance view
 - **IGV Integration**: Send peaks / genes to a running IGV session via HTTP remote control
 
+### Command Line Interface
+- **`cmg-seqviewer-cli`**: Headless `load` / `filter` / `run` / `batch` commands — no GUI/display required, reuses the same loading and filtering logic as the desktop app
+- **Recipe files** (YAML/JSON): Record a confirmed load → filter → export procedure once, then replay it (`run`) or apply it across every file matched by a glob pattern (`batch`), with an optional JSON manifest of per-file results
+
 ---
 
 ## Installation
@@ -264,6 +268,16 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 python src/main.py
+```
+
+**Command line interface** (no GUI/display needed — see [Quick Start §7](#7-command-line-interface-headless)):
+
+```bash
+# From a source checkout, either works:
+python src/cli.py --help
+# or install the console script (adds `cmg-seqviewer-cli` to PATH):
+pip install -e .
+cmg-seqviewer-cli --help
 ```
 
 ---
@@ -395,6 +409,42 @@ File -> Export Current Tab  (Ctrl+E)
   Excel (.xlsx), CSV (.csv), TSV (.tsv)
 ```
 
+### 7. Command Line Interface (headless)
+
+Load/filter/export without opening the GUI — same detection and filtering
+logic as the desktop app, so results match exactly. Useful for servers, HPC
+nodes, or scripted pipelines.
+
+```bash
+# Inspect a file (type/rows/columns/validity)
+cmg-seqviewer-cli load sample1_DE.xlsx
+
+# One-off filter -> write a file
+cmg-seqviewer-cli filter sample1_DE.xlsx \
+  --adj-pvalue-max 0.05 --log2fc-min 1.0 --out sample1_filtered.xlsx
+
+# Replay a confirmed procedure from a recipe file
+cmg-seqviewer-cli run recipe.yaml
+
+# Apply one recipe's filter/output settings across every matched file
+cmg-seqviewer-cli batch recipe.yaml --inputs "data/*.xlsx" \
+  --out-dir results/ --manifest manifest.json
+```
+
+A recipe (`recipe.yaml`) records an input file, a filter (fields match the
+`FilterCriteria` used by the Filter Panel), and an output path:
+
+```yaml
+input: data/sample1_DE.xlsx
+filter:
+  adj_pvalue_max: 0.05
+  log2fc_min: 1.0
+output:
+  table: results/sample1_filtered.xlsx
+```
+
+Full reference: [in-app / online help, § 21 Command Line Interface](https://ibs-cmg-ngs.github.io/cmg-seqviewer/21-command-line-interface/).
+
 ---
 
 ## Data Format Requirements
@@ -476,7 +526,8 @@ Example:
 ```
 cmg-seqviewer/
 |-- src/
-|   |-- main.py                      # Application entry point
+|   |-- main.py                      # GUI application entry point
+|   |-- cli.py                       # Headless CLI entry point (load/filter/run/batch)
 |   |-- core/
 |   |   |-- fsm.py                   # Finite State Machine (12 states)
 |   |   +-- logger.py                # Logging system
@@ -506,6 +557,8 @@ cmg-seqviewer/
 |   +-- utils/
 |       |-- data_loader.py           # Excel/CSV/parquet loading + type detection
 |       |-- atac_seq_loader.py       # ATAC-seq DA loader (HOMER-annotated DESeq2)
+|       |-- dataset_detection.py     # Qt-free file->Dataset detection, shared by GUI + CLI
+|       |-- recipe.py                # CLI recipe (YAML/JSON) parsing for `run`/`batch`
 |       |-- igv_connector.py         # IGV HTTP Remote Control API client
 |       |-- go_kegg_loader.py        # GO/KEGG specific loader
 |       |-- go_clustering.py         # Clustering algorithms
