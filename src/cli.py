@@ -56,7 +56,7 @@ def _build_presenter():
 
 
 _TYPE_CHOICES = ["atac", "differential_expression", "go_analysis", "multi_group",
-                 "composition"]
+                 "composition", "expression_summary"]
 
 
 def _dataset_type_hint(type_arg: Optional[str]):
@@ -69,6 +69,7 @@ def _dataset_type_hint(type_arg: Optional[str]):
         "go_analysis": DatasetType.GO_ANALYSIS,
         "multi_group": DatasetType.MULTI_GROUP,
         "composition": DatasetType.COMPOSITION,
+        "expression_summary": DatasetType.EXPRESSION_SUMMARY,
     }
     if type_arg not in mapping:
         raise ValueError(f"--type must be one of {sorted(mapping)}, got {type_arg!r}")
@@ -115,6 +116,7 @@ def _dataset_report(dataset) -> dict:
         DatasetType.GO_ANALYSIS: StandardColumns.get_go_required(),
         DatasetType.ATAC_SEQ: StandardColumns.get_atac_required(),
         DatasetType.COMPOSITION: StandardColumns.get_composition_required(),
+        DatasetType.EXPRESSION_SUMMARY: StandardColumns.get_expression_summary_required(),
     }.get(dataset.dataset_type, [])
     present = list(dataset.dataframe.columns)
     return {

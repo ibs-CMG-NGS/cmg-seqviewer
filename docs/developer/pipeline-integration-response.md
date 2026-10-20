@@ -95,6 +95,7 @@ differential_expression
 go_analysis
 multi_group
 composition
+expression_summary
 atac_seq
 multi_omics
 motif_enrichment
@@ -105,7 +106,8 @@ unknown
 
 별칭도 허용됩니다: `differential_accessibility`→`atac_seq`,
 `time_series`/`coexpression_module`→`multi_group`,
-`cell_composition`/`composition_analysis`→`composition`.
+`cell_composition`/`composition_analysis`→`composition`,
+`expression_atlas`/`cell_type_expression`→`expression_summary`.
 
 현재 `schema_version`, `provenance`, `padj_cutoff`, `log2fc_cutoff` 같은 키는
 **저장되지 않고 무시**됩니다. 파이프라인 provenance는 `notes`/`tags`로 표현해 주세요.
@@ -241,7 +243,7 @@ cmg-seqviewer-cli load datasets/Tcell_IFN_vs_Control_DE.parquet --json
 
 - `valid`가 `true`이고 `missing_required_columns`가 비어 있으면 DB 반입 가능한 상태입니다.
 - **DE/GO/Multi-Group/Composition 모두 CSV/TSV/Parquet 직접 로드**를 지원합니다.
-- 자동 감지가 실패하면 `--type differential_expression|go_analysis|multi_group|atac|composition`으로
+- 자동 감지가 실패하면 `--type differential_expression|go_analysis|multi_group|atac|composition|expression_summary`으로
   강제할 수 있습니다.
 
 ### 4.2 Exit code
@@ -421,3 +423,8 @@ manifest:
 - [`docs/user/help/22-cell-type-composition.md`](../user/help/22-cell-type-composition.md) — Composition 사용법
 
 문의나 추가 스키마 요청은 이 저장소 이슈로 남겨 주세요.
+
+---
+
+**See also**: [HypoMap 발현 요약 테이블 연동 회신](hypomap-expression-integration-response.md)
+(전 유전자 × 세포타입 expression summary의 수용 범위와 `expression_summary` 설계)

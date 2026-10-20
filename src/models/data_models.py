@@ -22,6 +22,7 @@ class DatasetType(Enum):
     TF_FOOTPRINT = "tf_footprint"
     CHROMVAR_DIFF_TF = "chromvar_diff_tf"
     COMPOSITION = "composition"
+    EXPRESSION_SUMMARY = "expression_summary"
     UNKNOWN = "unknown"
 
 
@@ -39,6 +40,9 @@ DATASET_TYPE_ALIASES: Dict[str, str] = {
     # propeller/limma 기반 cell-type composition 결과
     'cell_composition': DatasetType.COMPOSITION.value,
     'composition_analysis': DatasetType.COMPOSITION.value,
+    # HypoMap 등 전 유전자 × 세포타입 발현 요약
+    'expression_atlas': DatasetType.EXPRESSION_SUMMARY.value,
+    'cell_type_expression': DatasetType.EXPRESSION_SUMMARY.value,
 }
 
 
@@ -181,6 +185,14 @@ class Dataset:
                 return False
             mean_cols = self.metadata.get('mean_columns', [])
             return bool(mean_cols) or 'prop_ratio' in cols
+        elif self.dataset_type == DatasetType.EXPRESSION_SUMMARY:
+            cols = set(self.dataframe.columns)
+            if 'gene_id' not in cols:
+                return False
+            cell_types = self.metadata.get('cell_types', [])
+            if cell_types:
+                return len(cell_types) >= 1
+            return 'cell_type' in cols
         else:
             return True
         
@@ -294,6 +306,10 @@ class Dataset:
                 if 'fdr' in self.dataframe.columns:
                     summary['significant_cell_types'] = int(
                         (pd.to_numeric(self.dataframe['fdr'], errors='coerce') < 0.05).sum())
+
+            elif self.dataset_type == DatasetType.EXPRESSION_SUMMARY:
+                summary['total_genes'] = len(self.dataframe)
+                summary['cell_type_count'] = len(self.metadata.get('cell_types', []))
 
         return summary
 
@@ -439,6 +455,9 @@ class PreloadedDatasetMetadata:
     # ATAC-seq 전용 메타데이터
     genome_build: str = ""               # 참조 게놈 (예: mm10, hg38)
     peak_caller: str = ""                # Peak caller (예: MACS2, HOMER)
+
+    # Expression summary 전용 (wide/long layout, companion files, normalization 등)
+    expression_schema: Dict[str, Any] = field(default_factory=dict)
     
     def to_dict(self) -> Dict[str, Any]:
         """딕셔너리로 변환 (JSON 저장용)"""
@@ -464,6 +483,7 @@ class PreloadedDatasetMetadata:
             'analysis_date': self.analysis_date,
             'genome_build': self.genome_build,
             'peak_caller': self.peak_caller,
+            'expression_schema': self.expression_schema,
         }
     
     @staticmethod
@@ -492,4 +512,5 @@ class PreloadedDatasetMetadata:
             analysis_date=data.get('analysis_date', ''),
             genome_build=data.get('genome_build', ''),
             peak_caller=data.get('peak_caller', ''),
+            expression_schema=data.get('expression_schema', {}) or {},
         )

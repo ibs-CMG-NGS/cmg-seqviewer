@@ -99,6 +99,21 @@ class TestCliLoad:
         assert report["valid"] is True
         assert report["missing_required_columns"] == []
 
+    def test_load_expression_summary_json(self, tmp_path, capsys):
+        import json
+        df = pd.DataFrame({
+            "gene_id": ["G1", "G2"], "gene_name": ["A", "B"],
+            "CT_A": [1.0, 2.0], "CT_B": [3.0, 4.0],
+        })
+        f = tmp_path / "expression.parquet"
+        df.to_parquet(f)
+        rc = cli.main(["load", str(f), "--type", "expression_summary", "--json"])
+        report = json.loads(capsys.readouterr().out)
+        assert rc == 0
+        assert report["dataset_type"] == "expression_summary"
+        assert report["valid"] is True
+        assert report["missing_required_columns"] == []
+
 
 class TestCliFilter:
     def test_filter_writes_table(self, tmp_path, capsys):

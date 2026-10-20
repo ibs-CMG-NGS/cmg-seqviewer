@@ -45,10 +45,14 @@ def render_heatmap(fig, df, params):
     if show_dendrogram and not transpose:
         sorting = 'clustering'
 
-    # 발현 sample 컬럼 자동 감지
-    sample_cols = [c for c in df.columns
-                   if not any(p in c.lower() for p in exclude_patterns)
-                   and pd.api.types.is_numeric_dtype(df[c])]
+    # 발현 sample 컬럼 자동 감지 (명시된 sample_columns가 있으면 그대로 사용)
+    explicit_samples = params.get('sample_columns')
+    if explicit_samples:
+        sample_cols = [c for c in explicit_samples if c in df.columns]
+    else:
+        sample_cols = [c for c in df.columns
+                       if not any(p in c.lower() for p in exclude_patterns)
+                       and pd.api.types.is_numeric_dtype(df[c])]
     # 의미 있는 heatmap 은 최소 2개 sample 컬럼이 필요하다. GO/KEGG 등 발현이 아닌
     # 데이터셋을 잘못 선택하면 여기서 걸러 안내 메시지를 띄운다(크래시 방지).
     if len(sample_cols) < 2:

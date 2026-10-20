@@ -630,6 +630,13 @@ class MainWindow(QMainWindow):
         self.composition_action.triggered.connect(self._on_composition_plot)
         viz_menu.addAction(self.composition_action)
 
+        self.expression_summary_action = QAction("🧬 Gene × Cell-Type Expression", self)
+        self.expression_summary_action.setToolTip(
+            "Explore gene × cell-type expression summaries (HypoMap-style "
+            "mean/pct matrices).")
+        self.expression_summary_action.triggered.connect(self._on_expression_summary)
+        viz_menu.addAction(self.expression_summary_action)
+
         viz_menu.addSeparator()
 
         # GO/KEGG 시각화 서브메뉴
@@ -1580,6 +1587,13 @@ class MainWindow(QMainWindow):
                         vals = pd.to_numeric(filtered_df[stat_col], errors='coerce')
                         filtered_df = filtered_df[vals <= criteria.fdr_max]
                     new_tab_name = f"Filtered: {tab_name} - FDR≤{criteria.fdr_max:.3g}"
+
+                elif dataset_type == DatasetType.EXPRESSION_SUMMARY:
+                    QMessageBox.information(
+                        self, "Expression summary",
+                        "Expression summary supports Gene List / Keyword filtering only.\n"
+                        "Use the Gene List tab or the expression dialog's own filters.")
+                    return
 
                 elif dataset_type == DatasetType.GO_ANALYSIS:
                     # GO 데이터 필터링
@@ -3554,6 +3568,31 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.logger.error(f"Cell-Type Composition failed: {e}")
             QMessageBox.critical(self, "Error", f"Failed to open Cell-Type Composition:\n{str(e)}")
+
+    def _on_expression_summary(self):
+        """Gene × Cell-Type Expression 다이얼로그 열기."""
+        try:
+            current_index = self.data_tabs.currentIndex()
+            if current_index < 0 or current_index not in self.tab_data:
+                QMessageBox.warning(self, "No Data", "Please load a dataset first.")
+                return
+            dataset = self.tab_data[current_index]['dataset']
+            from models.data_models import DatasetType as _DT
+            if dataset is None or dataset.dataset_type != _DT.EXPRESSION_SUMMARY:
+                QMessageBox.warning(
+                    self, "Expression Summary Required",
+                    "Gene × Cell-Type Expression is only available for expression_summary "
+                    "datasets.\nImport a HypoMap-style wide mean/pct bundle via the "
+                    "database (manifest dataset_type: expression_summary)."
+                )
+                return
+            from gui.expression_summary_dialog import ExpressionSummaryDialog
+            dialog = ExpressionSummaryDialog(dataset, parent=self)
+            dialog.exec()
+            self.logger.info("Visualization opened: expression_summary")
+        except Exception as e:
+            self.logger.error(f"Expression Summary failed: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to open Expression Summary:\n{str(e)}")
 
     def _on_gene_expression_bar(self):
         """Gene Expression Bar+Scatter (Grouped) 다이얼로그 열기.

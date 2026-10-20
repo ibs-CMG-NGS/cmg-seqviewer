@@ -18,7 +18,7 @@ class TestHelpDir:
         files = sorted(REPO_HELP.glob("*.md"))
         assert len(files) >= 18          # H1: 섹션 전부 (재구성 후 19개)
         assert files[0].name == "01-getting-started.md"
-        assert files[-1].name == "22-cell-type-composition.md"  # 22 추가
+        assert files[-1].name == "23-expression-summary.md"  # 23 추가
 
     def test_all_sections_are_english(self):
         # 한글/영문 정리: 도움말 전체(19개) 영문 단일화
@@ -124,10 +124,10 @@ class TestHelpImages:
 
 
 class TestHelpStructure:
-    def test_last_section_is_composition(self):
+    def test_last_section_is_expression_summary(self):
         files = sorted(REPO_HELP.glob("*.md"))
-        assert files[-1].name == "22-cell-type-composition.md"
-        assert len(files) == 22
+        assert files[-1].name == "23-expression-summary.md"
+        assert len(files) == 23
         assert (REPO_HELP / "21-command-line-interface.md").exists()
 
     def test_second_level_numbering(self):

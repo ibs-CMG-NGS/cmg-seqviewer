@@ -52,6 +52,15 @@ def _is_composition_dataframe(df) -> bool:
     from utils.composition_loader import CompositionLoader
     return CompositionLoader.is_composition_dataframe(df)
 
+
+def _expression_companion_names(item: dict) -> list:
+    """manifest 항목의 expression_schema.companion_files 값(파일명) 목록."""
+    schema = item.get('expression_schema') or {}
+    comp = schema.get('companion_files') or {}
+    if not isinstance(comp, dict):
+        return []
+    return [Path(str(v)).name for v in comp.values() if v]
+
 # dataset_type 문자열 별칭 매핑(differential_accessibility → atac_seq 등)은
 # PreloadedDatasetMetadata.from_dict()에서 단일 지점으로 적용된다
 # (models.data_models.DATASET_TYPE_ALIASES) — manifest/metadata.json 어느 경로든 동일 적용.
@@ -288,6 +297,9 @@ class DatabaseManager:
                     existing_ids = {meta.dataset_id for meta in self.metadata_list}
                     for item in manifest_data.get('datasets', []):
                         norm_item = _normalize_manifest_item(item)
+                        # companion 파일(pct/gene_index/summary)은 독립 데이터셋이 아니므로
+                        # 아래 parquet 자동 스캔에서 다시 등록되지 않도록 미리 claim한다.
+                        claimed_files.update(_expression_companion_names(norm_item))
                         filename = Path(norm_item.get('file_path', '')).name
                         if not filename or filename in known_files or filename in claimed_files:
                             claimed_files.add(filename)
@@ -772,6 +784,32 @@ class DatabaseManager:
                 shutil.copy2(src_parquet, dest_parquet)
                 meta.file_path = dest_name
 
+                # Expression summary companion(pct/gene_index/summary)도 함께 복사하고
+                # manifest의 파일명을 실제 destination 이름으로 갱신한다.
+                companions = (meta.expression_schema or {}).get('companion_files') or {}
+                if isinstance(companions, dict) and companions:
+                    updated = {}
+                    for key, cname in companions.items():
+                        cname = Path(str(cname)).name
+                        src_c = source_datasets_dir / cname
+                        if not src_c.exists():
+                            src_c = source_dir / cname
+                        if not src_c.exists():
+                            self.logger.warning(
+                                f"import_from_folder: companion '{cname}' not found "
+                                f"for '{meta.alias}'")
+                            updated[key] = cname
+                            continue
+                        dest_c = self.datasets_dir / cname
+                        if dest_c.exists() and dest_c.stat().st_size != src_c.stat().st_size:
+                            cname = f"{Path(cname).stem}_{str(uuid.uuid4())[:8]}.parquet"
+                            dest_c = self.datasets_dir / cname
+                        if not dest_c.exists():
+                            shutil.copy2(src_c, dest_c)
+                        updated[key] = cname
+                    meta.expression_schema = dict(meta.expression_schema or {})
+                    meta.expression_schema['companion_files'] = updated
+
                 self.metadata_list.append(meta)
                 self._file_source_dirs[meta.file_path] = str(self.datasets_dir)
                 imported += 1
@@ -999,6 +1037,31 @@ class DatabaseManager:
                 self.logger.info(
                     f"Loaded composition dataset from database: {metadata.alias} "
                     f"({len(dataset.dataframe)} rows)"
+                )
+                return dataset
+
+            if metadata.dataset_type == DatasetType.EXPRESSION_SUMMARY:
+                from utils.expression_summary_loader import ExpressionSummaryLoader
+                loader = ExpressionSummaryLoader(metadata.expression_schema)
+                dataset = loader.load(
+                    file_path, metadata.alias,
+                    expression_schema=metadata.expression_schema)
+                if Path(file_path).parent != self.datasets_dir and any(
+                        dataset.metadata.get(k) is None
+                        for k in ('pct_matrix', 'gene_index', 'cell_type_summary')):
+                    loader.load_companions(dataset, self.datasets_dir)
+                dataset.metadata.update({
+                    'experiment_condition': metadata.experiment_condition,
+                    'organism': metadata.organism,
+                    'tissue': metadata.tissue,
+                    'timepoint': metadata.timepoint,
+                    'import_date': metadata.import_date,
+                    'notes': metadata.notes,
+                    'tags': metadata.tags,
+                })
+                self.logger.info(
+                    f"Loaded expression-summary dataset from database: {metadata.alias} "
+                    f"({len(dataset.dataframe)} genes)"
                 )
                 return dataset
 

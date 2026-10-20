@@ -436,6 +436,13 @@ class MainPresenter(QObject):
                         fdr_max=criteria.fdr_max)
                     tab_name = f"Filtered: FDR≤{criteria.fdr_max:.3g}"
 
+                elif dataset_type == DatasetType.EXPRESSION_SUMMARY:
+                    self.error_occurred.emit(
+                        "Expression summary supports Gene List / Keyword filtering "
+                        "only. Use the Gene List tab or the expression dialog's filters.")
+                    self.fsm.trigger(Event.FILTER_FAILED)
+                    return
+
                 elif dataset_type == DatasetType.ATAC_SEQ:
                     # ATAC-seq: adj_pvalue, log2fc + ATAC 전용 필터
                     filtered_df = self._filter_atac_by_statistics(

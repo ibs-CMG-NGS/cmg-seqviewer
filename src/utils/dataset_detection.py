@@ -52,6 +52,10 @@ def _load_with_type_hint(file_path: Path, final_name: str, dataset_type: Dataset
         from utils.composition_loader import CompositionLoader
         return CompositionLoader().load(file_path, final_name)
 
+    if dataset_type == DatasetType.EXPRESSION_SUMMARY:
+        from utils.expression_summary_loader import ExpressionSummaryLoader
+        return ExpressionSummaryLoader().load(file_path, final_name)
+
     if dataset_type == DatasetType.GO_ANALYSIS:
         if file_path.suffix.lower() in ('.xlsx', '.xls', '.xlsm'):
             from utils.go_kegg_loader import GOKEGGLoader

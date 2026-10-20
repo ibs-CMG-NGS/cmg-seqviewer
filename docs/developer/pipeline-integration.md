@@ -620,7 +620,8 @@ go_df$gene_symbols <- go_df$geneID  # "Tnf/Il6/Cxcl10" 형식
 
 **`dataset_type` 허용값:**
 `differential_expression`, `go_analysis`, `multi_group`, `atac_seq`, `multi_omics`,
-`motif_enrichment`, `tf_footprint`, `chromvar_diff_tf`, `composition`, `unknown`
+`motif_enrichment`, `tf_footprint`, `chromvar_diff_tf`, `composition`,
+`expression_summary`, `unknown`
 (별칭: `differential_accessibility`→`atac_seq`, `time_series`/`coexpression_module`→`multi_group`)
 
 그 외 키(`schema_version`, `provenance`, `padj_cutoff`, `log2fc_cutoff` 등)는 현재
@@ -762,3 +763,66 @@ manifest 예시:
 
 **See also**: [scRNA-seq 3차 분석 파이프라인 연동 회신](pipeline-integration-response.md)
 (원문 Q1~Q7/R1에 대한 항목별 답변과 예시)
+
+### 9.8 Expression Summary parquet 규격 (`expression_summary`)
+
+HypoMap 등 **전 유전자 × 세포타입** 발현 요약을 넘길 때의 규격입니다. v1은
+**wide layout**만 지원합니다.
+
+**Primary (wide mean):**
+
+| 컬럼 | 필수 | 규칙 |
+|------|------|------|
+| `gene_id` | ✅ | symbol 또는 Ensembl ID |
+| `gene_name` / `symbol` | 권장 | 표시용 이름 (없으면 gene_id) |
+| 세포타입 컬럼 | ✅ 1개 이상 | 숫자형. 컬럼명이 세포타입 라벨 |
+| `cell_type` | ❌ | long layout 전용 (v1 미지원) |
+
+**Companion 파일 (선택):**
+
+| 키 | 내용 |
+|----|------|
+| `pct` | mean과 동일 shape의 `pct_expressing` |
+| `gene_index` | `gene_id`, `max_mean`, `max_pct`, `n_cell_types_detected` |
+| `cell_type_summary` | `cell_type`, `n_cells`, `dataset` 구성 |
+
+manifest:
+
+```json
+{
+  "datasets": [{
+    "alias": "HypoMap C66 mean expression",
+    "file_path": "hypomap_C66_wide_mean.parquet",
+    "dataset_type": "expression_summary",
+    "organism": "Mus musculus",
+    "expression_schema": {
+      "schema_version": "1.0",
+      "layout": "wide",
+      "value_type": "mean_expression",
+      "cell_type_level": "C66",
+      "gene_id_type": "symbol",
+      "normalization": "log1p_normalized",
+      "detection": "count > 0",
+      "pct_scale": "0-1",
+      "companion_files": {
+        "pct": "hypomap_C66_wide_pct.parquet",
+        "gene_index": "hypomap_gene_index.parquet",
+        "cell_type_summary": "hypomap_cell_type_summary.parquet"
+      }
+    }
+  }]
+}
+```
+
+- `pct_scale`는 `0-1` 또는 `0-100` 중 하나로 명시해 주세요.
+- wide 표에 세포타입이 아닌 숫자형 메타 컬럼이 섞여 있으면 `expression_schema.cell_type_columns`에 세포타입 컬럼 목록을 명시해 주세요.
+- `cell_type_level`(C66/C185)은 **별도 dataset entry**로 분리하는 것을 권장합니다.
+- 10^7 규모의 long table은 v1에서 거부됩니다. wide mean/pct를 사용하거나
+  v2 DuckDB loader를 기다려 주세요.
+- CLI 검증: `cmg-seqviewer-cli load <mean.parquet> --type expression_summary --json`
+
+---
+
+**See also**:
+[scRNA-seq 3차 분석 파이프라인 연동 회신](pipeline-integration-response.md) ·
+[HypoMap expression summary 연동 회신](hypomap-expression-integration-response.md)

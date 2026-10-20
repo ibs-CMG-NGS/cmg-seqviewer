@@ -51,6 +51,16 @@ class StandardColumns:
     # PropMean.<condition> 컬럼은 조건명이 가변이므로 표준화하지 않고 그대로 보존
     # (Dataset.metadata['mean_columns'] / ['conditions'] 참고)
 
+    # === Expression summary (HypoMap 등 gene × cell type) 컬럼 ===
+    GENE_NAME = 'gene_name'       # 표시용 유전자 이름 (symbol)
+    MEAN_EXPRESSION = 'mean_expression'
+    PCT_EXPRESSING = 'pct_expressing'
+    N_CELLS = 'n_cells'
+    N_EXPRESSING = 'n_expressing'
+    MEAN_COUNTS = 'mean_counts'
+    DATASET = 'dataset'
+    CELL_TYPE_LEVEL = 'cell_type_level'
+
     # === ATAC-seq 전용 컬럼 ===
 
     PEAK_ID = 'peak_id'                   # Peak 식별자 (예: Interval_40044)
@@ -178,6 +188,14 @@ class StandardColumns:
         Dataset.is_valid / CompositionLoader가 `prop_ratio` 또는 mean 컬럼 존재를
         별도로 확인한다."""
         return [cls.CELL_TYPE]
+
+    @classmethod
+    def get_expression_summary_required(cls) -> list[str]:
+        """Expression summary(wide)에 최소 필수인 컬럼.
+
+        cell type 컬럼은 wide layout에서 컬럼명 자체가 세포타입이므로 개수를
+        Dataset.is_valid / ExpressionSummaryLoader가 별도로 확인한다."""
+        return [cls.GENE_ID]
 
     @classmethod
     def get_atac_basic(cls) -> list[str]:

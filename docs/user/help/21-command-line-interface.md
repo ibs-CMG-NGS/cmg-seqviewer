@@ -62,7 +62,8 @@ cmg-seqviewer-cli load weird_headers.parquet --type atac
 ```
 
 `--type` also accepts `differential_expression`, `go_analysis`,
-`multi_group`, and `composition` to bypass auto-detection for those types.
+`multi_group`, `composition`, and `expression_summary` to bypass
+auto-detection for those types.
 
 ### Machine-readable output (`--json`)
 
@@ -108,7 +109,7 @@ Common flags (see `cmg-seqviewer-cli filter --help` for the full list):
 
 | Flag | Applies to | Matches |
 |------|-----------|---------|
-| `--type` | all | Force dataset type instead of auto-detecting: `atac`, `differential_expression`, `go_analysis`, `multi_group`, `composition` |
+| `--type` | all | Force dataset type instead of auto-detecting: `atac`, `differential_expression`, `go_analysis`, `multi_group`, `composition`, `expression_summary` |
 | `--adj-pvalue-max` | DE / ATAC | Filter Panel "Padj" |
 | `--log2fc-min` | DE / ATAC | Filter Panel "log2FC" |
 | `--regulation` | DE / ATAC | Up / Down / Both |
