@@ -46,6 +46,12 @@ def _is_go_dataframe(df) -> bool:
             pass
     return False
 
+
+def _is_composition_dataframe(df) -> bool:
+    """Cell-type composition(propeller/limma) parquet 감지."""
+    from utils.composition_loader import CompositionLoader
+    return CompositionLoader.is_composition_dataframe(df)
+
 # dataset_type 문자열 별칭 매핑(differential_accessibility → atac_seq 등)은
 # PreloadedDatasetMetadata.from_dict()에서 단일 지점으로 적용된다
 # (models.data_models.DATASET_TYPE_ALIASES) — manifest/metadata.json 어느 경로든 동일 적용.
@@ -60,8 +66,24 @@ _MANIFEST_FIELD_FALLBACK = {
 def _normalize_manifest_item(item: Dict[str, Any]) -> Dict[str, Any]:
     """seqviewer_manifest.json의 datasets[] 항목을 PreloadedDatasetMetadata.from_dict()가
     이해하는 스키마로 변환한다 (peak_count/significant_peaks 등 ATAC 전용 필드명 보완).
-    dataset_type 별칭 변환은 from_dict()에서 공통 처리되므로 여기서는 건드리지 않는다."""
+    dataset_type 별칭 변환은 from_dict()에서 공통 처리되므로 여기서는 건드리지 않는다.
+
+    파이프라인이 `dataset_id`/`original_filename`/`file_path`를 모두 채우지 않아도
+    되도록 여기서 보완한다 — 예전에는 이 키가 없으면 항목 전체가 조용히 컬럼 추측으로
+    fallback됐다. dataset_id는 파일명 기반 uuid5로 고정해 재반입 시 중복을 막는다."""
     norm = dict(item)
+
+    filename = Path(norm.get('file_path') or norm.get('original_filename') or '').name
+    if filename:
+        if not norm.get('file_path'):
+            norm['file_path'] = filename
+        if not norm.get('original_filename'):
+            norm['original_filename'] = filename
+    if not norm.get('alias') and filename:
+        norm['alias'] = Path(filename).stem
+    if not norm.get('dataset_id') and filename:
+        norm['dataset_id'] = str(uuid.uuid5(uuid.NAMESPACE_URL, f"seqviewer:{filename}"))
+
     for target, source in _MANIFEST_FIELD_FALLBACK.items():
         if not norm.get(target) and norm.get(source):
             norm[target] = norm[source]
@@ -332,6 +354,8 @@ class DatabaseManager:
                 #  (data_loader.py:_detect_dataset_type)와 동일한 우선순위를 유지한다)
                 elif _is_go_dataframe(df):
                     dataset_type = DatasetType.GO_ANALYSIS
+                elif _is_composition_dataframe(df):
+                    dataset_type = DatasetType.COMPOSITION
                 elif MultiGroupLoader.is_multi_group_dataframe(df):
                     dataset_type = DatasetType.MULTI_GROUP
                 elif de_required.issubset(cols):
@@ -414,6 +438,16 @@ class DatabaseManager:
                             # Multi-Group은 log2fc가 없으므로 padj만으로 유의미 유전자 판정
                             significant_genes = int(
                                 (pd.to_numeric(df['padj'], errors='coerce') < 0.05).sum()
+                            )
+                        except Exception:
+                            significant_genes = 0
+
+                elif dataset_type == DatasetType.COMPOSITION:
+                    gene_count = row_count  # composition에서는 cell type 수
+                    if 'fdr' in cols:
+                        try:
+                            significant_genes = int(
+                                (pd.to_numeric(df['fdr'], errors='coerce') < 0.05).sum()
                             )
                         except Exception:
                             significant_genes = 0
@@ -654,6 +688,18 @@ class DatabaseManager:
         skipped_dup = 0
         skipped_no_file = 0
 
+        # 경로명에서 researcher / analysis_date 추론 (metadata·manifest 양쪽 공통 fallback)
+        path_researchers, path_date = _parse_researcher_from_path(source_dir)
+
+        def _apply_path_fallback(meta: PreloadedDatasetMetadata) -> None:
+            if not meta.researcher and path_researchers:
+                meta.researcher = list(path_researchers)
+                for initials in path_researchers:
+                    if initials and initials not in meta.tags:
+                        meta.tags.append(initials)
+            if not meta.analysis_date and path_date:
+                meta.analysis_date = path_date
+
         meta_file = source_dir / "metadata.json"
         manifest_file = source_dir / "seqviewer_manifest.json"
         is_manifest = not meta_file.exists() and manifest_file.exists()
@@ -693,6 +739,7 @@ class DatabaseManager:
 
                 # 파일 경로를 파일명만으로 정규화
                 meta.file_path = Path(meta.file_path).name
+                _apply_path_fallback(meta)
 
                 # 중복 체크: dataset_id(UUID)가 동일하면 이미 반입된 데이터셋
                 # file_path는 검사하지 않음 — organism이 달라도 조건명이 같으면
@@ -755,22 +802,13 @@ class DatabaseManager:
                 # auto-import 스캔이 새 파일을 감지하도록 datasets_dir 를 다시 스캔
                 # (직접 등록하지 않고 _scan_and_auto_import 에 맡김)
 
-            # 경로명에서 researcher / analysis_date 추론 (fallback)
-            path_researchers, path_date = _parse_researcher_from_path(source_dir)
-
             # 복사 후 자동 스캔 실행 → 새로 복사된 파일 등록
             imported = self._scan_and_auto_import(self.datasets_dir)
 
             # 방금 스캔으로 추가된 항목에 path 추론 메타데이터 채우기
             if path_researchers or path_date:
                 for meta in self.metadata_list:
-                    if not meta.researcher and path_researchers:
-                        meta.researcher = path_researchers
-                        for initials in path_researchers:
-                            if initials not in meta.tags:
-                                meta.tags.append(initials)
-                    if not meta.analysis_date and path_date:
-                        meta.analysis_date = path_date
+                    _apply_path_fallback(meta)
 
         if imported > 0:
             self._save_metadata()
@@ -942,6 +980,24 @@ class DatabaseManager:
                 })
                 self.logger.info(
                     f"Loaded multi-group dataset from database: {metadata.alias} "
+                    f"({len(dataset.dataframe)} rows)"
+                )
+                return dataset
+
+            if metadata.dataset_type == DatasetType.COMPOSITION:
+                from utils.composition_loader import CompositionLoader
+                dataset = CompositionLoader().load(file_path, metadata.alias)
+                dataset.metadata.update({
+                    'experiment_condition': metadata.experiment_condition,
+                    'organism': metadata.organism,
+                    'tissue': metadata.tissue,
+                    'timepoint': metadata.timepoint,
+                    'import_date': metadata.import_date,
+                    'notes': metadata.notes,
+                    'tags': metadata.tags,
+                })
+                self.logger.info(
+                    f"Loaded composition dataset from database: {metadata.alias} "
                     f"({len(dataset.dataframe)} rows)"
                 )
                 return dataset
@@ -1118,7 +1174,7 @@ class DatabaseManager:
         metadata = self.get_metadata(dataset_id)
         if metadata is None:
             return False
-        
+
         try:
             # 파일 삭제 - _find_dataset_file()로 실제 경로 찾기
             file_path = self._find_dataset_file(metadata.file_path)

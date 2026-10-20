@@ -623,6 +623,13 @@ class MainWindow(QMainWindow):
         self.expr_bar_action.triggered.connect(self._on_gene_expression_bar)
         viz_menu.addAction(self.expr_bar_action)
 
+        self.composition_action = QAction("🧫 Cell-Type Composition", self)
+        self.composition_action.setToolTip(
+            "Visualize propeller/limma cell-type proportion changes "
+            "(PropRatio or condition mean proportions).")
+        self.composition_action.triggered.connect(self._on_composition_plot)
+        viz_menu.addAction(self.composition_action)
+
         viz_menu.addSeparator()
 
         # GO/KEGG 시각화 서브메뉴
@@ -1565,6 +1572,15 @@ class MainWindow(QMainWindow):
                     
                     new_tab_name = f"Filtered: {tab_name} - p≤{criteria.adj_pvalue_max}, |FC|≥{criteria.log2fc_min}{direction_str}"
                 
+                elif dataset_type == DatasetType.COMPOSITION:
+                    # Cell-type composition: FDR 기준
+                    stat_col = 'fdr' if 'fdr' in filtered_df.columns else (
+                        'pvalue' if 'pvalue' in filtered_df.columns else None)
+                    if stat_col:
+                        vals = pd.to_numeric(filtered_df[stat_col], errors='coerce')
+                        filtered_df = filtered_df[vals <= criteria.fdr_max]
+                    new_tab_name = f"Filtered: {tab_name} - FDR≤{criteria.fdr_max:.3g}"
+
                 elif dataset_type == DatasetType.GO_ANALYSIS:
                     # GO 데이터 필터링
                     from models.standard_columns import StandardColumns
@@ -3513,6 +3529,31 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.logger.error(f"Multi-Group Heatmap failed: {e}")
             QMessageBox.critical(self, "Error", f"Failed to open Multi-Group Heatmap:\n{str(e)}")
+
+    def _on_composition_plot(self):
+        """Cell-Type Composition 다이얼로그 열기."""
+        try:
+            current_index = self.data_tabs.currentIndex()
+            if current_index < 0 or current_index not in self.tab_data:
+                QMessageBox.warning(self, "No Data", "Please load a dataset first.")
+                return
+            dataset = self.tab_data[current_index]['dataset']
+            from models.data_models import DatasetType as _DT
+            if dataset is None or dataset.dataset_type != _DT.COMPOSITION:
+                QMessageBox.warning(
+                    self, "Composition Dataset Required",
+                    "Cell-Type Composition is only available for composition datasets.\n"
+                    "Load a propeller/limma result containing cell_type, "
+                    "PropMean.<condition>, PropRatio and FDR."
+                )
+                return
+            from gui.composition_dialog import CompositionDialog
+            dialog = CompositionDialog(dataset, parent=self)
+            dialog.exec()
+            self.logger.info("Visualization opened: composition")
+        except Exception as e:
+            self.logger.error(f"Cell-Type Composition failed: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to open Cell-Type Composition:\n{str(e)}")
 
     def _on_gene_expression_bar(self):
         """Gene Expression Bar+Scatter (Grouped) 다이얼로그 열기.

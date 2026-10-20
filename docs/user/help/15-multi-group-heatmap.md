@@ -10,7 +10,18 @@ group-level patterns.
 ## 15.2 Requirements
 
 - A **Differential Expression dataset with 3+ sample columns**, or a
-  **Multi-Group dataset** (`gene_id` + `padj` + 3+ sample columns).
+  **Multi-Group dataset** (`gene_id` + 3+ sample columns). `padj` is used
+  for the optional significance filter but is not required; `cluster_id`
+  is enough for auto-detection when there is no `padj`.
+- Gene labels come from `gene_symbol`, then `gene_id` (falling back to row
+  numbers) — name the first column `gene_id` or `gene_symbol`.
+- Statistic/metadata columns (`padj`, `fdr`, `qvalue`, `baseMean`, `stat`,
+  `cluster_id`, ...) are never treated as sample columns, even when numeric.
+
+> A plain expression matrix (genes × samples) with neither `padj` nor
+> `cluster_id` is not auto-detected. Load it explicitly with
+> `cmg-seqviewer-cli load matrix.csv --type multi_group` or set
+> `dataset_type: multi_group` in `seqviewer_manifest.json`.
 
 ## 15.3 End-to-end workflow example (time course)
 

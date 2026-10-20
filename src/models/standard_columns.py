@@ -45,6 +45,12 @@ class StandardColumns:
     # Clustering Analysis 컬럼
     CLUSTER_ID = 'cluster_id'     # Cluster ID (숫자, 'Small', 'Singleton', 또는 빈 값)
 
+    # === Cell-type Composition (propeller/limma) 컬럼 ===
+    CELL_TYPE = 'cell_type'       # 세포 타입 이름
+    PROP_RATIO = 'prop_ratio'     # 조건 간 비율 차이 (PropRatio)
+    # PropMean.<condition> 컬럼은 조건명이 가변이므로 표준화하지 않고 그대로 보존
+    # (Dataset.metadata['mean_columns'] / ['conditions'] 참고)
+
     # === ATAC-seq 전용 컬럼 ===
 
     PEAK_ID = 'peak_id'                   # Peak 식별자 (예: Interval_40044)
@@ -163,6 +169,15 @@ class StandardColumns:
     def get_atac_required(cls) -> list[str]:
         """ATAC-seq DA 분석에 최소 필수인 컬럼"""
         return [cls.PEAK_ID, cls.LOG2FC, cls.ADJ_PVALUE]
+
+    @classmethod
+    def get_composition_required(cls) -> list[str]:
+        """Cell-type composition에 최소 필수인 컬럼.
+
+        조건별 `PropMean.<condition>` 컬럼은 개수가 가변이므로 여기 포함하지 않고
+        Dataset.is_valid / CompositionLoader가 `prop_ratio` 또는 mean 컬럼 존재를
+        별도로 확인한다."""
+        return [cls.CELL_TYPE]
 
     @classmethod
     def get_atac_basic(cls) -> list[str]:

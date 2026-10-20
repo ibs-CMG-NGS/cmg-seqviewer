@@ -25,6 +25,7 @@ All sections of this guide (numbers match the first/second-level headings; click
 - [19. Tips & Shortcuts](19-tips-shortcuts.md)
 - [20. FAQ](20-faq.md)
 - [21. Command Line Interface](21-command-line-interface.md)
+- [22. Cell-Type Composition](22-cell-type-composition.md)
 
 
 ## 1.1 Overview

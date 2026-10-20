@@ -224,6 +224,7 @@ class FilterPanel(QWidget):
 
         go_label = QLabel("<b>GO/KEGG Analysis Filtering:</b>")
         go_inner.addWidget(go_label)
+        self.go_filter_label = go_label
 
         # GO/KEGG 필터 컨트롤 — 한 줄에 하나씩 배치해 라벨을 정렬하고 여백을 확보한다
         go_form = QFormLayout()
@@ -280,6 +281,7 @@ class FilterPanel(QWidget):
 
         go_inner.addLayout(go_form)
         go_inner.addSpacing(8)
+        self._go_form = go_form
 
         self.advanced_go_filter_btn = QPushButton("⚙️ Advanced Filtering...")
         self.advanced_go_filter_btn.setToolTip("Open advanced GO/KEGG filtering dialog")
@@ -659,6 +661,24 @@ class FilterPanel(QWidget):
         except ValueError:
             return None
 
+    def _set_composition_filter_mode(self, enabled: bool) -> None:
+        """composition 데이터셋에서는 FDR 입력만 남기고 GO 전용 행을 숨긴다."""
+        go_only = (self.go_fe_input, self.go_min_count_input,
+                   self.ontology_combo, self.go_direction_combo)
+        for w in go_only:
+            w.setVisible(not enabled)
+            label = self._go_form.labelForField(w)
+            if label is not None:
+                label.setVisible(not enabled)
+        self.advanced_go_filter_btn.setVisible(not enabled)
+        if enabled:
+            self.go_filter_label.setText("<b>Cell-Type Composition Filtering:</b>")
+            self.go_fdr_input.setToolTip("FDR threshold for composition results")
+        else:
+            self.go_filter_label.setText("<b>GO/KEGG Analysis Filtering:</b>")
+            self.go_fdr_input.setToolTip(
+                "Enter FDR threshold (supports scientific notation like 1e-5)")
+
     def update_for_dataset(self, dataset) -> None:
         """
         데이터셋 타입에 따라 Statistical 탭의 섹션과 Gene List 탭의 모드 토글을
@@ -672,11 +692,15 @@ class FilterPanel(QWidget):
                    dataset.dataset_type == DatasetType.ATAC_SEQ)
         is_go = (dataset is not None and
                  dataset.dataset_type == DatasetType.GO_ANALYSIS)
+        is_composition = (dataset is not None and
+                          dataset.dataset_type == DatasetType.COMPOSITION)
 
-        # Statistical 탭: DE/DA 섹션 — GO 데이터일 때만 숨김
-        self.de_filter_widget.setVisible(not is_go)
-        # Statistical 탭: GO/KEGG 섹션 — GO 데이터일 때만 표시
-        self.go_filter_widget.setVisible(is_go)
+        # Statistical 탭: DE/DA 섹션 — GO/composition 데이터일 때만 숨김
+        self.de_filter_widget.setVisible(not (is_go or is_composition))
+        # Statistical 탭: GO/KEGG 섹션 — GO 또는 composition일 때 표시
+        # (composition은 FDR 입력만 재사용하고 나머지 GO 전용 행은 숨긴다)
+        self.go_filter_widget.setVisible(is_go or is_composition)
+        self._set_composition_filter_mode(is_composition)
         # Statistical 탭: ATAC 섹션 — ATAC 데이터일 때만 표시
         self.atac_filter_widget.setVisible(is_atac)
 

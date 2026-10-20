@@ -27,15 +27,22 @@ import pandas as pd
 
 from models.data_models import Dataset, DatasetType, NormalizationType
 
-# 통계 컬럼명 (소문자): 이 컬럼들은 샘플 컬럼에서 제외
+# 통계/메타 컬럼명 (소문자): 이 컬럼들은 샘플 컬럼에서 제외
+# - fdr/qvalue는 padj와 같은 adjusted p-value 계열
+# - cluster_id는 module/time-series 결과의 그룹 라벨(숫자로 저장될 수 있음)
+# - gene/geneid/id 계열은 유전자 식별자가 숫자(Entrez)여도 샘플로 세지 않도록
 _STAT_COLS = frozenset({
-    'gene_id', 'gene_symbol', 'gene_name',
+    'gene_id', 'gene', 'geneid', 'id',
+    'gene_symbol', 'gene_name', 'symbol',
     'basemean', 'base_mean',
     'stat', 'statistic',
     'pvalue', 'p_value', 'p.value',
     'padj', 'p_adj', 'p.adj', 'adj_pvalue', 'adj_p',
+    'fdr', 'qvalue', 'q_value', 'q.value',
+    'cluster_id', 'cluster',
     'log2foldchange', 'log2fc', 'log2_fold_change', 'lfc',
     'lfcse', 'se',
+    'description', 'term_id', 'ontology', 'direction', 'gene_set',
 })
 
 
@@ -112,6 +119,25 @@ class MultiGroupLoader:
         """Parquet 파일 직접 로드 (DB import 경로)"""
         df = self._read_parquet(Path(path))
         return self._build_dataset(df, Path(path), name or Path(path).stem, normalization_type)
+
+    def load_from_dataframe(
+        self,
+        df: pd.DataFrame,
+        path: Optional[Path] = None,
+        name: Optional[str] = None,
+        normalization_type: NormalizationType = NormalizationType.NORMALIZED_COUNT,
+    ) -> Dataset:
+        """이미 읽은 DataFrame으로 Dataset 생성 (Excel/CLI --type multi_group 경로)."""
+        path = Path(path) if path is not None else Path(name or "multi_group")
+        if df.index.name and df.index.name != 'RangeIndex':
+            df = df.reset_index().rename(columns={df.index.name: 'gene_id'})
+        if len(df.columns) and (
+                df.columns[0] == '' or str(df.columns[0]).startswith('Unnamed')):
+            df = df.rename(columns={df.columns[0]: 'gene_id'})
+        if 'gene_id' not in df.columns:
+            df = df.copy()
+            df.insert(0, 'gene_id', df.index.astype(str))
+        return self._build_dataset(df, path, name or path.stem, normalization_type)
 
     # ------------------------------------------------------------------ #
     #  File readers
@@ -268,9 +294,13 @@ class MultiGroupLoader:
         DataFrame이 MULTI_GROUP 형식인지 판별합니다.
 
         조건:
-          1. 'padj' 컬럼 존재
+          1. 'padj'(또는 p_value 계열) 컬럼 존재, 또는 'cluster_id' 컬럼 존재
           2. 'log2foldchange' / 'log2fc' 컬럼 없음  (DE 타입과 구분)
-          3. 숫자형 샘플 컬럼 3개 이상 (통계 컬럼 제외)
+          3. 숫자형 샘플 컬럼 3개 이상 (fdr/qvalue/cluster_id 등 메타 컬럼 제외)
+
+        padj도 cluster_id도 없는 순수 발현행렬(유전자 × 샘플)은 자동 감지되지
+        않는다 — 이 경우 CLI `--type multi_group` 또는 manifest의 dataset_type으로
+        명시해 MultiGroupLoader로 직행한다.
         """
         cols_lower = {c.lower() for c in df.columns}
 

@@ -115,6 +115,10 @@
 - **🌡️ Multi-Group Heatmap:** LRT omnibus result CSV → interactive Z-score clustermap
  with group color bars, gene cluster cutting, and CSV export
 
+- **🧫 Cell-Type Composition:** propeller/limma composition results
+ (`cell_type`, `PropMean.<condition>`, `PropRatio`, `FDR`) → PropRatio bars
+ or grouped mean-proportion bars, with FDR significance marks
+
 - **Gene List Filtering on Multi-Group:** Filter by gene symbol on multi-group sheets;
  child filtered sheets can be directly passed to the heatmap dialog
 

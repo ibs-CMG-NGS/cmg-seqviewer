@@ -30,6 +30,44 @@ def looks_like_go_frame(df: pd.DataFrame) -> bool:
     return (idish and descish) or (ontish and descish)
 
 
+def _load_with_type_hint(file_path: Path, final_name: str, dataset_type: DatasetType,
+                         data_loader, column_mapper_callback, logger) -> Dataset:
+    """명시 타입으로 로드 — 자동 감지 없이 해당 타입 로더로 직행한다.
+
+    ATAC/GO/MULTI_GROUP/DE 네 타입을 지원한다. GO는 Excel이면 다중 시트 병합이
+    필요한 GOKEGGLoader를, 그 외 포맷이면 표준화 파이프라인을 쓴다.
+    """
+    if dataset_type == DatasetType.ATAC_SEQ:
+        from utils.atac_seq_loader import ATACSeqLoader
+        return ATACSeqLoader().load(file_path, final_name, column_mapper_callback)
+
+    if dataset_type == DatasetType.MULTI_GROUP:
+        from utils.multi_group_loader import MultiGroupLoader
+        if file_path.suffix.lower() in ('.csv', '.parquet'):
+            return MultiGroupLoader().load(file_path, final_name)
+        return MultiGroupLoader().load_from_dataframe(
+            data_loader._read_table(file_path), file_path, final_name)
+
+    if dataset_type == DatasetType.COMPOSITION:
+        from utils.composition_loader import CompositionLoader
+        return CompositionLoader().load(file_path, final_name)
+
+    if dataset_type == DatasetType.GO_ANALYSIS:
+        if file_path.suffix.lower() in ('.xlsx', '.xls', '.xlsm'):
+            from utils.go_kegg_loader import GOKEGGLoader
+            return GOKEGGLoader().load_from_excel(
+                file_path, final_name, column_mapper_callback=column_mapper_callback)
+        from utils.go_kegg_loader import ensure_go_required_columns, standardize_go_dataframe
+        std = standardize_go_dataframe(data_loader._read_table(file_path), logger)
+        std = ensure_go_required_columns(std, column_mapper_callback, logger)
+        return Dataset(name=final_name, dataset_type=DatasetType.GO_ANALYSIS,
+                       file_path=file_path, dataframe=std)
+
+    return data_loader.load_from_file(
+        file_path, final_name, dataset_type=dataset_type,
+        column_mapper_callback=column_mapper_callback)
+
+
 def load_any_dataset(
     file_path: Path,
     data_loader,
@@ -68,9 +106,10 @@ def load_any_dataset(
     final_name = name or file_path.stem
 
     # ── 명시적 타입 힌트: 자동 감지 체인을 건너뛰고 직행 ──
-    if dataset_type_hint == DatasetType.ATAC_SEQ:
-        from utils.atac_seq_loader import ATACSeqLoader
-        return ATACSeqLoader().load(file_path, final_name, column_mapper_callback)
+    if dataset_type_hint is not None:
+        return _load_with_type_hint(
+            file_path, final_name, dataset_type_hint, data_loader,
+            column_mapper_callback, logger)
 
     # ── CSV / Parquet: chromVAR diff TF 감지 ─────────────────────────
     if suffix in ('.csv', '.parquet'):
@@ -106,6 +145,13 @@ def load_any_dataset(
                 return Dataset(name=final_name, dataset_type=DatasetType.GO_ANALYSIS,
                                dataframe=std)
 
+            # 세포타입 조성(propeller/limma)은 PropMean 컬럼/FDR 패턴으로 판별.
+            # Multi-Group(padj + 숫자형 샘플 3개↑)보다 먼저 확인해야 PropMean 컬럼이
+            # 샘플로 오인되는 것을 막을 수 있다.
+            from utils.composition_loader import CompositionLoader
+            if CompositionLoader.is_composition_dataframe(peek):
+                return CompositionLoader().load(file_path, final_name)
+
             from utils.multi_group_loader import MultiGroupLoader
             if MultiGroupLoader.is_multi_group_dataframe(peek):
                 return MultiGroupLoader().load(file_path, final_name)
@@ -113,18 +159,19 @@ def load_any_dataset(
             logger.warning(f"Quick detection failed: {e}, falling through")
 
     # ── Excel: GO/KEGG 또는 DE 감지 ──────────────────────────────────
-    try:
-        test_df = pd.read_excel(file_path, nrows=10)
-        detected_type = data_loader._detect_dataset_type(test_df)
-        logger.debug(f"Quick type detection: {detected_type.value}")
+    if suffix in ('.xlsx', '.xls', '.xlsm'):
+        try:
+            test_df = pd.read_excel(file_path, nrows=10)
+            detected_type = data_loader._detect_dataset_type(test_df)
+            logger.debug(f"Quick type detection: {detected_type.value}")
 
-        if detected_type == DatasetType.GO_ANALYSIS:
-            from utils.go_kegg_loader import GOKEGGLoader
-            return GOKEGGLoader().load_from_excel(
-                file_path, final_name, column_mapper_callback=column_mapper_callback)
-    except Exception as e:
-        logger.warning(f"Quick type detection failed: {e}, using standard loader")
+            if detected_type == DatasetType.GO_ANALYSIS:
+                from utils.go_kegg_loader import GOKEGGLoader
+                return GOKEGGLoader().load_from_excel(
+                    file_path, final_name, column_mapper_callback=column_mapper_callback)
+        except Exception as e:
+            logger.warning(f"Quick type detection failed: {e}, using standard loader")
 
-    # ── 기본: DE 데이터셋 로더 ────────────────────────────────────────
-    return data_loader.load_from_excel(
+    # ── 기본: DE 데이터셋 로더 (CSV/TSV/Parquet 포함) ────────────────
+    return data_loader.load_from_file(
         file_path, final_name, column_mapper_callback=column_mapper_callback)

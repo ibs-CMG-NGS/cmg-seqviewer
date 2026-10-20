@@ -21,6 +21,7 @@ class DatasetType(Enum):
     MOTIF_ENRICHMENT = "motif_enrichment"
     TF_FOOTPRINT = "tf_footprint"
     CHROMVAR_DIFF_TF = "chromvar_diff_tf"
+    COMPOSITION = "composition"
     UNKNOWN = "unknown"
 
 
@@ -35,6 +36,9 @@ DATASET_TYPE_ALIASES: Dict[str, str] = {
     'time_series': DatasetType.MULTI_GROUP.value,
     # src/analysis/10_run_coexpression_modules.R (coexpression module 결과): 위와 동일 형태
     'coexpression_module': DatasetType.MULTI_GROUP.value,
+    # propeller/limma 기반 cell-type composition 결과
+    'cell_composition': DatasetType.COMPOSITION.value,
+    'composition_analysis': DatasetType.COMPOSITION.value,
 }
 
 
@@ -168,12 +172,15 @@ class Dataset:
         elif self.dataset_type == DatasetType.GO_ANALYSIS:
             required = StandardColumns.get_go_required()
         elif self.dataset_type == DatasetType.MULTI_GROUP:
-            # gene_id + padj + 3개 이상의 샘플 컬럼
-            stat_cols = {'gene_id', 'basemean', 'stat', 'pvalue', 'padj', 'gene_symbol'}
-            df_cols_lower = {c.lower() for c in self.dataframe.columns}
-            has_padj = 'padj' in df_cols_lower
+            # gene_id + 3개 이상의 샘플 컬럼 (padj는 선택 — 순수 발현행렬 허용)
             sample_cols = self.metadata.get('sample_columns', [])
-            return has_padj and len(sample_cols) >= 3
+            return len(sample_cols) >= 3
+        elif self.dataset_type == DatasetType.COMPOSITION:
+            cols = set(self.dataframe.columns)
+            if 'cell_type' not in cols:
+                return False
+            mean_cols = self.metadata.get('mean_columns', [])
+            return bool(mean_cols) or 'prop_ratio' in cols
         else:
             return True
         
@@ -281,6 +288,12 @@ class Dataset:
                     sig_terms = self.dataframe[self.dataframe['fdr'] < 0.05]
                     summary['total_terms'] = len(self.dataframe)
                     summary['significant_terms'] = len(sig_terms)
+
+            elif self.dataset_type == DatasetType.COMPOSITION:
+                summary['total_cell_types'] = len(self.dataframe)
+                if 'fdr' in self.dataframe.columns:
+                    summary['significant_cell_types'] = int(
+                        (pd.to_numeric(self.dataframe['fdr'], errors='coerce') < 0.05).sum())
 
         return summary
 

@@ -35,6 +35,10 @@
 ## Latest Update: v1.3.2 (Oct 2026)
 
 - [NEW] **Online user guide** at [ibs-cmg-ngs.github.io/cmg-seqviewer](https://ibs-cmg-ngs.github.io/cmg-seqviewer/) — the same `docs/user/help/*.md` content as the in-app F1 help, published automatically on every change so the app and the website never drift apart
+- [NEW] **Cell-Type Composition datasets + view** (`Visualization → 🧫 Cell-Type Composition`): propeller/limma `cell_type` / `PropMean.<condition>` / `PropRatio` / `FDR` results render as PropRatio bars or grouped mean-proportion bars, with FDR filtering and CLI support (`--type composition`)
+- [NEW] **CLI machine-readable validation** (`cmg-seqviewer-cli load --json`) and **DE/GO/Multi-Group CSV/TSV/Parquet inputs** — pipeline CI can validate parquet exports without Excel; `--type` now covers DE/GO/Multi-Group/ATAC/Composition
+- [NEW] **`seqviewer_manifest.json`**: `dataset_id`/`original_filename`/`file_path` are auto-derived when omitted; researcher/analysis_date inferred from `/YYYY-initials-organism-type/` folder names
+- [FIX] Multi-Group sample-column detection no longer treats `fdr`, `qvalue`, or numeric `cluster_id` as samples
 - [FIX] An internal "See also" link in the F1 help (GO/KEGG Enrichment Analysis section) now correctly jumps to the referenced section instead of silently doing nothing
 
 ### Previous: v1.3.1 (Oct 2026)
@@ -207,6 +211,7 @@
 - **MA Plot**: log₂(base mean) vs log₂FC — ATAC-seq and RNA-seq
 - **Heatmap**: Expression patterns with hierarchical clustering
 - **Gene Expression Bar + Scatter (Grouped)**: Per-gene grouped bar (mean) + replicate points with significance stars, manual group reassignment, and per-group colors (DE / Multi-Group)
+- **Cell-Type Composition**: PropRatio bars or grouped mean-proportion bars from propeller/limma results, with FDR significance marks and filtering
 - **P-adj Histogram**: Distribution of significance values
 
 ### Multi-Omics Integration (RNA-seq + ATAC-seq)
@@ -418,6 +423,9 @@ nodes, or scripted pipelines.
 ```bash
 # Inspect a file (type/rows/columns/validity)
 cmg-seqviewer-cli load sample1_DE.xlsx
+
+# Machine-readable validation for CI (works on CSV/TSV/Parquet too)
+cmg-seqviewer-cli load sample1_DE.parquet --json
 
 # One-off filter -> write a file
 cmg-seqviewer-cli filter sample1_DE.xlsx \

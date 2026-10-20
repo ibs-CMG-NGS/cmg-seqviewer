@@ -61,6 +61,34 @@ purpose as **File → Open ATAC-seq Dataset...** in the GUI:
 cmg-seqviewer-cli load weird_headers.parquet --type atac
 ```
 
+`--type` also accepts `differential_expression`, `go_analysis`,
+`multi_group`, and `composition` to bypass auto-detection for those types.
+
+### Machine-readable output (`--json`)
+
+For scripted/CI validation, add `--json` to print the same verdict as a
+JSON object instead of human-readable lines:
+
+```bash
+cmg-seqviewer-cli load sample1_DE.parquet --json
+```
+
+```json
+{
+  "dataset_type": "differential_expression",
+  "rows": 1523,
+  "columns": ["gene_id", "log2fc", "adj_pvalue", "baseMean"],
+  "valid": true,
+  "required_columns": ["gene_id", "log2fc", "adj_pvalue"],
+  "missing_required_columns": [],
+  "file": "sample1_DE.parquet"
+}
+```
+
+`missing_required_columns` being empty and `valid` being `true` means the
+file is safe to import into the database. Auto-detection works for
+`.xlsx`, `.csv`, `.tsv`, and `.parquet` inputs.
+
 ## 21.3 `filter` — load + filter one file
 
 Applies a one-off statistical filter and writes (or prints) the result.
@@ -80,7 +108,7 @@ Common flags (see `cmg-seqviewer-cli filter --help` for the full list):
 
 | Flag | Applies to | Matches |
 |------|-----------|---------|
-| `--type` | all | Force dataset type instead of auto-detecting (currently `atac`) |
+| `--type` | all | Force dataset type instead of auto-detecting: `atac`, `differential_expression`, `go_analysis`, `multi_group`, `composition` |
 | `--adj-pvalue-max` | DE / ATAC | Filter Panel "Padj" |
 | `--log2fc-min` | DE / ATAC | Filter Panel "log2FC" |
 | `--regulation` | DE / ATAC | Up / Down / Both |
