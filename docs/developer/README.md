@@ -17,6 +17,7 @@
 | [테스트 가이드](testing.md) | 테스트 작성 및 실행 | ⭐⭐ 중급 |
 | [API 문서](api.md) | 주요 클래스 및 함수 | ⭐⭐⭐ 고급 |
 | [파이프라인 연동 가이드](pipeline-integration.md) | R 파이프라인 → 앱 직결 규격 | ⭐⭐ 중급 |
+| [연동 문의 회신](pipeline-integration-response.md) | scRNA-seq 3차 분석 파이프라인 Q1~Q7/R1 회신 | ⭐⭐ 중급 |
 
 ### 아키텍처
 | 문서 | 설명 | 난이도 |

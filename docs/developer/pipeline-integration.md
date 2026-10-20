@@ -757,3 +757,8 @@ manifest 예시:
 > 순수 `PropRatio`만 있고 `PropMean.*`가 없어도 비율 차이 막대로 시각화할 수
 > 있습니다. 반대로 `PropMean.*`가 2개 이상이면 평균 비율 그룹 막대도 사용할 수
 > 있습니다.
+
+---
+
+**See also**: [scRNA-seq 3차 분석 파이프라인 연동 회신](pipeline-integration-response.md)
+(원문 Q1~Q7/R1에 대한 항목별 답변과 예시)
