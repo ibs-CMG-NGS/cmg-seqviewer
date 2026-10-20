@@ -776,7 +776,7 @@ HypoMap 등 **전 유전자 × 세포타입** 발현 요약을 넘길 때의 규
 | `gene_id` | ✅ | symbol 또는 Ensembl ID |
 | `gene_name` / `symbol` | 권장 | 표시용 이름 (없으면 gene_id) |
 | 세포타입 컬럼 | ✅ 1개 이상 | 숫자형. 컬럼명이 세포타입 라벨 |
-| `cell_type` | ❌ | long layout 전용 (v1 미지원) |
+| `cell_type` | long 전용 | long layout(≤5M rows)은 pivot 후 사용 |
 
 **Companion 파일 (선택):**
 
@@ -817,8 +817,12 @@ manifest:
 - `pct_scale`는 `0-1` 또는 `0-100` 중 하나로 명시해 주세요.
 - wide 표에 세포타입이 아닌 숫자형 메타 컬럼이 섞여 있으면 `expression_schema.cell_type_columns`에 세포타입 컬럼 목록을 명시해 주세요.
 - `cell_type_level`(C66/C185)은 **별도 dataset entry**로 분리하는 것을 권장합니다.
-- 10^7 규모의 long table은 v1에서 거부됩니다. wide mean/pct를 사용하거나
-  v2 DuckDB loader를 기다려 주세요.
+- long layout은 최대 5,000,000행까지 pivot으로 지원합니다. 10^7 규모의 전체
+  long table은 거부되므로 wide mean/pct를 사용하거나 v2 DuckDB loader를 기다려 주세요.
+- `Import Folder`는 위 `seqviewer_manifest.json` 외에 파이프라인 고유의
+  `manifest.json`(`"table": "expression"`, `"files": {...}`)도 자동 인식합니다.
+  이 경우 `expression_wide_mean`을 primary로 사용하고, `pct_scale`은 pct 행렬의
+  최대값(>1.5)을 보고 `0-100`으로 자동 판별합니다.
 - CLI 검증: `cmg-seqviewer-cli load <mean.parquet> --type expression_summary --json`
 
 ---

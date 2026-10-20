@@ -32,14 +32,17 @@ Optional companion files (declared in the manifest):
 | `gene_index` | per-gene `max_mean`, `max_pct`, `n_cell_types_detected` |
 | `cell_type_summary` | per-cell-type `n_cells` and dataset composition |
 
-> Only **wide** layout is supported in this version. A long
-> (gene × cell_type × dataset, millions of rows) table is rejected with a
-> clear message — export the wide matrices instead.
+> **Wide** layout is recommended. Per-dataset **long** layout is also accepted
+> up to 5,000,000 rows (it is pivoted to wide on load). Larger long tables
+> (e.g. the full 10.6M-row atlas) are rejected — export the wide matrices
+> instead.
 
 ## 23.3 Importing
 
 Expression summaries are **manifest/DB-first** (they are not auto-detected
-from arbitrary numeric tables). Use **File → Database → Import Folder** with:
+from arbitrary numeric tables). **Import Folder** also recognizes a pipeline's
+own `manifest.json` (`"table": "expression"`, `"files": {...}`). Use
+**File → Database → Import Folder** with:
 
 ```
 hypomap_C66/
@@ -109,7 +112,9 @@ Open the dataset in the Database Browser, then choose
 
 ## 23.7 Limitations
 
-- Long layout (millions of rows) is not loaded in this version.
+- Per-dataset long layout is supported up to 5,000,000 rows (pivoted to wide
+  on load); the full 10.6M-row atlas requires the wide matrices or the future
+  DuckDB-backed loader.
 - Synonym/alias gene search is not automatic (case-insensitive substring only).
 - A per-dataset facet filter is not available; `cell_type_summary` is shown as
   metadata for now.

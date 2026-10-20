@@ -54,15 +54,32 @@ def test_bundle_context_is_serializable(qtbot):
     json.dumps(ctx["plot_params"])
 
 
+def test_n_cells_map_handles_dataset_suffix():
+    from gui.expression_summary_dialog import ExpressionSummaryDialog
+
+    summary = pd.DataFrame({
+        "cell_type": ["A", "A"],
+        "dataset": ["d1", "d2"],
+        "n_cells": [10, 20],
+    })
+    out = ExpressionSummaryDialog._n_cells_map(summary)
+    assert out["A"] == 30.0
+    assert out["A || d1"] == 10.0
+    assert out["A || d2"] == 20.0
+
+
 def test_dialog_with_companions(qtbot):
     ds = _dataset()
     ds.metadata["pct_matrix"] = ds.dataframe[["gene_id", "CT_A", "CT_B", "CT_C"]].copy()
+    ds.metadata["pct_matrix"].loc[0, "CT_B"] = 0.0  # zero-expression dot is dropped
     ds.metadata["gene_index"] = pd.DataFrame({
         "gene_id": ["G1", "G2", "G3"],
         "gene_name": ["Nkx2-4", "Gaba1", "Tbr1"],
-        "max_mean": [9.0, 8.0, 7.0],
-        "max_pct": [90.0, 80.0, 70.0],
+        "max_mean_expression": [9.0, 8.0, 7.0],
+        "max_pct_expressing": [90.0, 80.0, 70.0],
         "n_cell_types_detected": [3, 3, 3],
+        "top_cell_type": ["CT_A", "CT_B", "CT_C"],
+        "top_mean_expression": [9.0, 8.0, 7.0],
     })
     ds.metadata["cell_type_summary"] = pd.DataFrame({
         "cell_type": ["CT_A", "CT_B", "CT_C"],
@@ -72,9 +89,12 @@ def test_dialog_with_companions(qtbot):
 
     dialog = ExpressionSummaryDialog(ds)
     qtbot.addWidget(dialog)
-    assert "max mean" in dialog.gene_info_label.text()
+    assert "max mean" in dialog.gene_info_label.text() and "top=" in dialog.gene_info_label.text()
     dialog.min_ncells_spin.setValue(250)
     assert dialog.figure.axes
     dialog.view_combo.setCurrentIndex(1)
     assert dialog.figure.axes
+    heat = dialog._heatmap_df()
+    assert len(heat) == 1
+    assert heat.drop(columns=["gene_id", "symbol"]).isna().sum().sum() == 0
 

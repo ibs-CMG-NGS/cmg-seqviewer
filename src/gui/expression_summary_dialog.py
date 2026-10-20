@@ -73,9 +73,33 @@ class ExpressionSummaryDialog(BasePlotDialog):
         df = summary_df.dropna(subset=[ct_col, n_col]).copy()
         df[n_col] = pd.to_numeric(df[n_col], errors='coerce')
         df = df.dropna(subset=[n_col])
+        out = {}
+        # wide의 cell type 컬럼이 "cell_type || dataset" 형태면 combined 키도 채운다.
+        if 'dataset' in df.columns and df['dataset'].notna().any():
+            combined = (df[ct_col].astype(str) + ' || ' + df['dataset'].astype(str))
+            for key, val in df.assign(_label=combined).groupby('_label')[n_col].sum().items():
+                out[str(key)] = float(val)
         # dataset별 행이 여러 개면 cell type 총 n_cells로 합산한다.
-        grouped = df.groupby(ct_col)[n_col].sum()
-        return {str(k): float(v) for k, v in grouped.items()}
+        for key, val in df.groupby(ct_col)[n_col].sum().items():
+            out[str(key)] = float(val)
+        return out
+
+    @staticmethod
+    def _cell_type_summary_map(summary_df) -> Dict[str, dict]:
+        if not isinstance(summary_df, pd.DataFrame) or 'cell_type' not in summary_df.columns:
+            return {}
+        keys = ('n_cells', 'n_genes_detected', 'n_datasets', 'top_dataset',
+                'top_dataset_n', 'top_dataset_frac', 'dataset_confined')
+        out = {}
+        for _, row in summary_df.iterrows():
+            ct = str(row.get('cell_type'))
+            if ct == 'nan':
+                continue
+            info = {k: row.get(k) for k in keys if k in summary_df.columns}
+            out[ct] = info
+            if 'dataset' in summary_df.columns and pd.notna(row.get('dataset')):
+                out[f"{ct} || {row.get('dataset')}"] = info
+        return out
 
     def _build_gene_rows(self, gene_index) -> List[dict]:
         if isinstance(gene_index, pd.DataFrame) and not gene_index.empty:
@@ -84,6 +108,11 @@ class ExpressionSummaryDialog(BasePlotDialog):
                 df = df.rename(columns={df.columns[0]: 'gene_id'})
             if 'gene_name' not in df.columns:
                 df['gene_name'] = df.get('symbol', df['gene_id'])
+            # HypoMap export는 max_mean_expression / max_pct_expressing 이름을 쓴다.
+            if 'max_mean' not in df.columns and 'max_mean_expression' in df.columns:
+                df['max_mean'] = df['max_mean_expression']
+            if 'max_pct' not in df.columns and 'max_pct_expressing' in df.columns:
+                df['max_pct'] = df['max_pct_expressing']
             sort_col = 'max_mean' if 'max_mean' in df.columns else 'gene_name'
             df = df.sort_values(sort_col, ascending=False, na_position='last')
             return df.to_dict('records')
@@ -145,9 +174,16 @@ class ExpressionSummaryDialog(BasePlotDialog):
         self.cell_type_list = QListWidget()
         self.cell_type_list.setMaximumHeight(160)
         self.cell_type_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        summary_map = self._cell_type_summary_map(self.cell_type_summary)
         for ct in self.cell_types:
             item = QListWidgetItem(str(ct))
-            item.setToolTip(str(ct))
+            tip = str(ct)
+            info = summary_map.get(str(ct))
+            if info:
+                parts = [f"{k}={v}" for k, v in info.items() if v is not None and str(v) != '']
+                if parts:
+                    tip += "\n" + " | ".join(parts)
+            item.setToolTip(tip)
             self.cell_type_list.addItem(item)
         self.cell_type_list.selectAll()
         self.cell_type_list.itemSelectionChanged.connect(self._on_cell_type_changed)
@@ -298,6 +334,15 @@ class ExpressionSummaryDialog(BasePlotDialog):
                     parts.append(f"{label}={float(row[key]):.4g}")
                 except (TypeError, ValueError):
                     parts.append(f"{label}={row[key]}")
+        for key, label in (('top_cell_type', 'top'), ('top_mean_expression', 'top mean')):
+            if key in row and pd.notna(row.get(key)):
+                val = row[key]
+                if key == 'top_mean_expression':
+                    try:
+                        val = f"{float(val):.4g}"
+                    except (TypeError, ValueError):
+                        pass
+                parts.append(f"{label}={val}")
         self.gene_info_label.setText("  |  ".join(parts))
 
     # ── Plot ──────────────────────────────────────────────────────────────
@@ -333,6 +378,8 @@ class ExpressionSummaryDialog(BasePlotDialog):
                                 values='mean_expression', aggfunc='first').reset_index()
         names = long.drop_duplicates('gene_id').set_index('gene_id')['gene_name']
         wide.insert(1, 'symbol', wide['gene_id'].map(names))
+        cell_cols = [c for c in wide.columns if c not in ('gene_id', 'symbol')]
+        wide[cell_cols] = wide[cell_cols].fillna(0.0)
         return wide
 
     def _do_plot(self):

@@ -66,6 +66,109 @@ def test_manifest_reimport_is_idempotent(tmp_path):
     assert db.import_from_folder(source)[:2] == (0, 1)
 
 
+def test_expression_pipeline_manifest_is_adapted(tmp_path):
+    """파이프라인 고유 manifest.json(table=expression, files=...)을 인식한다."""
+    source = tmp_path / "output_test" / "export" / "expression"
+    source.mkdir(parents=True)
+    pd.DataFrame({"gene_id": ["G1", "G2"],
+                  "CT_A": [1.0, 2.0], "CT_B": [3.0, 4.0]}).to_parquet(
+        source / "expression_wide_mean.parquet")
+    pd.DataFrame({"gene_id": ["G1", "G2"],
+                  "CT_A": [10.0, 20.0], "CT_B": [30.0, 40.0]}).to_parquet(
+        source / "expression_wide_pct.parquet")
+    pd.DataFrame({"gene_id": ["G1", "G2"], "gene_name": ["A", "B"],
+                  "max_mean_expression": [4.0, 3.0],
+                  "max_pct_expressing": [30.0, 40.0],
+                  "n_cell_types_detected": [2, 2]}).to_parquet(
+        source / "gene_index.parquet")
+    pd.DataFrame({"cell_type": ["CT_A", "CT_B"],
+                  "n_cells": [100, 200]}).to_parquet(
+        source / "cell_type_summary.parquet")
+    (source / "manifest.json").write_text(json.dumps({
+        "schema_version": "1.0",
+        "table": "expression",
+        "species": "mouse",
+        "gene_id_type": "symbol",
+        "cell_type_column": "C66_named",
+        "by_dataset": False,
+        "n_genes": 2,
+        "normalization": "value_layer",
+        "detection": "raw counts > 0",
+        "files": {
+            "expression_wide_mean": "expression_wide_mean.parquet",
+            "expression_wide_pct": "expression_wide_pct.parquet",
+            "gene_index": "gene_index.parquet",
+            "cell_type_summary": "cell_type_summary.parquet",
+        },
+    }), encoding="utf-8")
+
+    db = DatabaseManager(database_dir=tmp_path / "db")
+    assert db.import_from_folder(source)[0] == 1
+    meta = db.metadata_list[0]
+    assert meta.dataset_type.value == "expression_summary"
+    assert meta.organism == "Mus musculus"
+    assert "output_test" in meta.alias
+    schema = meta.expression_schema
+    assert schema["layout"] == "wide"
+    assert schema["pct_scale"] == "0-100"
+    assert schema["cell_type_columns"] == ["CT_A", "CT_B"]
+
+    dataset = db.load_dataset(meta.dataset_id)
+    assert dataset is not None
+    assert dataset.metadata["cell_types"] == ["CT_A", "CT_B"]
+    assert dataset.metadata["pct_scale"] == "0-100"
+    assert dataset.metadata["gene_index"] is not None
+
+
+def test_expression_long_only_pipeline_manifest_is_pivoted(tmp_path):
+    source = tmp_path / "output_long" / "export" / "expression"
+    source.mkdir(parents=True)
+    pd.DataFrame({
+        "gene_id": ["G1", "G1", "G2", "G2"],
+        "gene_name": ["A", "A", "B", "B"],
+        "cell_type": ["CT_A", "CT_B", "CT_A", "CT_B"],
+        "dataset": ["ds1"] * 4,
+        "n_cells": [10, 10, 10, 10],
+        "n_expressing": [5, 0, 10, 2],
+        "pct_expressing": [50.0, 0.0, 100.0, 20.0],
+        "mean_expression": [1.0, 2.0, 3.0, 4.0],
+        "mean_counts": [0.1, 0.2, 0.3, 0.4],
+    }).to_parquet(source / "expression_long.parquet")
+    pd.DataFrame({
+        "gene_id": ["G1", "G2"], "gene_name": ["A", "B"],
+        "max_mean_expression": [2.0, 4.0],
+        "n_cell_types_detected": [2, 2],
+    }).to_parquet(source / "gene_index.parquet")
+    pd.DataFrame({"cell_type": ["CT_A", "CT_B"], "dataset": ["ds1", "ds1"],
+                  "n_cells": [10, 10]}).to_parquet(source / "cell_type_summary.parquet")
+    (source / "manifest.json").write_text(json.dumps({
+        "table": "expression",
+        "species": "mouse",
+        "cell_type_column": "C185_named",
+        "by_dataset": True,
+        "dataset_column": "Dataset",
+        "n_genes": 2,
+        "files": {
+            "expression_long": "expression_long.parquet",
+            "gene_index": "gene_index.parquet",
+            "cell_type_summary": "cell_type_summary.parquet",
+        },
+    }), encoding="utf-8")
+
+    db = DatabaseManager(database_dir=tmp_path / "db")
+    assert db.import_from_folder(source)[0] == 1
+    meta = db.metadata_list[0]
+    assert meta.expression_schema["layout"] == "long"
+
+    dataset = db.load_dataset(meta.dataset_id)
+    assert dataset is not None
+    assert dataset.metadata["layout"] == "long"
+    assert dataset.metadata["pct_scale"] == "0-100"
+    assert dataset.metadata["cell_types"] == ["CT_A || ds1", "CT_B || ds1"]
+    assert len(dataset.dataframe) == 2
+    assert dataset.metadata["pct_matrix"] is not None
+
+
 def test_expression_summary_companions_imported_and_loaded(tmp_path):
     source = tmp_path / "hypomap_C66"
     ds_dir = source / "datasets"

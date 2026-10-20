@@ -3,7 +3,7 @@
 - **수신**: scRNA-seq 3차 분석 파이프라인 담당
 - **발신**: cmg-seqviewer 개발팀
 - **기준 코드**: 커밋 `417d981` + `5158ad0` + `expression_summary` 구현 (v1.3.2 기반)
-- **구현 상태**: Phase 1(wide + gene_index + dot plot/heatmap + manifest/DB/CLI) 완료
+- **구현 상태**: Phase 1(wide + long pivot ≤5M + gene_index + dot plot/heatmap + manifest/DB/CLI) 완료, 전달 sample bundle 검증 완료
 - **대상 문의**: HypoMap atlas 기반 “전 유전자 × 세포타입” 발현 요약 export 연동
 
 ---
@@ -35,7 +35,7 @@
 | G | 전달 위치/이름 | **제안** — 아래 레이아웃 사용 |
 | H | 10.6M 불가 시 대안 | **(a) wide + gene_index를 v1**, **(c) DuckDB를 v2** 권장 |
 
-**핵심 결론:** wide mean/pct + gene_index 조합은 **뷰어 신규 타입 구현 후 충분히 수용 가능**합니다. long 10.6M rows는 v1 범위에서 제외하고, 필요 시 DuckDB 기반 lazy 로딩(v2)으로 확장하는 것을 권장합니다.
+**핵심 결론:** wide mean/pct + gene_index 조합은 **현재 구현으로 수용 가능**합니다. per-dataset long(수백만 행)은 pivot으로 지원하며, 전체 10.6M rows는 v1 범위에서 제외하고 필요 시 DuckDB 기반 lazy 로딩(v2)으로 확장하는 것을 권장합니다.
 
 ---
 
@@ -110,6 +110,7 @@
 
 - **wide 57k × 185:** **가능.** float64 기준 행렬당 약 85MB, pandas 오버헤드 포함 100–150MB입니다. mean/pct 두 개를 동시에 올려도 200–300MB 수준입니다.
 - **long 10.6M rows:** **현재 구조로는 불가/위험.** 숫자 5개 + 문자열 3–4개 기준 대략 2–4GB+로 추정되며, 로드·정렬·검색 시 UI 지연이 발생합니다.
+- **per-dataset long(≤5M rows, 예: Dowsett 2.6M):** pivot으로 wide를 만들어 사용할 수 있습니다(로드 수 초).
 - 하드코딩된 행 제한은 없지만, 현재는 전체 pandas 로드 방식입니다.
 
 **B6. server-side filtering(DuckDB/Arrow/predicate pushdown)이 가능한가요? 목표 응답시간은?**
@@ -126,7 +127,7 @@
 
 **B7. client-side만 가능하다면 wide + gene_index 방식이 가능한가요?**
 
-**가능 (v1 권장).** wide mean/pct + gene_index를 메모리에 올리고, gene_index에서 유전자 1행을 찾은 뒤 wide 행을 fetch하는 방식입니다. long 10.6M rows는 top-N/pagination/lazy 없이는 불가합니다.
+**가능 (v1 권장).** wide mean/pct + gene_index를 메모리에 올리고, gene_index에서 유전자 1행을 찾은 뒤 wide 행을 fetch하는 방식입니다. per-dataset long(≤5M rows)은 로드 시 pivot으로 동일하게 사용할 수 있고, 10.6M rows는 top-N/pagination/lazy 없이는 불가합니다.
 
 **B8. 57k × 185 heatmap 렌더링이 가능한가요? 불가하면 최대 column 수는?**
 
@@ -291,27 +292,26 @@ hypomap_C66/
 
 ## 4. 단계별 개발 계획 및 담당
 
-### Phase 0 — sample bundle 검증 (담당: 파이프라인 팀 + 뷰어 팀)
+### Phase 0 — sample bundle 검증 (완료)
 
-- C66 wide mean/pct + gene_index + summary 전달
-- 현재 `cmg-seqviewer-cli load --type multi_group --json`으로 wide 로드 확인
-- 라벨(`:`/공백), 185 columns, top-N Heatmap 품질 확인
-- 기간: 약 1–2일 (데이터 전달 후)
+- `output_hypomap_c66_expression`, `output_hypomap_dowsett_long` 검증 완료
+- 결과는 아래 **8. Sample bundle 검증 결과** 참고
 
 ### Phase 1 — `expression_summary` 타입 (구현 완료, 담당: 뷰어 팀)
 
 - `DatasetType.EXPRESSION_SUMMARY` 추가
-- `ExpressionSummaryLoader` (wide mean/pct + gene_index + cell_type_summary)
+- `ExpressionSummaryLoader` (wide mean/pct + gene_index + cell_type_summary; per-dataset long ≤5M rows pivot 지원)
 - manifest `expression_schema` 파싱, DB Import Folder 지원
 - **Gene × Cell-Type Dot Plot** (size=pct, color=mean) + top-N Heatmap
 - gene 검색(`gene_id`/`gene_name`, 대소문자 무시), n_cells 회색 처리
 - “Expression summary” 라벨/타입 표시
 - F1/파이프라인 문서·테스트
 - 상태: wide layout + companion + dot plot/heatmap + gene 검색 + CLI/DB import 구현 완료
+  (per-dataset long ≤5M rows는 pivot으로 지원, 전체 10.6M은 v2)
 
-### Phase 2 — long table / DuckDB (담당: 뷰어 팀)
+### Phase 2 — full atlas long / DuckDB (담당: 뷰어 팀)
 
-- 10.6M long parquet을 DuckDB/Arrow로 lazy 로딩
+- 5M 초과 long(전체 10.6M) parquet을 DuckDB/Arrow로 lazy 로딩
 - gene lookup / top cell types / pct filter predicate pushdown
 - `dataset` facet filter, pagination
 - 기간: 대략 2주+ (의존성·배포 영향 검토 포함)
@@ -328,7 +328,7 @@ hypomap_C66/
 | heatmap top-N (≤500 genes × 185 cell types) | < 5초 |
 | 필터 적용 | < 2초 |
 
-10.6M long table은 v1 목표에서 제외합니다.
+5M 초과 long table(전체 10.6M)은 v1 목표에서 제외합니다. per-dataset long(≤5M)은 pivot으로 지원합니다.
 
 ---
 
@@ -354,7 +354,47 @@ hypomap_C66/
 
 ---
 
-## 8. 참고 문서
+## 8. Sample bundle 검증 결과 (2026-10-20)
+
+전달해 주신 두 bundle을 실제로 Import Folder → DB → Expression Summary 뷰까지 검증했습니다.
+
+### 8.1 `output_hypomap_c66_expression`
+
+| 항목 | 결과 |
+|------|------|
+| wide mean | 57,362 genes × 65 cell types (C66_named, min_cells=10) |
+| wide pct | 동일 shape, `pct_expressing` 0–100 |
+| manifest | 파이프라인 고유 `manifest.json` 자동 인식 |
+| DB import | 성공 (companion 포함, 약 1초) |
+| DB load | 성공 (약 0.2초) |
+| pct_scale | pct 최대값을 보고 `0-100` 자동 판별 |
+| dot plot | `Malat1`, `Xkr4` 등 gene 검색/표시 확인 |
+| gene_index | `max_mean_expression`/`max_pct_expressing` alias 인식 |
+| long table | 1,916,602 rows — long-only일 때 pivot으로 로드 성공 (약 5–6초) |
+
+### 8.2 `output_hypomap_dowsett_long`
+
+| 항목 | 결과 |
+|------|------|
+| wide mean | 57,362 genes × 139 cell types (`cell_type || Dowsett10xnuc`) |
+| cell_type_summary | 139 rows, `dataset` 컬럼 포함 → combined label 매핑 확인 |
+| DB import | 성공 (약 0.4초) |
+| DB load | 성공 (약 0.3초) |
+| long table | 2,593,263 rows — long-only일 때 pivot으로 로드 성공 (약 5–6초, 57,362 genes × 139 cell types) |
+| 전체 atlas long | 10.6M rows는 v1 pivot 한도(5M) 초과 → v2 DuckDB |
+
+### 8.3 확인된 규약
+
+- `pct_expressing`은 **0–100**으로 내보내 주세요. 앱이 pct 행렬 최대값으로 자동 판별하지만,
+  manifest/`COLUMNS.md`에 명시하면 더 안전합니다.
+- `gene_index`의 `max_mean_expression`/`max_pct_expressing` 이름은 그대로 사용해도 됩니다.
+- `cell_type_summary`에 `dataset` 컬럼이 있으면 wide의 `cell_type || dataset` 라벨과
+  자동으로 매핑됩니다.
+- long은 per-dataset(≤5M rows)까지 pivot으로 지원합니다. 전체 10.6M rows는 wide 권장.
+
+---
+
+## 9. 참고 문서
 
 - `docs/developer/pipeline-integration.md` — 전체 연동 규격
 - `docs/developer/pipeline-integration-response.md` — 기존 Q1~Q7/R1 회신

@@ -34,16 +34,41 @@ def test_gene_name_fallback_and_first_column_gene_id():
     assert ds.metadata["cell_types"] == ["A", "B"]
 
 
-def test_long_layout_rejected():
+def test_long_layout_pivots_to_wide():
     df = pd.DataFrame({
-        "gene_id": ["G1"], "cell_type": ["CT_A"], "mean_expression": [1.0],
+        "gene_id": ["G1", "G1", "G2"],
+        "gene_name": ["A", "A", "B"],
+        "cell_type": ["CT_A", "CT_B", "CT_A"],
+        "dataset": ["ds1", "ds1", "ds1"],
+        "n_cells": [10, 10, 10],
+        "pct_expressing": [50.0, 0.0, 100.0],
+        "mean_expression": [1.0, 2.0, 3.0],
     })
-    with pytest.raises(ValueError, match="long layout"):
-        ExpressionSummaryLoader().load_from_dataframe(
-            df, expression_schema={"layout": "long"})
-    # schema에 layout이 없어도 cell_type 컬럼이 있으면 long으로 판단해 거부한다.
-    with pytest.raises(ValueError, match="long layout"):
-        ExpressionSummaryLoader().load_from_dataframe(df)
+    ds = ExpressionSummaryLoader().load_from_dataframe(df, name="long")
+    assert ds.metadata["layout"] == "long"
+    assert ds.metadata["cell_types"] == ["CT_A || ds1", "CT_B || ds1"]
+    assert ds.metadata["pct_scale"] == "0-100"
+    assert ds.is_valid
+    assert ds.metadata["pct_matrix"] is not None
+    assert ds.metadata["gene_index"] is not None
+    assert ds.metadata["cell_type_summary"] is not None
+    # gene × cell type 값이 wide로 pivot된다.
+    row = ds.dataframe.set_index("gene_id").loc["G1"]
+    assert row["CT_A || ds1"] == 1.0
+    assert row["CT_B || ds1"] == 2.0
+
+
+def test_long_layout_row_cap(monkeypatch):
+    import utils.expression_summary_loader as mod
+
+    df = pd.DataFrame({
+        "gene_id": ["G1", "G2", "G3"],
+        "cell_type": ["CT_A", "CT_A", "CT_A"],
+        "mean_expression": [1.0, 2.0, 3.0],
+    })
+    monkeypatch.setattr(mod, "MAX_LONG_ROWS", 2)
+    with pytest.raises(ValueError, match="pivot limit"):
+        ExpressionSummaryLoader().load_from_dataframe(df, name="long")
 
 
 def test_companions_loaded(tmp_path):
@@ -92,3 +117,18 @@ def test_dot_plot_build_and_render():
     info = render_expression_dot(ax, long, {"top_cell_types": 2, "label_limit": 20})
     assert info["points"]
     assert len(info["genes"]) == 2
+
+
+def test_pct_scale_conversion():
+    from plots.expression_dot import build_expression_long
+
+    wide = pd.DataFrame({"gene_id": ["G1"], "gene_name": ["A"], "CT_A": [1.0]})
+    pct_100 = pd.DataFrame({"gene_id": ["G1"], "CT_A": [50.0]})
+    long = build_expression_long(wide, pct_100, genes=["G1"], cell_types=["CT_A"],
+                                 pct_scale="0-100")
+    assert long["pct_display"].iloc[0] == 50.0
+
+    pct_01 = pd.DataFrame({"gene_id": ["G1"], "CT_A": [0.5]})
+    long = build_expression_long(wide, pct_01, genes=["G1"], cell_types=["CT_A"],
+                                 pct_scale="0-1")
+    assert long["pct_display"].iloc[0] == 50.0

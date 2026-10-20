@@ -61,6 +61,145 @@ def _expression_companion_names(item: dict) -> list:
         return []
     return [Path(str(v)).name for v in comp.values() if v]
 
+
+_SPECIES_NAMES = {
+    'mouse': 'Mus musculus',
+    'human': 'Homo sapiens',
+    'rat': 'Rattus norvegicus',
+}
+
+
+def _expression_manifest_alias(manifest: dict, source_dir: Path) -> str:
+    if manifest.get('alias'):
+        return str(manifest['alias'])
+    level = manifest.get('cell_type_column') or manifest.get('cell_type_level') or ''
+    ds_label = ''
+    if manifest.get('by_dataset'):
+        datasets = manifest.get('datasets')
+        if isinstance(datasets, str):
+            ds_label = datasets
+        elif isinstance(datasets, list) and datasets:
+            ds_label = ','.join(str(d) for d in datasets[:3])
+            if len(datasets) > 3:
+                ds_label += '…'
+    parts = ['HypoMap']
+    if level:
+        parts.append(str(level))
+    if ds_label:
+        parts.append(ds_label)
+    parts.append('expression')
+    alias = ' '.join(parts)
+    # Import Folder가 .../export/expression 형태면 상위 프로젝트명을 앞에 붙인다.
+    if source_dir.name == 'expression' and len(source_dir.parents) >= 2:
+        project = source_dir.parents[1].name
+        if project and project not in ('datasets', 'export'):
+            alias = f"{project} — {alias}"
+    return alias
+
+
+def _expression_manifest_to_dataset(manifest: dict, source_dir: Path) -> Optional[dict]:
+    """파이프라인 고유의 expression manifest.json을 seqviewer dataset 항목으로 변환.
+
+    기대 형태:
+      {"table": "expression", "files": {"expression_wide_mean": "...", ...}, ...}
+    """
+    if not isinstance(manifest, dict) or manifest.get('table') != 'expression':
+        return None
+    files = manifest.get('files') or {}
+    if not isinstance(files, dict):
+        return None
+
+    primary = files.get('expression_wide_mean') or files.get('expression_long')
+    if not primary:
+        return None
+    layout = 'wide' if files.get('expression_wide_mean') else 'long'
+    primary_path = source_dir / Path(str(primary)).name
+    if not primary_path.exists():
+        return None
+
+    cell_type_columns = None
+    if layout == 'wide':
+        try:
+            import pyarrow.parquet as pq
+            names = pq.ParquetFile(primary_path).schema_arrow.names
+            cell_type_columns = [c for c in names if c != 'gene_id']
+        except Exception:
+            cell_type_columns = None
+
+    pct_scale = '0-100'  # 이 파이프라인은 100 * n_expressing / n_cells 를 쓴다.
+    pct_name = files.get('expression_wide_pct')
+    if pct_name:
+        pct_path = source_dir / Path(str(pct_name)).name
+        try:
+            import pandas as _pd
+            pct_df = _pd.read_parquet(pct_path)
+            num = pct_df.select_dtypes(include='number')
+            if not num.empty and float(num.max().max()) <= 1.5:
+                pct_scale = '0-1'
+        except Exception:
+            pass
+
+    companions = {}
+    for key, manifest_key in (
+            ('pct', 'expression_wide_pct'),
+            ('gene_index', 'gene_index'),
+            ('cell_type_summary', 'cell_type_summary'),
+            ('cell_type_dataset_counts', 'cell_type_dataset_counts'),
+            ('skipped_groups', 'skipped_groups')):
+        name = files.get(manifest_key)
+        if name:
+            companions[key] = Path(str(name)).name
+
+    species = str(manifest.get('species') or '')
+    schema = {
+        'schema_version': str(manifest.get('schema_version') or '1.0'),
+        'layout': layout,
+        'value_type': 'mean_expression',
+        'cell_type_level': manifest.get('cell_type_column') or '',
+        'cell_type_columns': cell_type_columns,
+        'gene_id_type': manifest.get('gene_id_type') or 'symbol',
+        'normalization': manifest.get('normalization') or '',
+        'detection': manifest.get('detection') or '',
+        'pct_scale': pct_scale,
+        'by_dataset': bool(manifest.get('by_dataset')),
+        'dataset_column': manifest.get('dataset_column'),
+        'min_cells': manifest.get('min_cells'),
+        'n_cells_input': manifest.get('n_cells_input'),
+        'n_cells_used': manifest.get('n_cells_used'),
+        'source': manifest.get('source') or '',
+        'companion_files': companions,
+    }
+
+    return {
+        'alias': _expression_manifest_alias(manifest, source_dir),
+        'original_filename': Path(str(primary)).name,
+        'file_path': Path(str(primary)).name,
+        'dataset_type': DatasetType.EXPRESSION_SUMMARY.value,
+        'organism': _SPECIES_NAMES.get(species.lower(), species),
+        'row_count': int(manifest.get('n_genes') or 0),
+        'gene_count': int(manifest.get('n_genes') or 0),
+        'significant_genes': 0,
+        'notes': (
+            f"HypoMap expression export; normalization={manifest.get('normalization') or ''}; "
+            f"detection={manifest.get('detection') or ''}; source={manifest.get('source') or ''}"),
+        'tags': ['HypoMap', schema['cell_type_level'], 'expression'],
+        'expression_schema': schema,
+    }
+
+
+def _load_expression_manifest(source_dir: Path, filename: str = 'manifest.json'):
+    """source_dir의 expression manifest.json을 seqviewer manifest 형태로 반환."""
+    path = source_dir / filename
+    if not path.exists():
+        return None
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception:
+        return None
+    entry = _expression_manifest_to_dataset(data, source_dir)
+    return {'datasets': [entry]} if entry else None
+
 # dataset_type 문자열 별칭 매핑(differential_accessibility → atac_seq 등)은
 # PreloadedDatasetMetadata.from_dict()에서 단일 지점으로 적용된다
 # (models.data_models.DATASET_TYPE_ALIASES) — manifest/metadata.json 어느 경로든 동일 적용.
@@ -290,10 +429,22 @@ class DatabaseManager:
             # ── datasets_dir에 seqviewer_manifest.json이 직접 들어있으면 우선 사용 ──
             # (3차 파이프라인이 만든 풍부한 메타데이터를 컬럼 추측보다 먼저 적용)
             manifest_file = datasets_dir / "seqviewer_manifest.json"
+            manifest_data = None
+            manifest_source = manifest_file.name
             if manifest_file.exists():
                 try:
                     with open(manifest_file, 'r', encoding='utf-8') as f:
                         manifest_data = json.load(f)
+                except Exception as e:
+                    self.logger.warning(f"Failed to read seqviewer_manifest.json: {e}")
+
+            # HypoMap 등 파이프라인 고유 manifest.json도 동일하게 인식한다.
+            if manifest_data is None:
+                manifest_data = _load_expression_manifest(datasets_dir, 'manifest.json')
+                manifest_source = 'manifest.json'
+
+            if manifest_data is not None:
+                try:
                     existing_ids = {meta.dataset_id for meta in self.metadata_list}
                     for item in manifest_data.get('datasets', []):
                         norm_item = _normalize_manifest_item(item)
@@ -323,11 +474,11 @@ class DatabaseManager:
                         claimed_files.add(filename)
                         auto_imported += 1
                         self.logger.info(
-                            f"Auto-imported '{meta.alias}' from seqviewer_manifest.json "
+                            f"Auto-imported '{meta.alias}' from {manifest_source} "
                             f"({meta.dataset_type.value}, {meta.row_count} rows)"
                         )
                 except Exception as e:
-                    self.logger.warning(f"Failed to read seqviewer_manifest.json: {e}")
+                    self.logger.warning(f"Failed to process {manifest_source}: {e}")
 
             for parquet_file in sorted(datasets_dir.glob("*.parquet")):
                 if parquet_file.name in claimed_files:
@@ -714,8 +865,10 @@ class DatabaseManager:
 
         meta_file = source_dir / "metadata.json"
         manifest_file = source_dir / "seqviewer_manifest.json"
+        expression_manifest = source_dir / "manifest.json"
         is_manifest = not meta_file.exists() and manifest_file.exists()
         chosen_file = manifest_file if is_manifest else meta_file
+        data = None
 
         if chosen_file.exists():
             # ── metadata.json / seqviewer_manifest.json 기반 병합 ──────────
@@ -725,7 +878,13 @@ class DatabaseManager:
             except Exception as e:
                 self.logger.error(f"import_from_folder: failed to read {chosen_file}: {e}")
                 return 0, 0, 0
+        elif expression_manifest.exists():
+            # HypoMap 등 파이프라인 고유 manifest.json (단일 expression 테이블)
+            data = _load_expression_manifest(source_dir, 'manifest.json')
+            is_manifest = True
+            chosen_file = expression_manifest
 
+        if data is not None:
             existing_ids = {m.dataset_id for m in self.metadata_list}
             existing_files = {m.file_path for m in self.metadata_list}
 

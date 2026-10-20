@@ -26,8 +26,14 @@ def _truncate(label, limit: int = 32) -> str:
 
 
 def _pct_scale_factor(scale) -> float:
+    """저장된 pct 값의 스케일 → 0–100로 변환하는 배율.
+
+    `0-1`이면 100을 곱하고, 이미 `0-100`이면 그대로 둔다.
+    """
     text = str(scale or '0-1').replace(' ', '')
-    return 100.0 if text in ('0-100', '0_100', 'percent', '%') else 1.0
+    if text in ('0-100', '0_100', 'percent', '%'):
+        return 1.0
+    return 100.0
 
 
 def _resolve_gene_rows(df: pd.DataFrame, genes: List[str],
@@ -53,6 +59,7 @@ def build_expression_long(
     pct_scale='0-1',
     min_pct: float = 0.0,
     min_n_cells: float = 0.0,
+    drop_zero: bool = True,
 ) -> pd.DataFrame:
     """wide mean(+pct) 행렬에서 선택 유전자 × 세포타입 long 표를 만든다."""
     if wide_df is None or wide_df.empty or gene_id_col not in wide_df.columns:
@@ -104,6 +111,11 @@ def build_expression_long(
     long['pct_display'] = pd.to_numeric(long['pct_expressing'], errors='coerce') * factor
     if long['pct_display'].isna().all():
         long['pct_display'] = 50.0
+    elif drop_zero:
+        # long export와 동일하게 n_expressing=0(=pct 0) 행은 표시하지 않는다.
+        long = long[long['pct_display'] > 0].copy()
+        if long.empty:
+            return long
     low_n = long['n_cells'].notna() & (long['n_cells'] < float(min_n_cells or 0.0))
     low_pct = long['pct_display'].notna() & (long['pct_display'] < float(min_pct or 0.0))
     long['dimmed'] = low_n | low_pct
