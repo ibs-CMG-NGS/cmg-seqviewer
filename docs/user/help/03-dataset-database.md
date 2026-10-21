@@ -15,7 +15,7 @@ The browser shows all registered datasets with columns:
 
 - **Alias** – friendly name you assigned
 
-- **Type** – DE or GO
+- **Type** – DE, GO/KEGG, Multi-Group, ATAC, Composition, or Expression Summary
 
 - **Rows / Genes / Sig. Genes** – quick statistics
 
@@ -120,7 +120,8 @@ No manual editing of `metadata.json` is needed.
 ## 3.8 📥 Import Folder — Merging Pipeline Output
 
 When your analysis pipeline produces a separate output folder
- (containing `metadata.json` + `datasets/*.parquet`)
+ (containing `metadata.json`, `seqviewer_manifest.json`, or a pipeline
+ `manifest.json`, plus a `datasets/` folder)
  for each run, use **Import Folder** to merge everything in one step.
 
 ### How to use
@@ -131,24 +132,30 @@ When your analysis pipeline produces a separate output folder
 2. Click the **📥 Import Folder** button in the top toolbar
 
 3. Select the pipeline output folder
- (the folder that contains `metadata.json`
- and a `datasets/` sub-folder)
+ (the folder that contains the manifest and a `datasets/` sub-folder)
 
-4. The app reads every dataset entry from
- `metadata.json`, copies the matching
- `.parquet` files into the app database,
- and registers them — **duplicate datasets are automatically
+4. The app reads every dataset entry from the manifest
+ (`seqviewer_manifest.json` / `metadata.json`, or the pipeline's
+ `manifest.json`), copies the matching `.parquet` files into the app
+ database, and registers them — **duplicate datasets are automatically
  skipped**
 
 5. A summary dialog shows how many datasets were
  imported / skipped
 
-### When there is no metadata.json
+### When there is no manifest
 
-If the selected folder has no `metadata.json`, the app
+If the selected folder has no manifest, the app
  falls back to auto-detection: it scans all `.parquet` files,
- determines DE vs GO type from columns, and registers them
- exactly like the **Refresh** button does.
+ determines the type from columns (DE / GO / Multi-Group / Composition /
+ ATAC), and registers them exactly like the **Refresh** button does.
+ **Expression Summary requires a manifest** — it is not auto-detected.
+
+### Mixed bundles
+
+A manifest may contain several dataset types. Supported types are imported;
+unsupported types are skipped without rejecting the whole bundle. Composition
+and Expression Summary are supported in the current version.
 
 ### Duplicate handling
 
@@ -177,23 +184,27 @@ python merge_db.py run1/ --target D:/my_db/
 # Preview without writing any files
 python merge_db.py run1/ --dry-run
 
-        Pipeline Output Convention
+## 3.10 Pipeline Output Convention
 
-        For the smoothest workflow, have your R/Python pipeline
-        write output in this layout:
+For the smoothest workflow, have your R/Python pipeline write output in this
+layout:
 
-        ```
-
+```
 pipeline_run_2026-03-12/
-├── metadata.json ← dataset registry
+├── seqviewer_manifest.json
 └── datasets/
- ├── CtrlvsKO_de_xxxx.parquet
- └── CtrlvsKO_go_xxxx.parquet
+    ├── CtrlvsKO_de_xxxx.parquet
+    └── CtrlvsKO_go_xxxx.parquet
+```
+
+`seqviewer_manifest.json` uses the same `datasets[]` shape as `metadata.json`
+and adds support for Composition and Expression Summary. Expression Summary
+companions (`pct`, `gene_index`, `cell_type_summary`) are referenced from
+`expression_schema.companion_files` — see sections **22** and **23**.
 
 The `metadata.json` format:
 
-```
-
+```json
 {
   "version": "1.0",
   "datasets": [
@@ -207,28 +218,27 @@ The `metadata.json` format:
     }
   ]
 }
+```
 
-        Data Folder Location
+## 3.11 Data Folder Location
 
-        Click 📂 Open Data Folder** in the Database Browser to open
-        the external data directory in your file explorer.
-        The default path is:
+Click **📂 Open Data Folder** in the Database Browser to open the external
+data directory in your file explorer. The default path is:
 
-            Windows:** %USERPROFILE%/CMG-SeqViewer/data/`
+- **Windows:** `%USERPROFILE%/CMG-SeqViewer/data/`
+- **macOS / Linux:** `~/CMG-SeqViewer/data/`
 
-            macOS / Linux:** ~/CMG-SeqViewer/data/`
+Parquet files placed in the `datasets/` subfolder are picked up on the next
+**Refresh**.
 
-        Parquet files placed in the datasets/` subfolder
-        are picked up on the next Refresh**.
+## 3.12 Deleting Datasets
 
-        Deleting Datasets
+Select one or more dataset rows → click **🗑️ Delete Selected** (confirmation
+required) to remove them from the registry (the `.parquet` file is also
+deleted).
 
-            Select one or more dataset rows → click 🗑️ Delete Selected**
-                (confirmation required) to remove them from the registry
-                (the .parquet` file is also deleted)
-
-        See the Right-Click Context Menu and Editing Metadata sections above for
-        loading, editing (single/bulk), and exporting.*
+See the Right-Click Context Menu and Editing Metadata sections above for
+loading, editing (single/bulk), and exporting.
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](20-faq.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](20-faq.md) · [Cell-Type Composition](22-cell-type-composition.md) · [Expression Summary](23-expression-summary.md)

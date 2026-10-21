@@ -61,6 +61,11 @@ Your input file should contain columns for:
 *Note: Column names are case-insensitive. The tool will automatically
  detect variations like "Log2FoldChange", "log2fc", etc.*
 
+*This section describes the DE format. GO/KEGG, Multi-Group, ATAC, Composition,
+and Expression Summary have their own schemas — see sections **5**, **15**,
+**13**, **22**, and **23**. Expression Summary is loaded through the database
+manifest (section **23**), not plain File → Open.*
+
 ## 2.5 Opening Gene Lists
 
 To load a gene list for filtering:

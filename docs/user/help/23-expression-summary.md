@@ -29,7 +29,7 @@ Optional companion files (declared in the manifest):
 | Companion | Contents |
 |-----------|----------|
 | `pct` | same shape as the mean matrix, `pct_expressing` |
-| `gene_index` | per-gene `max_mean`, `max_pct`, `n_cell_types_detected` |
+| `gene_index` | per-gene `max_mean_expression`/`max_pct_expressing` (or `max_mean`/`max_pct`), `n_cell_types_detected` |
 | `cell_type_summary` | per-cell-type `n_cells` and dataset composition |
 
 > **Wide** layout is recommended. Per-dataset **long** layout is also accepted
@@ -61,10 +61,11 @@ hypomap_C66/
     "file_path": "hypomap_C66_wide_mean.parquet",
     "dataset_type": "expression_summary",
     "organism": "Mus musculus",
+    "cell_type_count": 65,
     "expression_schema": {
       "layout": "wide",
       "value_type": "mean_expression",
-      "pct_scale": "0-1",
+      "pct_scale": "0-100",
       "cell_type_level": "C66",
       "companion_files": {
         "pct": "hypomap_C66_wide_pct.parquet",
@@ -76,7 +77,9 @@ hypomap_C66/
 }
 ```
 
-The CLI can validate the primary matrix directly:
+`file_path` and companion names may be bare filenames or `datasets/<filename>`
+(the importer normalizes to the basename). The CLI can validate the primary
+matrix directly:
 
 ```bash
 cmg-seqviewer-cli load hypomap_C66_wide_mean.parquet \
