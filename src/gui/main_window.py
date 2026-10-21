@@ -11,9 +11,12 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QProgressBar, QInputDialog, QLineEdit, QHeaderView,
                             QSizePolicy, QDialog, QToolButton, QFrame,
                             QDockWidget, QScrollArea)
-from PyQt6.QtCore import Qt, pyqtSignal, QThread, QSortFilterProxyModel, QTimer
-from PyQt6.QtGui import QAction, QIcon, QFont, QActionGroup, QPixmap, QShortcut, QKeySequence
+from PyQt6.QtCore import (Qt, pyqtSignal, QThread, QSortFilterProxyModel, QTimer,
+                         QObject, QEvent, QPoint)
+from PyQt6.QtGui import (QAction, QIcon, QFont, QActionGroup, QPixmap, QShortcut,
+                         QKeySequence, QGuiApplication, QCursor)
 import logging
+import os
 from pathlib import Path
 from typing import Optional, List, Dict
 import numpy as np
@@ -36,6 +39,59 @@ from gui.pandas_table_model import DataFrameTableModel
 from models.data_models import FilterMode, DatasetType
 from presenters.main_presenter import MainPresenter
 from utils.export_paths import remembered_save_path
+
+
+def _is_wsl() -> bool:
+    """WSL/WSLg 환경인지 감지한다."""
+    try:
+        import platform
+        return ('microsoft' in platform.uname().release.lower()
+                or bool(os.environ.get('WSL_DISTRO_NAME')))
+    except Exception:
+        return False
+
+
+class _CursorMenuAnchorFilter(QObject):
+    """Linux/WSLg에서 top-level QMenu 팝업을 커서 위치 기준으로 재배치한다.
+
+    혼합 DPI(120%/100%) 환경에서 Qt의 mapToGlobal()/window.pos()가 전역
+    좌표를 제대로 주지 않아 팝업이 창 왼쪽 위에 뜨는 경우가 있다. 커서
+    위치는 이러한 환경에서도 올바른 전역 좌표이므로, 메뉴바 클릭 지점
+    아래에 팝업을 배치한다.
+    """
+
+    def __init__(self, menubar):
+        super().__init__(menubar)
+        self._menubar = menubar
+        self._actions = {a.menu(): a for a in menubar.actions() if a.menu() is not None}
+        self._logged = False
+        self._logger = logging.getLogger(__name__)
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.Show and obj in self._actions:
+            try:
+                # WSLg에서는 mapToGlobal()/window.pos()가 전역 좌표를
+                # 제대로 주지 않아 팝업이 창 왼쪽 위에 뜬다. 마우스 커서
+                # 위치는 WSLg에서도 올바른 전역 좌표이므로, 메뉴바 클릭
+                # 지점(커서) 아래에 팝업을 배치한다.
+                pos = QCursor.pos() + QPoint(0, 4)
+                screen = QGuiApplication.screenAt(QCursor.pos()) or obj.screen()
+                if screen is not None:
+                    avail = screen.availableGeometry()
+                    hint = obj.sizeHint()
+                    pos.setX(max(avail.left(), min(pos.x(), avail.right() - hint.width())))
+                    pos.setY(max(avail.top(), min(pos.y(), avail.bottom() - hint.height())))
+                obj.move(pos)
+                # Qt가 Show 직후 자체 위치를 다시 적용할 수 있어 한 틱 뒤 재적용.
+                QTimer.singleShot(0, lambda p=pos, m=obj: m.move(p))
+                if not self._logged:
+                    self._logged = True
+                    self._logger.info(
+                        f"menu anchor: cursor=({QCursor.pos().x()},{QCursor.pos().y()}) "
+                        f"-> popup=({pos.x()},{pos.y()})")
+            except Exception:
+                pass
+        return False
 
 
 class MainWindow(QMainWindow):
@@ -113,6 +169,25 @@ class MainWindow(QMainWindow):
         self.logger.info("Main window initialized")
         self.audit_logger.log_action("Application Started")
     
+    def showEvent(self, event):
+        """창이 표시될 때 screenChanged 시그널을 연결한다 (혼합 DPI 대응)."""
+        super().showEvent(event)
+        handle = self.windowHandle()
+        if handle is not None and not getattr(self, '_screen_signal_connected', False):
+            handle.screenChanged.connect(self._on_screen_changed)
+            self._screen_signal_connected = True
+
+    def _on_screen_changed(self, screen):
+        """모니터 이동 후 메뉴바 geometry/repaint를 갱신해 팝업 좌표가 stale해지지 않게 한다."""
+        try:
+            for menu in self.menuBar().findChildren(QMenu):
+                menu.close()
+            self.menuBar().updateGeometry()
+            self.menuBar().repaint()
+            self.update()
+        except Exception:
+            pass
+
     def _update_window_title(self):
         """창 제목을 갱신한다. 프로젝트를 연/저장한 적이 있으면 파일명을 덧붙인다."""
         if self._current_project_path:
@@ -326,22 +401,13 @@ class MainWindow(QMainWindow):
     def _create_menu_bar(self):
         """메뉴바 생성"""
         menubar = self.menuBar()
-        
-        # 메뉴바 폰트 크기 설정
-        menubar.setStyleSheet("""
-            QMenuBar {
-                font-size: 10pt;
-            }
-            QMenuBar::item {
-                padding: 4px 8px;
-            }
-            QMenu {
-                font-size: 10pt;
-            }
-            QMenu::item {
-                padding: 4px 20px;
-            }
-        """)
+
+        # NOTE: QMenuBar/QMenu에 부분 스타일시트를 적용하면 Windows에서 메뉴 팝업이
+        # 닫힌 뒤 이전 팝업 프레임이 남는(ghost menu) 렌더링 문제가 재현된다.
+        # 폰트만 조정하고 배경/테두리/패딩은 플랫폼 기본 스타일에 맡긴다.
+        menu_font = menubar.font()
+        menu_font.setPointSize(10)
+        menubar.setFont(menu_font)
         
         # File 메뉴
         file_menu = menubar.addMenu("&File")
@@ -766,6 +832,23 @@ class MainWindow(QMainWindow):
         about_action.triggered.connect(self._on_about)
         help_menu.addAction(about_action)
     
+        # WSLg: 혼합 DPI에서 메뉴 팝업이 엉뚱한 위치에 뜨는 문제 보정.
+        # 기본적으로는 Qt의 표준 메뉴 위치 계산을 사용한다. WSLg/혼합 DPI에서
+        # 여전히 팝업이 어긋나는 경우에만 환경변수로 cursor-anchor 보정을 켠다.
+        # (강제 보정은 팝업을 커서 바로 아래로 옮겨 메뉴가 일찍 닫히는 부작용이
+        #  있을 수 있어 opt-in으로 둔다.)
+        if (QGuiApplication.platformName() in ('wayland', 'xcb')
+                and os.environ.get('CMG_MENU_CURSOR_ANCHOR') == '1'):
+            self.logger.warning(
+                "Cursor-anchored menu workaround enabled "
+                "(CMG_MENU_CURSOR_ANCHOR=1).")
+            self._cursor_menu_anchor = _CursorMenuAnchorFilter(menubar)
+            for action in menubar.actions():
+                menu = action.menu()
+                if menu is not None:
+                    menu.installEventFilter(self._cursor_menu_anchor)
+
+
     def _create_tool_bar(self):
         """툴바 생성"""
         toolbar = QToolBar("Main Toolbar")

@@ -29,6 +29,7 @@ MANIFEST
 
 # PyInstaller
 *.manifest
+!cmg-seqviewer.manifest
 # *.spec  # Commented out - we need .spec files for building
 
 # Installer logs

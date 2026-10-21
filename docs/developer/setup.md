@@ -104,6 +104,27 @@ python src/main.py
 
 > 💡 **Tip**: 가상환경이 제대로 인식되지 않을 때는 가상환경의 Python을 명시적으로 사용하세요!
 
+> **Linux/WSL GUI 의존성**: `Could not load the Qt platform plugin "xcb"` 또는
+> `xcb-cursor0 ... is needed` 오류가 나면 아래 패키지를 설치하세요. WSLg에서
+> xcb 백엔드 + 메뉴 위치 보정을 사용하려면 필요합니다.
+>
+> ```bash
+> sudo apt install -y libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
+>   libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 \
+>   libxcb-sync1 libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0
+> ```
+>
+> 설치 후 `python src/main.py`를 다시 실행하면 자동으로 xcb를 선택합니다.
+> 설치할 수 없으면 Wayland로 fallback되지만, WSLg Wayland에서는 메뉴 팝업
+> 위치가 어긋날 수 있습니다.
+>
+> **WSLg 혼합 DPI 제약:** 120%/100% 멀티모니터에서 WSLg의 Wayland/XWayland
+> compositor는 Qt 메뉴 팝업을 엉뚱한 위치에 그리거나 이전 프레임을 남길 수
+> 있습니다. 이는 **WSLg GUI 브리지**의 제약이며, 네이티브 Ubuntu 데스크톱
+> (dual boot/VM)에서는 일반적으로 발생하지 않습니다. Ubuntu에서 코드 개발·CLI·
+> 테스트는 그대로 진행하고, 멀티모니터 GUI 확인만 Windows 네이티브 빌드
+> (`rna-seq-viewer.spec`) 또는 네이티브 Ubuntu 데스크톱에서 하면 됩니다.
+
 ---
 
 ## 상세 설정
