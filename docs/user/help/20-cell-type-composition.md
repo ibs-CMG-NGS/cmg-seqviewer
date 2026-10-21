@@ -1,6 +1,6 @@
-# 22. Cell-Type Composition
+# 20. Cell-Type Composition
 
-## 22.1 Overview
+## 20.1 Overview
 
 The **Cell-Type Composition** view visualizes how the proportions of cell
 types change between conditions — the output of propeller / limma-style
@@ -9,7 +9,7 @@ composition analyses (e.g. scRNA-seq pseudobulk pipelines).
 It answers a different question from the expression views: not "which genes
 change?" but "which cell populations expand or shrink?".
 
-## 22.2 Input format
+## 20.2 Input format
 
 A composition table is auto-detected when it contains:
 
@@ -29,12 +29,12 @@ Typical pipeline output:
 `PropMean.*` columns keep their original names; the condition labels are read
 from the name after `PropMean.` (or `prop_mean_`).
 
-## 22.3 Opening the view
+## 20.3 Opening the view
 
 **Visualization → 🧫 Cell-Type Composition** (the current tab must be a
 composition dataset).
 
-## 22.4 Plot modes
+## 20.4 Plot modes
 
 - **PropRatio (difference)** — one horizontal bar per cell type, sorted by
   the absolute change. Bars are **red** for significant increases, **blue**
@@ -58,7 +58,7 @@ Controls:
 Use **Export Data** to save the currently displayed rows as CSV/TSV/Excel,
 and **Export Bundle** to create a reproducible figure bundle.
 
-## 22.5 Filtering and CLI
+## 20.5 Filtering and CLI
 
 The Filter Panel's **Statistical** tab shows an **FDR** cutoff for
 composition datasets. Applying it creates a filtered child sheet.
@@ -75,4 +75,4 @@ Composition data can also be imported through the database by setting
 `"dataset_type": "composition"` in `seqviewer_manifest.json`.
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](20-faq.md) · [Command Line Interface](21-command-line-interface.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md) · [Command Line Interface](19-command-line-interface.md)

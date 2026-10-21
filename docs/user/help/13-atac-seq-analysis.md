@@ -227,4 +227,4 @@ A concrete round trip with a pairwise ATAC-seq experiment (e.g. `Chronic_200uM v
 > For cross-modal concordance (ATAC + RNA), see **14. Multi-Omics Integration**.
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](20-faq.md) · [14. Multi-Omics Integration](14-multi-omics-integration.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md) · [14. Multi-Omics Integration](14-multi-omics-integration.md)

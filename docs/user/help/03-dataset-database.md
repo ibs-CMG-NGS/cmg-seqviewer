@@ -200,7 +200,7 @@ pipeline_run_2026-03-12/
 `seqviewer_manifest.json` uses the same `datasets[]` shape as `metadata.json`
 and adds support for Composition and Expression Summary. Expression Summary
 companions (`pct`, `gene_index`, `cell_type_summary`) are referenced from
-`expression_schema.companion_files` — see sections **22** and **23**.
+`expression_schema.companion_files` — see sections **20** and **21**.
 
 The `metadata.json` format:
 
@@ -241,4 +241,4 @@ See the Right-Click Context Menu and Editing Metadata sections above for
 loading, editing (single/bulk), and exporting.
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](20-faq.md) · [Cell-Type Composition](22-cell-type-composition.md) · [Expression Summary](23-expression-summary.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md) · [Cell-Type Composition](20-cell-type-composition.md) · [Expression Summary](21-expression-summary.md)

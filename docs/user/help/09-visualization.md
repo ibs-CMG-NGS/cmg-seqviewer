@@ -235,4 +235,4 @@ When a pinned plot tab is active, a **Plot Settings** panel automatically appear
 8. Can be moved or floated like any standard dock panel
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](20-faq.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md)

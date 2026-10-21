@@ -2,7 +2,7 @@
 
 > 📖 CMG-SeqViewer의 모든 기능을 상세히 설명하는 종합 가이드
 
-> 💡 **앱 내 도움말(F1)**: 섹션 단위 markdown(`docs/user/help/*.md`, 영문)을 렌더합니다. 각 섹션 말미 **See also**로 본 매뉴얼과 FAQ(20. FAQ)를 상호 참조합니다.
+> 💡 **앱 내 도움말(F1)**: 섹션 단위 markdown(`docs/user/help/*.md`, 영문)을 렌더합니다. 각 섹션 말미 **See also**로 본 매뉴얼과 FAQ(23. FAQ)를 상호 참조합니다.
 
 ## 목차
 

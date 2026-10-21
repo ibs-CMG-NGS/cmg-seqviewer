@@ -18,7 +18,7 @@ action, dialog, keyboard shortcut, or a meaningfully changed workflow in
 `src/gui/*.py` — check whether a `docs/user/help/*.md` file needs a matching
 update:
 - New menu action / shortcut → add it to the relevant section's `.md` AND to
-  the shortcut table in `19-tips-shortcuts.md`.
+  the shortcut table in `22-tips-shortcuts.md`.
 - New dialog / workflow → add or extend the relevant file, or add a new
   `NN-slug.md` (the existing numbering has gaps from past insertions — match
   that pattern rather than renumbering everything).

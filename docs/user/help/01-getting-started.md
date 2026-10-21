@@ -22,11 +22,11 @@ All sections of this guide (numbers match the first/second-level headings; click
 - [16. PCA Plot](16-pca-plot.md)
 - [17. Project Save/Load](17-project-save-load.md)
 - [18. IGV Integration](18-igv-integration.md)
-- [19. Tips & Shortcuts](19-tips-shortcuts.md)
-- [20. FAQ](20-faq.md)
-- [21. Command Line Interface](21-command-line-interface.md)
-- [22. Cell-Type Composition](22-cell-type-composition.md)
-- [23. Expression Summary (Gene × Cell Type)](23-expression-summary.md)
+- [19. Command Line Interface](19-command-line-interface.md)
+- [20. Cell-Type Composition](20-cell-type-composition.md)
+- [21. Expression Summary (Gene × Cell Type)](21-expression-summary.md)
+- [22. Tips & Shortcuts](22-tips-shortcuts.md)
+- [23. FAQ](23-faq.md)
 
 
 ## 1.1 Overview
@@ -113,4 +113,4 @@ All menus are always accessible. The application will show appropriate error mes
 - **Help:** About dialog and user documentation
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](20-faq.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md)

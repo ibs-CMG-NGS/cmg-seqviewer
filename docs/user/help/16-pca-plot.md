@@ -163,4 +163,4 @@ write.csv(cbind(as.data.frame(res), as.data.frame(ncnts)),
                 secondary sources of variation (batch effects, sex, etc.)
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](20-faq.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md)

@@ -62,4 +62,4 @@ Useful for trimming a wide table down to just the columns you want to export
  or paste into a report.
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](20-faq.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md)

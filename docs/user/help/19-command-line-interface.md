@@ -1,6 +1,6 @@
-# 21. Command Line Interface
+# 19. Command Line Interface
 
-## 21.1 Overview
+## 19.1 Overview
 
 CMG-SeqViewer also ships a command-line interface for scripted / headless
 use — no display or `QApplication` is ever created, so it runs on a
@@ -35,7 +35,7 @@ python src/cli.py --help
 
 Four subcommands are available: `load`, `filter`, `run`, `batch`.
 
-## 21.2 `load` — inspect a file
+## 19.2 `load` — inspect a file
 
 Loads a file through the same auto-detection used by **File → Open
 Dataset**, and reports what was detected — without writing anything.
@@ -90,7 +90,7 @@ cmg-seqviewer-cli load sample1_DE.parquet --json
 file is safe to import into the database. Auto-detection works for
 `.xlsx`, `.csv`, `.tsv`, and `.parquet` inputs.
 
-## 21.3 `filter` — load + filter one file
+## 19.3 `filter` — load + filter one file
 
 Applies a one-off statistical filter and writes (or prints) the result.
 Flag names and defaults match the Filter Panel's Statistical tab exactly:
@@ -117,7 +117,7 @@ Common flags (see `cmg-seqviewer-cli filter --help` for the full list):
 | `--mg-padj-max`, `--mg-basemean-min` | Multi-Group | Multi-Group statistical filter |
 | `--atac-annotation`, `--atac-distance-max`, `--atac-peak-width-min`/`--atac-peak-width-max` | ATAC-seq | ATAC-seq Filtering section |
 
-## 21.4 Recipes — `run` and `batch`
+## 19.4 Recipes — `run` and `batch`
 
 A **recipe** is a YAML (or JSON) file that records an input file, a
 filter, and an output — the same idea as
@@ -173,7 +173,7 @@ writes a JSON array with one entry per file (`input`, `status`,
 machine-readable record of what was run, suitable for checking into a
 results folder alongside the filtered tables.
 
-## 21.5 Exit codes and scripting
+## 19.5 Exit codes and scripting
 
 Every subcommand returns `0` on success and `1` on failure (an
 unrecognized file, missing required columns, a bad recipe, or — for
@@ -182,4 +182,4 @@ shell `&&` / CI pipelines. Pass `--verbose` to any subcommand for a full
 traceback instead of the one-line `Error: ...` message on stderr.
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](20-faq.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md)

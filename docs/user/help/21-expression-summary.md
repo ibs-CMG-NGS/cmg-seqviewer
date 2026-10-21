@@ -1,6 +1,6 @@
-# 23. Expression Summary (Gene × Cell Type)
+# 21. Expression Summary (Gene × Cell Type)
 
-## 23.1 Overview
+## 21.1 Overview
 
 The **Expression Summary** view explores a gene × cell-type expression table —
 typically a HypoMap-style atlas summary with:
@@ -12,7 +12,7 @@ typically a HypoMap-style atlas summary with:
 It is **not** a differential-expression result. It is a reference atlas view:
 search a gene, then see which cell types express it and how strongly.
 
-## 23.2 Input format (wide layout)
+## 21.2 Input format (wide layout)
 
 The primary table is a **wide matrix**:
 
@@ -37,7 +37,7 @@ Optional companion files (declared in the manifest):
 > (e.g. the full 10.6M-row atlas) are rejected — export the wide matrices
 > instead.
 
-## 23.3 Importing
+## 21.3 Importing
 
 Expression summaries are **manifest/DB-first** (they are not auto-detected
 from arbitrary numeric tables). **Import Folder** also recognizes a pipeline's
@@ -86,12 +86,12 @@ cmg-seqviewer-cli load hypomap_C66_wide_mean.parquet \
   --type expression_summary --json
 ```
 
-## 23.4 Opening the view
+## 21.4 Opening the view
 
 Open the dataset in the Database Browser, then choose
 **Visualization → 🧬 Gene × Cell-Type Expression**.
 
-## 23.5 Gene search and views
+## 21.5 Gene search and views
 
 - **Gene search**: type a `gene_id` or `gene_name` (case-insensitive
   substring) and press Enter. Add multiple genes to compare them side by side.
@@ -104,7 +104,7 @@ Open the dataset in the Database Browser, then choose
   (Z-score or raw). Long cell-type labels are truncated; hover a dot to see
   the full gene/cell-type name, mean, pct, and n_cells.
 
-## 23.6 Export and CLI
+## 21.6 Export and CLI
 
 - **Export Data** saves the currently displayed long table (dot plot) or
   matrix (heatmap) as CSV/TSV/Excel.
@@ -113,7 +113,7 @@ Open the dataset in the Database Browser, then choose
 - CLI statistical filtering does not apply to this type. Use gene list /
   keyword filtering, or the dialog's own filters.
 
-## 23.7 Limitations
+## 21.7 Limitations
 
 - Per-dataset long layout is supported up to 5,000,000 rows (pivoted to wide
   on load); the full 10.6M-row atlas requires the wide matrices or the future
@@ -125,4 +125,4 @@ Open the dataset in the Database Browser, then choose
   `--type expression_summary`), not plain File → Open.
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](20-faq.md) · [Dataset Database](03-dataset-database.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md) · [Dataset Database](03-dataset-database.md)

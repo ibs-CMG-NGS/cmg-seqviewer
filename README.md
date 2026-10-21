@@ -453,7 +453,7 @@ output:
   table: results/sample1_filtered.xlsx
 ```
 
-Full reference: [in-app / online help, § 21 Command Line Interface](https://ibs-cmg-ngs.github.io/cmg-seqviewer/21-command-line-interface/).
+Full reference: [in-app / online help, § 19 Command Line Interface](https://ibs-cmg-ngs.github.io/cmg-seqviewer/19-command-line-interface/).
 
 ---
 

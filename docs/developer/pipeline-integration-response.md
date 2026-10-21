@@ -419,8 +419,8 @@ manifest:
 
 - [`docs/developer/pipeline-integration.md`](pipeline-integration.md) — 전체 연동 규격
   (DE/GO/metadata/manifest/Multi-Group/Composition)
-- [`docs/user/help/21-command-line-interface.md`](../user/help/21-command-line-interface.md) — CLI 사용법
-- [`docs/user/help/22-cell-type-composition.md`](../user/help/22-cell-type-composition.md) — Composition 사용법
+- [`docs/user/help/19-command-line-interface.md`](../user/help/19-command-line-interface.md) — CLI 사용법
+- [`docs/user/help/20-cell-type-composition.md`](../user/help/20-cell-type-composition.md) — Composition 사용법
 
 문의나 추가 스키마 요청은 이 저장소 이슈로 남겨 주세요.
 

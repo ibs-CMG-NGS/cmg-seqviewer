@@ -398,8 +398,8 @@ hypomap_C66/
 
 - `docs/developer/pipeline-integration.md` — 전체 연동 규격
 - `docs/developer/pipeline-integration-response.md` — 기존 Q1~Q7/R1 회신
-- `docs/user/help/21-command-line-interface.md` — CLI 검증
-- `docs/user/help/22-cell-type-composition.md` — Composition 뷰
+- `docs/user/help/19-command-line-interface.md` — CLI 검증
+- `docs/user/help/20-cell-type-composition.md` — Composition 뷰
 
 ---
 

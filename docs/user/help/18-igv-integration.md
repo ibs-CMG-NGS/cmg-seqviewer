@@ -57,4 +57,4 @@ Right-click any row of an active **ATAC-seq** tab (the dataset must have
 If IGV is not reachable, a warning explains how to enable the port listener.
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](20-faq.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md)

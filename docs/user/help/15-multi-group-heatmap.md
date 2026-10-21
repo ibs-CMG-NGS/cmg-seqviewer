@@ -47,4 +47,4 @@ group-level patterns.
 > Comparison* views are more appropriate.
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](20-faq.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md)
