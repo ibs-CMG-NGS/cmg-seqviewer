@@ -598,7 +598,7 @@ go_df$gene_symbols <- go_df$geneID  # "Tnf/Il6/Cxcl10" 형식
 | 필드 | 타입 | 필수 | 비고 |
 |------|------|------|------|
 | `dataset_type` | string | ✅ | 아래 허용값 참고 |
-| `file_path` 또는 `original_filename` | string | ✅ (하나 이상) | parquet 파일명만 (경로 금지) |
+| `file_path` 또는 `original_filename` | string | ✅ (하나 이상) | `filename.parquet` 또는 `datasets/filename.parquet` (importer가 basename으로 정규화) |
 | `alias` | string | 권장 | 없으면 파일명 stem |
 | `dataset_id` | string | 선택 | 없으면 uuid5 자동 생성 |
 | `experiment_condition` | string | 권장 | 비교 조건 |
@@ -609,6 +609,8 @@ go_df$gene_symbols <- go_df$geneID  # "Tnf/Il6/Cxcl10" 형식
 | `row_count` | int | 선택 | 전체 행 수 |
 | `gene_count` | int | 선택 | DE 유전자 수 / ATAC peak 수 |
 | `significant_genes` | int | 선택 | padj(및 |log2FC|) 기준 유의 수 |
+| `cell_type_count` | int | 선택 | expression_summary 세포타입 수 |
+| `expression_schema` | object | 선택 | expression_summary layout/companion/pct_scale 등 |
 | `notes` | string | 선택 | 자유 메모 |
 | `tags` | string[] | 선택 | 검색 태그 (문자열 배열) |
 | `researcher` | string 또는 string[] | 선택 | 이니셜. tags에도 자동 추가 |

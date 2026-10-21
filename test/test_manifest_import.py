@@ -112,6 +112,7 @@ def test_expression_pipeline_manifest_is_adapted(tmp_path):
     assert schema["layout"] == "wide"
     assert schema["pct_scale"] == "0-100"
     assert schema["cell_type_columns"] == ["CT_A", "CT_B"]
+    assert meta.cell_type_count == 2
 
     dataset = db.load_dataset(meta.dataset_id)
     assert dataset is not None
@@ -190,6 +191,7 @@ def test_expression_summary_companions_imported_and_loaded(tmp_path):
             "file_path": "mean.parquet",
             "dataset_type": "expression_summary",
             "organism": "Mus musculus",
+            "cell_type_count": 2,
             "expression_schema": {
                 "layout": "wide",
                 "pct_scale": "0-100",
@@ -206,6 +208,7 @@ def test_expression_summary_companions_imported_and_loaded(tmp_path):
     assert db.import_from_folder(source)[0] == 1
     meta = db.metadata_list[0]
     assert meta.dataset_type.value == "expression_summary"
+    assert meta.cell_type_count == 2
     # companion 파일은 datasets/에 복사되어야 한다.
     for name in ("pct.parquet", "gene_index.parquet", "summary.parquet"):
         assert (tmp_path / "db" / "datasets" / name).exists()

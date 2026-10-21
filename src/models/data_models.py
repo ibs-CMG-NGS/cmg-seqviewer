@@ -309,7 +309,9 @@ class Dataset:
 
             elif self.dataset_type == DatasetType.EXPRESSION_SUMMARY:
                 summary['total_genes'] = len(self.dataframe)
-                summary['cell_type_count'] = len(self.metadata.get('cell_types', []))
+                summary['cell_type_count'] = (
+                    len(self.metadata.get('cell_types', []))
+                    or int(self.metadata.get('cell_type_count', 0) or 0))
 
         return summary
 
@@ -440,6 +442,7 @@ class PreloadedDatasetMetadata:
     row_count: int = 0                   # 행 개수
     gene_count: int = 0                  # 유전자 개수
     significant_genes: int = 0           # 유의미한 유전자 수 (padj<0.05)
+    cell_type_count: int = 0             # expression_summary: 세포타입 수
     
     # 메타데이터
     import_date: str = ""                # 데이터베이스 임포트 날짜
@@ -474,6 +477,7 @@ class PreloadedDatasetMetadata:
             'row_count': int(self.row_count),
             'gene_count': int(self.gene_count),
             'significant_genes': int(self.significant_genes),
+            'cell_type_count': int(self.cell_type_count),
             'import_date': self.import_date,
             'file_path': self.file_path,
             'notes': self.notes,
@@ -503,6 +507,7 @@ class PreloadedDatasetMetadata:
             row_count=data.get('row_count', 0),
             gene_count=data.get('gene_count', 0),
             significant_genes=data.get('significant_genes', 0),
+            cell_type_count=data.get('cell_type_count', 0),
             import_date=data.get('import_date', ''),
             file_path=data.get('file_path', ''),
             notes=data.get('notes', ''),

@@ -19,6 +19,7 @@
 | [파이프라인 연동 가이드](pipeline-integration.md) | R 파이프라인 → 앱 직결 규격 | ⭐⭐ 중급 |
 | [연동 문의 회신](pipeline-integration-response.md) | scRNA-seq 3차 분석 파이프라인 Q1~Q7/R1 회신 | ⭐⭐ 중급 |
 | [HypoMap 연동 회신](hypomap-expression-integration-response.md) | HypoMap 발현 요약 테이블 연동 범위 회신 | ⭐⭐ 중급 |
+| [파이프라인 상태 확인 회신](scrna-pipeline-status-response.md) | 현재 버전/번들 호환성/Import 테스트 결과 회신 | ⭐⭐ 중급 |
 
 ### 아키텍처
 | 문서 | 설명 | 난이도 |

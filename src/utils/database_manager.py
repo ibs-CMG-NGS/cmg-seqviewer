@@ -179,6 +179,8 @@ def _expression_manifest_to_dataset(manifest: dict, source_dir: Path) -> Optiona
         'row_count': int(manifest.get('n_genes') or 0),
         'gene_count': int(manifest.get('n_genes') or 0),
         'significant_genes': 0,
+        'cell_type_count': int(manifest.get('n_cell_types')
+                               or len(cell_type_columns or []) or 0),
         'notes': (
             f"HypoMap expression export; normalization={manifest.get('normalization') or ''}; "
             f"detection={manifest.get('detection') or ''}; source={manifest.get('source') or ''}"),
@@ -1217,6 +1219,7 @@ class DatabaseManager:
                     'import_date': metadata.import_date,
                     'notes': metadata.notes,
                     'tags': metadata.tags,
+                    'cell_type_count': metadata.cell_type_count,
                 })
                 self.logger.info(
                     f"Loaded expression-summary dataset from database: {metadata.alias} "
