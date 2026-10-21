@@ -12,6 +12,7 @@
 | [온라인 GO/KEGG 분석 계획](ONLINE_ENRICHMENT_ANALYSIS_PLAN.md) | gseapy/Enrichr 기반 온디맨드 농축 분석 | 📝 계획 | 중간 |
 | [Dataset Tree Panel 계획](dataset-tree-panel.md) | 좌측 트리 패널로 데이터셋 계층 표시 | 📝 계획 | 중간 |
 | [Figure 품질·재현성 계획](FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md) | 논문급 figure 세밀 제어 + FigureSpec 기반 재현성/재사용성 (Phase 1–4) | 📋 계획 | 중간 |
+| [MCP / AI Agent 연동 계획](MCP_AGENT_INTEGRATION_PLAN.md) | headless 서비스 계층 + MCP 도구로 연구자 AI 클라이언트 연동 | 📝 계획 | 높음 |
 
 ---
 
