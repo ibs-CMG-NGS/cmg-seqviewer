@@ -158,3 +158,30 @@ def test_filtered_sheet_uses_root_data_and_limits_genes(qtbot):
     assert "g1" not in dialog._gene_key_to_id
     assert "g3" not in dialog._gene_key_to_id
 
+def test_heatmap_shares_transpose_and_colormap(qtbot, monkeypatch):
+    import plots.heatmap as heatmap_mod
+
+    captured = {}
+
+    def fake_render(fig, df, params):
+        captured.update(params)
+        return None
+
+    monkeypatch.setattr(heatmap_mod, "render_heatmap", fake_render)
+    dialog = ExpressionSummaryDialog(_dataset())
+    qtbot.addWidget(dialog)
+    dialog.transpose_check.setChecked(False)
+    dialog.cmap_combo.setCurrentText("viridis")
+    dialog.view_combo.setCurrentIndex(1)
+    dialog._update_plot()
+
+    assert captured["transpose"] is False
+    assert captured["colormap"] == "viridis"
+    assert captured["labels_xlabel"] == "Cell type"
+    assert dialog.transpose_check.isEnabled()
+    assert dialog.top_cell_spin.isEnabled()
+
+    ctx = dialog.get_bundle_context()
+    assert ctx["plot_params"]["transpose"] is False
+    assert ctx["plot_params"]["colormap"] == "viridis"
+

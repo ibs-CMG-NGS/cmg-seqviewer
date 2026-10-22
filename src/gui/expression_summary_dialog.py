@@ -438,8 +438,9 @@ class ExpressionSummaryDialog(BasePlotDialog):
     def _on_view_changed(self):
         heat = self.view_combo.currentIndex() == 1
         self.norm_combo.setEnabled(heat)
-        self.top_cell_spin.setEnabled(not heat)
-        self.transpose_check.setEnabled(not heat)
+        # Max shown / transpose / colormap are shared by dot plot and heatmap.
+        self.top_cell_spin.setEnabled(True)
+        self.transpose_check.setEnabled(True)
         self._update_plot()
 
     def _on_cell_type_changed(self):
@@ -589,19 +590,20 @@ class ExpressionSummaryDialog(BasePlotDialog):
                         ha='center', va='center', transform=ax.transAxes, color='#666666')
                 self._hover_ax = None
                 return
+            _transpose = self.transpose_check.isChecked()
             params = {
                 'n_genes': min(len(heat_df), 500),
                 'normalization': 'z-score' if self.norm_combo.currentIndex() == 0 else 'none',
-                'transpose': False,
+                'transpose': _transpose,
                 'sorting': 'input',
                 'show_dendrogram': False,
-                'colormap': 'RdBu_r',
+                'colormap': self.cmap_combo.currentText(),
                 'colorbar_min': None,
                 'colorbar_max': None,
                 'show_colorbar': True,
                 'labels_title': 'Expression summary',
-                'labels_xlabel': 'Cell type',
-                'labels_ylabel': 'Gene',
+                'labels_xlabel': 'Gene' if _transpose else 'Cell type',
+                'labels_ylabel': 'Cell type' if _transpose else 'Gene',
                 'sample_columns': [c for c in self._selected_cell_types()
                                    if c in heat_df.columns],
             }
@@ -692,12 +694,15 @@ class ExpressionSummaryDialog(BasePlotDialog):
         else:
             df = self._heatmap_df()
             plot_type = 'heatmap'
+            _transpose = self.transpose_check.isChecked()
             params = {
-                'n_genes': min(len(df), 500), 'normalization': 'z-score',
-                'transpose': False, 'sorting': 'input', 'show_dendrogram': False,
-                'colormap': 'RdBu_r', 'colorbar_min': None, 'colorbar_max': None,
+                'n_genes': min(len(df), 500),
+                'normalization': 'z-score' if self.norm_combo.currentIndex() == 0 else 'none',
+                'transpose': _transpose, 'sorting': 'input', 'show_dendrogram': False,
+                'colormap': self.cmap_combo.currentText(), 'colorbar_min': None, 'colorbar_max': None,
                 'show_colorbar': True, 'labels_title': 'Expression summary',
-                'labels_xlabel': 'Cell type', 'labels_ylabel': 'Gene',
+                'labels_xlabel': 'Gene' if _transpose else 'Cell type',
+                'labels_ylabel': 'Cell type' if _transpose else 'Gene',
                 'sample_columns': [c for c in df.columns
                                    if c not in ('gene_id', 'gene_name', 'symbol')],
             }

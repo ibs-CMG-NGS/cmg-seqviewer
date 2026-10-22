@@ -116,8 +116,10 @@ Open the dataset in the Database Browser, then choose
   expression. Cell types below **Min n_cells** or **Min % expressing** are
   shown in grey. **Refresh Plot** fits the figure to the current window.
 - **Top-N heatmap**: the selected genes × selected cell types as a heatmap
-  (Z-score or raw). Long cell-type labels are truncated to **Label length**;
-  hover a dot to see the full gene/cell-type name, mean, pct, and n_cells.
+  (Z-score or raw). **Transpose, Colormap, and Max shown are shared with the
+  dot plot**, so switching views keeps the same orientation and palette.
+  Long cell-type labels are truncated to **Label length**; hover a dot to see
+  the full gene/cell-type name, mean, pct, and n_cells.
 
 ## 21.6 Export and CLI
 
