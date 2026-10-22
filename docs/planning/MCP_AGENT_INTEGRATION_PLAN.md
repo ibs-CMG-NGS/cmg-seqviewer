@@ -5,6 +5,13 @@
 - **작성일**: 2026-10-21
 - **관련 문서**: [CLI 도움말](../user/help/19-command-line-interface.md) · [파이프라인 연동](../developer/pipeline-integration.md) · [Expression Summary](../user/help/21-expression-summary.md)
 
+> **Privacy warning (중요)**
+> MCP tool의 출력은 **AI 클라이언트로 전달되며**, 클라이언트/모델 제공자에 따라
+> 로그·보관·학습에 사용될 수 있습니다. MCP 서버는 이 클라이언트 측 처리를 통제할 수
+> 없습니다. 식별 가능한 인간 데이터에는 기관 IRB/DPIA 검토 없이 MCP를 켜지 마세요.
+> 기본 정책은 **schema-only**(값 미전송)이며, row preview·이미지·집계값은 프로젝트별
+> 명시적 opt-in이 필요합니다. 민감 데이터는 로컬 모델 또는 MCP 비활성화를 권장합니다.
+
 ---
 
 ## 1. Goal
@@ -17,6 +24,7 @@ cmg-seqviewer의 분석을 실행하고 결과를 확인할 수 있게 한다.
 - AI가 도움말·스키마를 참조해 **사용법을 안내**하면서 작업
 - v1은 GUI 없이 동작하는 **headless MCP**를 목표로 함
 - MCP 서버 자체는 LLM을 호출하지 않음 — 연구자의 AI 클라이언트가 tool을 호출
+- **데이터 최소 노출이 기본**: schema-only 정책, row/이미지/집계는 프로젝트별 opt-in
 
 ## 2. Non-goals (v1)
 
@@ -26,6 +34,8 @@ cmg-seqviewer의 분석을 실행하고 결과를 확인할 수 있게 한다.
 - 모든 GUI 기능의 CLI/MCP 노출
 - 원격/멀티유저 MCP 서버
 - GO/KEGG enrichment의 완전 자동화 (v1.1 이후)
+- AI 클라이언트로 raw table/full dataset을 기본 전송하는 것
+- 클라이언트 측 데이터 보관·학습 정책을 MCP 서버가 보장하는 것
 
 ## 3. Current State
 
@@ -174,21 +184,29 @@ cmg-seqviewer-cli schema|help
 - “여러 dataset 비교”
 - “이 데이터셋에 맞는 필터/플롯 추천”
 
-### 7.5 Output Contract
+### 7.5 Output Contract (privacy-first)
 
-- 텍스트: JSON
+- 기본 응답은 **schema/count/aggregate만** 포함하고 **row 값은 포함하지 않는다.**
   ```json
   {
     "schema_version": "1.0",
     "handle": "...",
-    "summary": {...},
-    "artifact_path": "...",
+    "dataset_type": "differential_expression",
+    "row_count": 24506,
+    "columns": [{"name": "gene_id", "dtype": "string"}, ...],
+    "summary": {"significant_genes": 342},
+    "data_policy": "schema_only",
     "warnings": []
   }
   ```
-- 이미지: MCP `ImageContent` (PNG)
-- 대용량 테이블: preview N행 + `row_count` + `artifact_path`
-- 오류: 구조화된 `{error_code, message, hint}`
+- `query_rows`/preview는 `allow_row_preview=true` + 프로젝트별 동의가 있을 때만
+  소량(기본 20행, 최대 100행) 반환한다.
+- 이미지(`plot`)는 gene/cell type/condition 라벨을 포함할 수 있으므로
+  `allow_images=true` opt-in일 때만 반환한다.
+- 대용량 테이블은 **preview + row_count + artifact_path**만 반환한다.
+- artifact path는 workspace 상대경로 + SHA-256을 반환하고, 절대경로/사용자명은
+  기본적으로 노출하지 않는다.
+- 오류: 구조화된 `{error_code, message, hint}` (데이터 값 미포함)
 
 ### 7.6 Security
 
@@ -197,8 +215,58 @@ cmg-seqviewer-cli schema|help
 - 기본 read-only, `--allow-write` opt-in
 - 네트워크는 enrichment에만 허용
 - timeout / max rows / max image size
-- AI 클라이언트로 tool 결과가 전송됨을 문서화
+- **AI 클라이언트 측 데이터 처리(보관/학습/전송)는 MCP 서버가 통제할 수 없음**을
+  설정 화면과 문서에 명시
 - 민감 데이터는 사용자가 workspace를 지정해 통제
+- tool 호출 감사 로그(로컬 JSONL, 기본 on, 값 미기록)
+- `CMG_MCP_DISABLE=1` / config `enabled=false` kill switch
+
+### 7.7 Privacy & Data Governance
+
+#### 위협 모델
+
+- MCP tool 결과는 **AI 클라이언트로 전송**되고, 클라이언트가 이를 모델 제공자에게
+  보낼 수 있다.
+- 클라이언트/모델 제공자의 보관·학습·전송 정책은 앱이 보장할 수 없다.
+- 따라서 “데이터가 로컬에만 있다”는 보장은 **MCP 사용 시 성립하지 않는다.**
+
+#### 데이터 노출 레벨
+
+| Level | 이름 | 반환 내용 | 기본 |
+|-------|------|-----------|------|
+| L0 | `schema_only` | 컬럼명, dtype, row/column count, metadata | ✅ 기본 |
+| L1 | `aggregate` | 그룹별 count/평균/top-N 등 집계값 | opt-in |
+| L2 | `preview` | 사용자가 지정한 소량 row preview (≤100) | opt-in (per dataset) |
+| L3 | `full` | 전체 테이블 | **MCP 미지원** (CLI/로컬 파일 사용) |
+
+- `ai_data_policy` 기본값은 **`schema_only`**.
+- `aggregate`/`preview`/`allow_images`는 프로젝트별 config에 명시적으로 기록.
+- 데이터셋별 `ai_access` 플래그(예: `deny`, `schema_only`, `aggregate`, `preview`)를
+  manifest/metadata에 둘 수 있다.
+
+#### 동의·감사
+
+- MCP 서버는 workspace별 `.cmg-mcp-policy.json`(또는 사용자 config) 없이는
+  `schema_only`로만 동작한다.
+- 첫 `load_dataset` 시 정책 파일이 없으면 **schema-only로 시작**하고,
+  더 높은 레벨은 사용자가 명시적으로 설정해야 한다.
+- 감사 로그: `~/.cmg-seqviewer/mcp_audit.jsonl`
+  - 기록: timestamp, tool, dataset hash, data_policy, response bytes
+  - 미기록: 실제 데이터 값, 절대경로, 사용자명
+
+#### 민감 데이터 권장
+
+- 식별 가능한 인간 데이터: **기관 IRB/DPIA 검토 후** 사용, 기본 MCP 비활성.
+- 가능하면 **로컬 모델**(Ollama/llama.cpp 등) 또는 기관 승인 모델 사용.
+- Claude Desktop/Cursor 등 클라우드 클라이언트는 제공자의 데이터 정책을 확인.
+- MCP가 필요 없으면 `CMG_MCP_DISABLE=1` 또는 optional extra 미설치.
+
+#### 이미지·플롯 주의
+
+- Volcano/heatmap/dot plot 이미지에는 gene symbol, cell type, condition명이 포함될 수
+  있다. `allow_images=false`가 기본이며, 켤 때 경고를 표시한다.
+- “집계값만” 사용하더라도 top-N gene list는 민감할 수 있으므로 `aggregate`도
+  프로젝트별 opt-in으로 둔다.
 
 ## 8. Optional GUI Bridge (Phase 3)
 
@@ -223,7 +291,8 @@ cmg-seqviewer-cli schema|help
 - `docs/developer/mcp-integration.md` — tool/resource 스키마, 클라이언트 설정
 - `docs/user/help/` — “AI Agent / MCP” 사용자 안내
   - Tips/FAQ가 마지막이 되도록 **22번 앞**에 배치하고 Tips/FAQ를 한 칸씩 뒤로 조정
-- 보안/privacy 섹션
+- 보안/privacy 섹션 (`docs/developer/mcp-privacy.md`)
+- 데이터 노출 레벨·동의·감사 로그·로컬 모델 권장
 - 클라이언트 설정 예시 (Claude Desktop, Cursor)
 
 ## 11. Phases & Estimates
@@ -246,10 +315,14 @@ Phase 3 제외 시 **2–3주**, 포함 시 **4–5주** (1인 기준).
 - 플롯 이미지가 AI 클라이언트에 표시되고 파일로 저장됨
 - 도움말/스키마 resource로 AI가 사용법을 안내
 - MCP 서버가 workspace 밖 접근/쓰기를 기본 차단
+- 기본 `schema_only`에서 row 값/이미지가 응답에 포함되지 않음
+- `preview`/`aggregate`/이미지는 명시적 opt-in 없이는 거부됨
+- 감사 로그가 기록되고 절대경로/사용자명이 노출되지 않음
 - 최소 1개 AI 클라이언트(Claude Desktop 또는 Cursor)에서 end-to-end 검증
 
 ## 13. Risks
 
+- **데이터 유출/클라이언트 보관·학습**: MCP tool 결과는 AI 클라이언트로 전송됨 → 기본 schema-only, opt-in, 로컬 모델 권장
 - 대용량 dataset을 AI context에 넣을 수 없음 → preview/artifact 필수
 - headless 플롯과 GUI 플롯의 파라미터 기본값 불일치 → 동일 renderer/params 사용
 - enrichment 네트워크/캐시 지연 → v1에서 optional
@@ -262,12 +335,13 @@ Phase 3 제외 시 **2–3주**, 포함 시 **4–5주** (1인 기준).
 
 확정된 기본값:
 
-1. **v1 범위**: headless 결과(JSON + PNG + artifact)만. GUI bridge는 Phase 3 선택.
+1. **v1 범위**: headless 결과(JSON + opt-in PNG + artifact)만. GUI bridge는 Phase 3 선택.
 2. **공식 지원 클라이언트**: Claude Desktop + Cursor.
 3. **v1 필수 plot**: volcano, heatmap, PCA, composition, expression_dot.
 4. **GO/KEGG enrichment**: v1.1 (v1은 기존 결과 조회/필터만).
 5. **쓰기 권한**: 기본 read-only + export 허용 (DB import/삭제는 opt-in).
 6. **패키징**: 별도 `cmg-seqviewer-mcp` 콘솔 스크립트 + `[mcp]` optional extra.
+7. **데이터 정책 기본값**: `schema_only` (row/image/aggregate는 프로젝트별 opt-in), MCP는 기본 비활성·optional extra.
 
 추가 협의 가능:
 
@@ -277,7 +351,8 @@ Phase 3 제외 시 **2–3주**, 포함 시 **4–5주** (1인 기준).
 
 ## 15. Next Actions
 
-1. Phase 0: tool schema 초안 + Claude Desktop/Cursor 설정 프로토타입
+1. Phase 0: **privacy threat model/데이터 노출 레벨 리뷰** + tool schema 초안 + Claude Desktop/Cursor 설정 프로토타입
 2. Phase 1: `src/services/` 추출, CLI 확장, headless plot/export 테스트
 3. Phase 2: `cmg-seqviewer-mcp` stdio 서버 + resources/prompts
 4. Phase 3 이후: GUI bridge, enrichment, 추가 클라이언트
+5. 모든 Phase에서 privacy acceptance criteria(7.7) 충족 여부를 릴리스 게이트로 확인
