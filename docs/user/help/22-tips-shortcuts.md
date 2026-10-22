@@ -115,11 +115,11 @@
 - **🌡️ Multi-Group Heatmap:** LRT omnibus result CSV → interactive Z-score clustermap
  with group color bars, gene cluster cutting, and CSV export
 
-- **🧫 Cell-Type Composition:** propeller/limma composition results
+- **🧫 Cell-Type Composition** (`Visualization → 🧬 Single-cell RNA-seq`): propeller/limma composition results
  (`cell_type`, `PropMean.<condition>`, `PropRatio`, `FDR`) → PropRatio bars
  or grouped mean-proportion bars, with FDR significance marks
 
-- **🧬 Expression Summary:** HypoMap-style gene × cell-type atlas → search a
+- **🧬 Expression Summary** (`Visualization → 🧬 Single-cell RNA-seq`): HypoMap-style gene × cell-type atlas → search a
  gene, then view a dot plot (size = % expressing, color = mean expression) or
  a top-N heatmap, with `n_cells` grey handling
 

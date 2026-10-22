@@ -334,7 +334,7 @@ KEGG임이 명백한데 Ontology 컬럼이 없으면 `KEGG`로 stamp합니다.
 현재 코드에 **`composition` dataset type + 전용 plot**이 구현되어 있습니다.
 별도 우회 없이 다음을 사용할 수 있습니다.
 
-- `Visualization → 🧫 Cell-Type Composition`
+- `Visualization → 🧬 Single-cell RNA-seq → 🧫 Cell-Type Composition`
 - PropRatio 막대 / 조건별 평균 비율 그룹 막대
 - FDR 필터, Top N, 정렬, 유의성 별표
 - CLI `load --json`, `filter --fdr-max`

@@ -31,7 +31,7 @@ from the name after `PropMean.` (or `prop_mean_`).
 
 ## 20.3 Opening the view
 
-**Visualization → 🧫 Cell-Type Composition** (the current tab must be a
+**Visualization → 🧬 Single-cell RNA-seq → 🧫 Cell-Type Composition** (the current tab must be a
 composition dataset).
 
 ## 20.4 Plot modes

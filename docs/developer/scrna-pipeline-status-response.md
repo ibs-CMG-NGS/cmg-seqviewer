@@ -76,7 +76,7 @@ unknown
 
 - 자동 감지 조건: `cell_type` + `PropMean.*` 2개 이상(또는 `PropRatio`) + p-value/FDR
 - long format으로 바꿀 필요 없습니다.
-- 화면: **Visualization → 🧫 Cell-Type Composition**
+- 화면: **Visualization → 🧬 Single-cell RNA-seq → 🧫 Cell-Type Composition**
   - PropRatio 막대 (FDR 유의성 색/별표)
   - 조건별 평균 비율 그룹 막대
   - FDR 필터, Top N, Export/Bundle/Pin
@@ -222,7 +222,7 @@ DB로 함께 복사됩니다(현재 UI에서는 직접 사용하지 않음).
 
 ### composition
 
-- **Visualization → 🧫 Cell-Type Composition**
+- **Visualization → 🧬 Single-cell RNA-seq → 🧫 Cell-Type Composition**
 - PropRatio 막대 (증가/감소 색, FDR 별표)
 - 조건별 평균 비율 그룹 막대 (`PropMean.*`)
 - FDR 필터, Top N, 정렬
@@ -231,7 +231,7 @@ DB로 함께 복사됩니다(현재 UI에서는 직접 사용하지 않음).
 
 ### expression_summary
 
-- **Visualization → 🧬 Gene × Cell-Type Expression**
+- **Visualization → 🧬 Single-cell RNA-seq → 🧬 Gene × Cell-Type Expression**
 - gene_id/gene_name 검색 (대소문자 무시, 다중 선택)
 - dot plot: size = `pct_expressing`, color = `mean_expression`
 - top-N heatmap (mean)

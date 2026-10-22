@@ -97,7 +97,7 @@ cmg-seqviewer-cli load hypomap_C66_wide_mean.parquet \
 ## 21.4 Opening the view
 
 Open the dataset in the Database Browser, then choose
-**Visualization → 🧬 Gene × Cell-Type Expression**.
+**Visualization → 🧬 Single-cell RNA-seq → 🧬 Gene × Cell-Type Expression**.
 
 ## 21.5 Gene search and views
 

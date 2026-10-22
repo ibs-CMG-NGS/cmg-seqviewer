@@ -689,19 +689,22 @@ class MainWindow(QMainWindow):
         self.expr_bar_action.triggered.connect(self._on_gene_expression_bar)
         viz_menu.addAction(self.expr_bar_action)
 
+        # Single-cell RNA-seq 전용 서브메뉴
+        single_cell_menu = viz_menu.addMenu("🧬 Single-cell RNA-seq")
+
         self.composition_action = QAction("🧫 Cell-Type Composition", self)
         self.composition_action.setToolTip(
             "Visualize propeller/limma cell-type proportion changes "
             "(PropRatio or condition mean proportions).")
         self.composition_action.triggered.connect(self._on_composition_plot)
-        viz_menu.addAction(self.composition_action)
+        single_cell_menu.addAction(self.composition_action)
 
         self.expression_summary_action = QAction("🧬 Gene × Cell-Type Expression", self)
         self.expression_summary_action.setToolTip(
             "Explore gene × cell-type expression summaries (HypoMap-style "
             "mean/pct matrices).")
         self.expression_summary_action.triggered.connect(self._on_expression_summary)
-        viz_menu.addAction(self.expression_summary_action)
+        single_cell_menu.addAction(self.expression_summary_action)
 
         viz_menu.addSeparator()
 
