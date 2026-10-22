@@ -805,7 +805,7 @@ manifest:
       "gene_id_type": "symbol",
       "normalization": "log1p_normalized",
       "detection": "count > 0",
-      "pct_scale": "0-1",
+      "pct_scale": "0-100",
       "companion_files": {
         "pct": "hypomap_C66_wide_pct.parquet",
         "gene_index": "hypomap_gene_index.parquet",
@@ -825,6 +825,10 @@ manifest:
   `manifest.json`(`"table": "expression"`, `"files": {...}`)도 자동 인식합니다.
   이 경우 `expression_wide_mean`을 primary로 사용하고, `pct_scale`은 pct 행렬의
   최대값(>1.5)을 보고 `0-100`으로 자동 판별합니다.
+- manifest 없이 `data/datasets/`에 `*_wide_mean.parquet` + `*_wide_pct.parquet` +
+  `*_gene_index.parquet` + `*_cell_type_summary.parquet` 세트를 넣고 Refresh해도
+  expression_summary로 자동 등록됩니다(`*_long.parquet` + gene_index/summary도 동일).
+  단, `cell_type_level`/`organism`/provenance는 manifest가 있을 때만 채워집니다.
 - CLI 검증: `cmg-seqviewer-cli load <mean.parquet> --type expression_summary --json`
 
 ---

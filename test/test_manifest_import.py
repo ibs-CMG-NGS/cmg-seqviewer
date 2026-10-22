@@ -225,3 +225,34 @@ def test_expression_summary_companions_imported_and_loaded(tmp_path):
     db2 = DatabaseManager(database_dir=tmp_path / "db")
     reloaded = next(m for m in db2.metadata_list if m.dataset_type.value == "expression_summary")
     assert reloaded.expression_schema["companion_files"]["pct"] == "pct.parquet"
+
+def test_datasets_dir_auto_detects_expression_wide_bundle(tmp_path):
+    """manifest 없이 companion 파일명 세트만 있어도 Refresh에서 자동 감지된다."""
+    db_dir = tmp_path / "db"
+    ds_dir = db_dir / "datasets"
+    ds_dir.mkdir(parents=True)
+    pd.DataFrame({"gene_id": ["G1", "G2"],
+                  "CT_A": [1.0, 2.0], "CT_B": [3.0, 4.0]}).to_parquet(
+        ds_dir / "test_wide_mean.parquet")
+    pd.DataFrame({"gene_id": ["G1", "G2"],
+                  "CT_A": [10.0, 20.0], "CT_B": [30.0, 40.0]}).to_parquet(
+        ds_dir / "test_wide_pct.parquet")
+    pd.DataFrame({"gene_id": ["G1", "G2"], "gene_name": ["A", "B"],
+                  "max_mean_expression": [4.0, 3.0]}).to_parquet(
+        ds_dir / "test_gene_index.parquet")
+    pd.DataFrame({"cell_type": ["CT_A", "CT_B"],
+                  "n_cells": [100, 200]}).to_parquet(
+        ds_dir / "test_cell_type_summary.parquet")
+
+    db = DatabaseManager(database_dir=db_dir)
+    assert db._scan_and_auto_import(db.datasets_dir) == 1
+    assert len(db.metadata_list) == 1
+    meta = db.metadata_list[0]
+    assert meta.dataset_type.value == "expression_summary"
+    assert meta.expression_schema["layout"] == "wide"
+    assert meta.expression_schema["companion_files"]["pct"] == "test_wide_pct.parquet"
+
+    dataset = db.load_dataset(meta.dataset_id)
+    assert dataset is not None
+    assert dataset.metadata["cell_types"] == ["CT_A", "CT_B"]
+    assert dataset.metadata["pct_matrix"] is not None

@@ -189,6 +189,111 @@ def _expression_manifest_to_dataset(manifest: dict, source_dir: Path) -> Optiona
     }
 
 
+def _expression_bundle_companions(filename: str):
+    """HypoMap-style expression bundle의 primary/companion 파일명 규칙.
+
+    Returns: (prefix, layout, {companion_key: filename}) or (None, None, {})
+    """
+    if filename.endswith('_wide_mean.parquet'):
+        prefix = filename[:-len('_wide_mean.parquet')]
+        return prefix, 'wide', {
+            'pct': f'{prefix}_wide_pct.parquet',
+            'gene_index': f'{prefix}_gene_index.parquet',
+            'cell_type_summary': f'{prefix}_cell_type_summary.parquet',
+        }
+    if filename.endswith('_long.parquet'):
+        prefix = filename[:-len('_long.parquet')]
+        return prefix, 'long', {
+            'gene_index': f'{prefix}_gene_index.parquet',
+            'cell_type_summary': f'{prefix}_cell_type_summary.parquet',
+        }
+    return None, None, {}
+
+
+def _is_expression_companion(datasets_dir: Path, filename: str) -> bool:
+    """primary(_wide_mean/_long)가 같은 폴더에 있는 expression companion인지."""
+    for suffix in ('_wide_pct.parquet', '_gene_index.parquet', '_cell_type_summary.parquet'):
+        if filename.endswith(suffix):
+            prefix = filename[:-len(suffix)]
+            return ((datasets_dir / f'{prefix}_wide_mean.parquet').exists()
+                    or (datasets_dir / f'{prefix}_long.parquet').exists())
+    return False
+
+
+def _detect_expression_summary_bundle(datasets_dir: Path, filename: str, df):
+    """companion 파일명 규칙으로 expression_summary를 자동 감지한다.
+
+    manifest가 없는 경우의 fallback이다. `*_wide_mean.parquet`(+pct/gene_index/
+    summary) 또는 `*_long.parquet`(+gene_index/summary) 세트만 인정해, 일반
+    wide matrix를 expression summary로 오인하지 않도록 한다.
+    """
+    prefix, layout, companions = _expression_bundle_companions(filename)
+    if not prefix:
+        return None, []
+    if layout == 'wide':
+        required = ('pct', 'gene_index', 'cell_type_summary')
+    else:
+        required = ('gene_index', 'cell_type_summary')
+    if not all((datasets_dir / companions[k]).exists() for k in required):
+        return None, []
+
+    pct_scale = '0-100'
+    if layout == 'wide' and 'pct' in companions:
+        try:
+            pct_df = pd.read_parquet(datasets_dir / companions['pct'])
+            num = pct_df.select_dtypes(include='number')
+            if not num.empty and float(num.max().max()) <= 1.5:
+                pct_scale = '0-1'
+        except Exception:
+            pass
+    elif layout == 'long' and 'pct_expressing' in df.columns:
+        try:
+            mx = pd.to_numeric(df['pct_expressing'], errors='coerce').max()
+            pct_scale = '0-100' if pd.notna(mx) and float(mx) > 1.5 else '0-1'
+        except Exception:
+            pass
+
+    gene_count = len(df)
+    cell_type_count = 0
+    schema = {
+        'schema_version': '1.0',
+        'layout': layout,
+        'value_type': 'mean_expression' if layout == 'wide' else 'long',
+        'pct_scale': pct_scale,
+        'companion_files': {k: companions[k] for k in required},
+        'source': 'auto-detected',
+    }
+    if layout == 'wide':
+        cell_types = [c for c in df.columns
+                      if c != 'gene_id'
+                      and pd.api.types.is_numeric_dtype(df[c])]
+        schema['cell_type_columns'] = cell_types
+        cell_type_count = len(cell_types)
+    else:
+        try:
+            gene_index = pd.read_parquet(datasets_dir / companions['gene_index'])
+            gene_count = len(gene_index)
+        except Exception:
+            pass
+        if 'cell_type' in df.columns:
+            cell_type_count = int(df['cell_type'].nunique())
+
+    entry = {
+        'dataset_id': str(uuid.uuid4()),
+        'alias': f'{prefix} expression',
+        'original_filename': filename,
+        'file_path': filename,
+        'dataset_type': DatasetType.EXPRESSION_SUMMARY.value,
+        'row_count': len(df),
+        'gene_count': gene_count,
+        'cell_type_count': cell_type_count,
+        'notes': f'Auto-detected expression summary bundle ({layout}); no manifest',
+        'tags': ['expression', 'auto-detected'],
+        'expression_schema': schema,
+    }
+    return entry, [companions[k] for k in required]
+
+
 def _load_expression_manifest(source_dir: Path, filename: str = 'manifest.json'):
     """source_dir의 expression manifest.json을 seqviewer manifest 형태로 반환."""
     path = source_dir / filename
@@ -490,12 +595,37 @@ class DatabaseManager:
                 if filename in known_files:
                     continue
 
+                # expression summary companion은 primary(_wide_mean/_long)에서 함께
+                # 등록되므로 여기서는 조용히 건너뛴다 (불필요한 경고 방지).
+                if _is_expression_companion(datasets_dir, filename):
+                    continue
+
                 # ── parquet 열어서 컬럼 확인 ──────────────────────────────
                 try:
                     df = pd.read_parquet(parquet_file, engine='pyarrow')
                 except Exception as e:
                     self.logger.warning(f"Cannot read parquet (skipping): {filename} — {e}")
                     continue
+
+                # manifest 없는 expression summary bundle fallback
+                _expr_entry, _expr_companions = _detect_expression_summary_bundle(
+                    datasets_dir, filename, df)
+                if _expr_entry:
+                    try:
+                        _meta = PreloadedDatasetMetadata.from_dict(_expr_entry)
+                        self.metadata_list.append(_meta)
+                        self._file_source_dirs[filename] = str(datasets_dir)
+                        claimed_files.add(filename)
+                        claimed_files.update(_expr_companions)
+                        auto_imported += 1
+                        self.logger.info(
+                            f"Auto-imported '{_meta.alias}' from expression bundle "
+                            f"naming convention ({_meta.dataset_type.value}, {_meta.row_count} rows)"
+                        )
+                        continue
+                    except Exception as e:
+                        self.logger.warning(
+                            f"Failed to register auto-detected expression bundle '{filename}': {e}")
 
                 cols = set(df.columns)
 
@@ -528,7 +658,9 @@ class DatabaseManager:
                 else:
                     self.logger.warning(
                         f"Cannot determine type of '{filename}' "
-                        f"(no ATAC, DE, GO or Multi-Group standard columns found). Skipping."
+                        f"(no DE/GO/ATAC/Multi-Group/Composition standard columns found). "
+                        f"If this is an Expression Summary bundle, place "
+                        f"seqviewer_manifest.json in datasets/ or use Import Folder. Skipping."
                     )
                     continue
 

@@ -149,7 +149,9 @@ If the selected folder has no manifest, the app
  falls back to auto-detection: it scans all `.parquet` files,
  determines the type from columns (DE / GO / Multi-Group / Composition /
  ATAC), and registers them exactly like the **Refresh** button does.
- **Expression Summary requires a manifest** — it is not auto-detected.
+ **Expression Summary** normally needs a manifest for full metadata, but a
+ recognized companion set (`*_wide_mean` + `*_wide_pct` + `*_gene_index` +
+ `*_cell_type_summary`) is also auto-detected on Refresh.
 
 ### Mixed bundles
 

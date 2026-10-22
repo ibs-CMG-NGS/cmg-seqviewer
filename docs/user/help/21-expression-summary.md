@@ -39,9 +39,9 @@ Optional companion files (declared in the manifest):
 
 ## 21.3 Importing
 
-Expression summaries are **manifest/DB-first** (they are not auto-detected
-from arbitrary numeric tables). **Import Folder** also recognizes a pipeline's
-own `manifest.json` (`"table": "expression"`, `"files": {...}`). Use
+Expression summaries are **manifest/DB-first** for full metadata. **Import Folder**
+recognizes `seqviewer_manifest.json` and a pipeline's own `manifest.json`
+(`"table": "expression"`, `"files": {...}`). Use
 **File → Database → Import Folder** with:
 
 ```
@@ -78,8 +78,16 @@ hypomap_C66/
 ```
 
 `file_path` and companion names may be bare filenames or `datasets/<filename>`
-(the importer normalizes to the basename). The CLI can validate the primary
-matrix directly:
+(the importer normalizes to the basename).
+
+If you copy a recognized companion set directly into `data/datasets/`
+(`*_wide_mean.parquet` + `*_wide_pct.parquet` + `*_gene_index.parquet` +
+`*_cell_type_summary.parquet`, or a `*_long.parquet` + gene_index/summary set),
+**Refresh auto-detects** the bundle even without a manifest. The manifest is
+still recommended because it carries `cell_type_level`, `pct_scale`, organism,
+and provenance.
+
+The CLI can validate the primary matrix directly:
 
 ```bash
 cmg-seqviewer-cli load hypomap_C66_wide_mean.parquet \
