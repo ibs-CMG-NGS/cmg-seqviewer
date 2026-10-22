@@ -4,7 +4,8 @@
 
     gene_id | gene_name | cell_type | mean_expression | pct_expressing | n_cells
 
-- x = cell type, y = gene
+- x = cell type, y = gene (default is transposed: x = gene, y = cell type so
+  long cell-type labels fit on the y-axis)
 - dot size = pct_expressing (0–100)
 - dot color = mean_expression
 - n_cells / pct threshold 미만은 회색으로 표시
@@ -150,8 +151,14 @@ def render_expression_dot(ax, df, params):
 
     ct_index = {c: i for i, c in enumerate(cell_types)}
     gene_index = {g: i for i, g in enumerate(genes)}
-    x = df['cell_type'].astype(str).map(ct_index).to_numpy(dtype=float)
-    y = df['gene_name'].astype(str).map(gene_index).to_numpy(dtype=float)
+    # 기본은 cell type을 y축에 두어 긴 라벨을 잘리지 않게 한다 (scRNA dot plot 관례).
+    transpose = bool(params.get('transpose', True))
+    if transpose:
+        x = df['gene_name'].astype(str).map(gene_index).to_numpy(dtype=float)
+        y = df['cell_type'].astype(str).map(ct_index).to_numpy(dtype=float)
+    else:
+        x = df['cell_type'].astype(str).map(ct_index).to_numpy(dtype=float)
+        y = df['gene_name'].astype(str).map(gene_index).to_numpy(dtype=float)
 
     size_min, size_max = 12.0, 260.0
     if 'pct_display' in df.columns:
@@ -176,13 +183,31 @@ def render_expression_dot(ax, df, params):
         ax.scatter(x[dimmed], y[dimmed], s=sizes[dimmed], c='#cccccc',
                    edgecolors='white', linewidths=0.2, alpha=0.6, zorder=2)
 
-    ax.set_xticks(range(len(cell_types)))
-    ax.set_xticklabels([_truncate(c, label_limit) for c in cell_types],
-                       rotation=60, ha='right', fontsize=7)
-    ax.set_yticks(range(len(genes)))
-    ax.set_yticklabels(genes, fontsize=8)
-    ax.set_xlabel(params.get('xlabel', 'Cell type'))
-    ax.set_ylabel(params.get('ylabel', 'Gene'))
+    if transpose:
+        ax.set_xticks(range(len(genes)))
+        ax.set_xticklabels(genes, fontsize=8,
+                           rotation=45 if len(genes) > 12 else 0,
+                           ha='right' if len(genes) > 12 else 'center')
+        ax.set_yticks(range(len(cell_types)))
+        ax.set_yticklabels([_truncate(c, label_limit) for c in cell_types],
+                           fontsize=7)
+        ax.set_xlabel(params.get('xlabel', 'Gene'))
+        ax.set_ylabel(params.get('ylabel', 'Cell type'))
+        # 왼쪽 라벨 길이에 맞춰 여백을 자동 확보한다.
+        max_len = max((len(str(c)) for c in cell_types), default=0)
+        left = min(0.55, max(0.12, 0.006 * max_len + 0.06))
+        ax.figure.subplots_adjust(left=left, right=0.86, bottom=0.12, top=0.95)
+    else:
+        ax.set_xticks(range(len(cell_types)))
+        ax.set_xticklabels([_truncate(c, label_limit) for c in cell_types],
+                           rotation=60, ha='right', fontsize=7)
+        ax.set_yticks(range(len(genes)))
+        ax.set_yticklabels(genes, fontsize=8)
+        ax.set_xlabel(params.get('xlabel', 'Cell type'))
+        ax.set_ylabel(params.get('ylabel', 'Gene'))
+        max_len = max((len(str(c)) for c in cell_types), default=0)
+        bottom = min(0.45, max(0.18, 0.006 * max_len + 0.08))
+        ax.figure.subplots_adjust(left=0.10, right=0.86, bottom=bottom, top=0.95)
     ax.grid(True, color='#eeeeee', linewidth=0.5, zorder=0)
     ax.set_axisbelow(True)
 

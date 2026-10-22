@@ -10,11 +10,11 @@ from typing import Dict, List
 
 import numpy as np
 import pandas as pd
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
-    QAbstractItemView, QComboBox, QCompleter, QDoubleSpinBox, QFormLayout,
-    QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-    QMessageBox, QPushButton, QSpinBox, QVBoxLayout,
+    QAbstractItemView, QCheckBox, QComboBox, QCompleter, QDoubleSpinBox,
+    QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
+    QListWidgetItem, QMessageBox, QPushButton, QSpinBox, QVBoxLayout,
 )
 
 from gui.base_plot_dialog import BasePlotDialog
@@ -25,11 +25,19 @@ from utils.export_paths import remembered_save_path
 class ExpressionSummaryDialog(BasePlotDialog):
     """Gene × cell-type expression 탐색 다이얼로그."""
 
-    def __init__(self, dataset, parent=None):
+    # 세션 내 dataset별 cell-type/표시 상태 (프로젝트 파일에는 저장하지 않음)
+    _saved_states: Dict[str, dict] = {}
+
+    def __init__(self, dataset, parent=None, source_dataset=None,
+                 initial_genes=None, allowed_genes=None):
         self.logger = logging.getLogger(__name__)
+        # dataset = 현재 탭(필터 시트일 수 있음), source_dataset = 루트 expression dataset.
+        # 렌더링/검색은 항상 루트의 full wide/pct/gene_index를 사용한다.
         self.dataset = dataset
-        self.wide_df = dataset.dataframe.copy() if dataset.dataframe is not None else pd.DataFrame()
-        md = dataset.metadata or {}
+        self.source_dataset = source_dataset or dataset
+        self.wide_df = (self.source_dataset.dataframe.copy()
+                        if self.source_dataset.dataframe is not None else pd.DataFrame())
+        md = self.source_dataset.metadata or {}
         self.gene_id_col = 'gene_id' if 'gene_id' in self.wide_df.columns else self.wide_df.columns[0]
         self.gene_name_col = 'gene_name' if 'gene_name' in self.wide_df.columns else self.gene_id_col
         self.cell_types: List[str] = list(md.get('cell_types', []) or [])
@@ -46,18 +54,30 @@ class ExpressionSummaryDialog(BasePlotDialog):
         self._hover_ax = None
         self._hover_points: List[dict] = []
 
+        # 현재 필터 시트의 gene 목록. None이면 전체 gene 허용.
+        self._allowed_genes = None if allowed_genes is None else [
+            str(g) for g in allowed_genes if str(g).strip()]
+        self._initial_genes = [str(g) for g in (initial_genes or []) if str(g).strip()] or None
+
         self._gene_rows = self._build_gene_rows(md.get('gene_index'))
+        self._filter_gene_rows_to_allowed()
         self._gene_key_to_id: Dict[str, str] = {}
         for row in self._gene_rows:
             for key in (row.get('gene_id'), row.get('gene_name')):
                 if key:
                     self._gene_key_to_id.setdefault(str(key).lower(), str(row['gene_id']))
-        self._selected_genes: List[str] = []
-        if self._gene_rows:
-            self._selected_genes.append(str(self._gene_rows[0]['gene_id']))
+        self._selected_genes = self._seed_selected_genes()
+        self._state_key = (
+            f"{getattr(self.source_dataset, 'name', '')}|"
+            f"{getattr(self.source_dataset, 'file_path', '')}")
+        self._ranked_cell_types = self._rank_cell_types()
 
         super().__init__(f"Expression Summary — {dataset.name}", parent, figsize=(13, 8))
         self.canvas.mpl_connect('motion_notify_event', self._on_hover)
+        self._resize_timer = QTimer(self)
+        self._resize_timer.setSingleShot(True)
+        self._resize_timer.timeout.connect(self._update_plot)
+        self.finished.connect(lambda _=0: self._save_state())
         self._update_plot()
 
     # ── Data helpers ──────────────────────────────────────────────────────
@@ -123,6 +143,145 @@ class ExpressionSummaryDialog(BasePlotDialog):
             df = df.assign(gene_name=df[self.gene_id_col])
         return df.rename(columns={self.gene_id_col: 'gene_id'}).to_dict('records')
 
+    def _filter_gene_rows_to_allowed(self) -> None:
+        """현재 필터 시트의 gene 목록이 있으면 검색/추가 대상도 그 목록으로 제한한다."""
+        if self._allowed_genes is None:
+            return
+        allowed = {g.lower() for g in self._allowed_genes}
+        filtered = [r for r in self._gene_rows
+                    if str(r.get('gene_id', '')).lower() in allowed
+                    or str(r.get('gene_name', '')).lower() in allowed]
+        existing = {str(r.get('gene_id', '')).lower() for r in filtered}
+        existing |= {str(r.get('gene_name', '')).lower() for r in filtered}
+        missing = [g for g in self._allowed_genes if g.lower() not in existing]
+        if missing:
+            ids = self.wide_df[self.gene_id_col].astype(str)
+            names = (self.wide_df[self.gene_name_col].astype(str)
+                     if self.gene_name_col in self.wide_df.columns else ids)
+            for g in missing:
+                mask = ids.str.lower().eq(g.lower()) | names.str.lower().eq(g.lower())
+                sub = self.wide_df[mask]
+                if sub.empty:
+                    continue
+                row = sub.iloc[0]
+                filtered.append({
+                    'gene_id': str(row[self.gene_id_col]),
+                    'gene_name': (str(row[self.gene_name_col])
+                                  if self.gene_name_col in sub.columns
+                                  else str(row[self.gene_id_col])),
+                })
+        self._gene_rows = filtered
+
+    def _seed_selected_genes(self) -> List[str]:
+        if self._initial_genes:
+            out = []
+            for g in self._initial_genes:
+                gid = self._gene_key_to_id.get(g.lower())
+                if gid and gid not in out:
+                    out.append(gid)
+            if out:
+                return out
+        if self._gene_rows:
+            return [str(self._gene_rows[0]['gene_id'])]
+        return []
+
+    def _rank_cell_types(self) -> List[str]:
+        """선택 gene(들)의 평균 발현이 높은 순으로 cell type을 정렬한다."""
+        if not self.cell_types:
+            return []
+        if not self._selected_genes or self.wide_df.empty:
+            return list(self.cell_types)
+        wanted = {g.lower() for g in self._selected_genes}
+        ids = self.wide_df[self.gene_id_col].astype(str).str.lower()
+        names = (self.wide_df[self.gene_name_col].astype(str).str.lower()
+                 if self.gene_name_col in self.wide_df.columns else ids)
+        sub = self.wide_df[ids.isin(wanted) | names.isin(wanted)]
+        if sub.empty:
+            return list(self.cell_types)
+        present = [c for c in self.cell_types if c in sub.columns]
+        if not present:
+            return list(self.cell_types)
+        means = sub[present].apply(pd.to_numeric, errors='coerce').mean(axis=0)
+        ordered = [c for c in means.sort_values(ascending=False).index if c in self.cell_types]
+        ordered += [c for c in self.cell_types if c not in ordered]
+        return ordered
+
+    def _select_top10_cell_types(self) -> None:
+        if not hasattr(self, 'cell_type_list'):
+            return
+        ranked = self._rank_cell_types()
+        top = {str(c) for c in ranked[:10]}
+        self.cell_type_list.blockSignals(True)
+        for i in range(self.cell_type_list.count()):
+            item = self.cell_type_list.item(i)
+            item.setSelected(item.text() in top)
+        self.cell_type_list.blockSignals(False)
+        if hasattr(self, 'top_cell_spin'):
+            self.top_cell_spin.blockSignals(True)
+            self.top_cell_spin.setValue(0)
+            self.top_cell_spin.blockSignals(False)
+
+    def _save_state(self) -> None:
+        if not hasattr(self, 'cell_type_list'):
+            return
+        self._saved_states[self._state_key] = {
+            'cell_types': self._selected_cell_types(),
+            'top_cell_types': self.top_cell_spin.value(),
+            'min_pct': self.min_pct_spin.value(),
+            'min_n_cells': self.min_ncells_spin.value(),
+            'label_limit': self.label_limit_spin.value(),
+            'cmap': self.cmap_combo.currentText(),
+            'norm': self.norm_combo.currentIndex(),
+            'view': self.view_combo.currentIndex(),
+            'transpose': self.transpose_check.isChecked(),
+        }
+
+    def _restore_state(self) -> None:
+        state = self._saved_states.get(self._state_key)
+        widgets = [self.view_combo, self.top_cell_spin, self.min_pct_spin,
+                   self.min_ncells_spin, self.label_limit_spin, self.cmap_combo,
+                   self.norm_combo, self.transpose_check]
+        for w in widgets:
+            w.blockSignals(True)
+        try:
+            if state:
+                self.view_combo.setCurrentIndex(int(state.get('view', 0)))
+                self.top_cell_spin.setValue(int(state.get('top_cell_types', 0)))
+                self.min_pct_spin.setValue(float(state.get('min_pct', 0.0)))
+                self.min_ncells_spin.setValue(float(state.get('min_n_cells', 0.0)))
+                self.label_limit_spin.setValue(int(state.get('label_limit', 60)))
+                self.cmap_combo.setCurrentText(str(state.get('cmap', 'viridis')))
+                self.norm_combo.setCurrentIndex(int(state.get('norm', 0)))
+                self.transpose_check.setChecked(bool(state.get('transpose', True)))
+                saved = {str(c) for c in (state.get('cell_types') or [])}
+                self.cell_type_list.blockSignals(True)
+                if saved:
+                    for i in range(self.cell_type_list.count()):
+                        item = self.cell_type_list.item(i)
+                        item.setSelected(item.text() in saved)
+                else:
+                    self.cell_type_list.clearSelection()
+                self.cell_type_list.blockSignals(False)
+            else:
+                self._select_top10_cell_types()
+        finally:
+            for w in widgets:
+                w.blockSignals(False)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, '_resize_timer'):
+            self._resize_timer.start(120)
+
+    def _fit_figure_to_canvas(self) -> None:
+        try:
+            w = self.canvas.width() / max(self.figure.dpi, 1)
+            h = self.canvas.height() / max(self.figure.dpi, 1)
+            if w > 2 and h > 2:
+                self.figure.set_size_inches(w, h)
+        except Exception:
+            pass
+
     def _n_cells_for_selected(self) -> Dict[str, float]:
         return {ct: self.n_cells.get(ct, np.nan) for ct in self.cell_types}
 
@@ -142,6 +301,16 @@ class ExpressionSummaryDialog(BasePlotDialog):
         self.gene_search.setCompleter(completer)
         self.gene_search.returnPressed.connect(self._add_gene_from_search)
         gv.addWidget(self.gene_search)
+
+        if self._allowed_genes is None:
+            _scope = "Gene set: all genes in this dataset"
+        else:
+            _scope = (f"Gene set: current filtered sheet ({len(self._allowed_genes)} genes) "
+                      f"— Add gene is limited to this list")
+        self.gene_scope_label = QLabel(_scope)
+        self.gene_scope_label.setWordWrap(True)
+        self.gene_scope_label.setStyleSheet("color: #666666; font-size: 8pt;")
+        gv.addWidget(self.gene_scope_label)
 
         add_btn = QPushButton("Add gene")
         add_btn.clicked.connect(self._add_gene_from_search)
@@ -175,7 +344,7 @@ class ExpressionSummaryDialog(BasePlotDialog):
         self.cell_type_list.setMaximumHeight(160)
         self.cell_type_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         summary_map = self._cell_type_summary_map(self.cell_type_summary)
-        for ct in self.cell_types:
+        for ct in self._ranked_cell_types:
             item = QListWidgetItem(str(ct))
             tip = str(ct)
             info = summary_map.get(str(ct))
@@ -185,15 +354,17 @@ class ExpressionSummaryDialog(BasePlotDialog):
                     tip += "\n" + " | ".join(parts)
             item.setToolTip(tip)
             self.cell_type_list.addItem(item)
-        self.cell_type_list.selectAll()
         self.cell_type_list.itemSelectionChanged.connect(self._on_cell_type_changed)
         cv.addWidget(self.cell_type_list)
 
         ct_btns = QHBoxLayout()
+        top10_btn = QPushButton("Top 10 by mean")
+        top10_btn.clicked.connect(self._select_top10_cell_types)
         all_btn = QPushButton("Select all")
         all_btn.clicked.connect(self.cell_type_list.selectAll)
         none_btn = QPushButton("Clear")
         none_btn.clicked.connect(self.cell_type_list.clearSelection)
+        ct_btns.addWidget(top10_btn)
         ct_btns.addWidget(all_btn)
         ct_btns.addWidget(none_btn)
         cv.addLayout(ct_btns)
@@ -209,12 +380,11 @@ class ExpressionSummaryDialog(BasePlotDialog):
         form.addRow("View:", self.view_combo)
 
         self.top_cell_spin = QSpinBox()
-        self.top_cell_spin.setRange(1, 500)
-        self.top_cell_spin.setValue(max(1, min(50, len(self.cell_types))))
+        self.top_cell_spin.setRange(0, 500)
+        self.top_cell_spin.setValue(0)
         self.top_cell_spin.setToolTip("0 = all selected cell types")
         self.top_cell_spin.setSpecialValueText("All")
-        self.top_cell_spin.setMinimum(0)
-        form.addRow("Top cell types:", self.top_cell_spin)
+        form.addRow("Max shown:", self.top_cell_spin)
 
         self.min_pct_spin = QDoubleSpinBox()
         self.min_pct_spin.setRange(0.0, 100.0)
@@ -234,9 +404,15 @@ class ExpressionSummaryDialog(BasePlotDialog):
         form.addRow("Colormap:", self.cmap_combo)
 
         self.label_limit_spin = QSpinBox()
-        self.label_limit_spin.setRange(8, 80)
-        self.label_limit_spin.setValue(32)
+        self.label_limit_spin.setRange(8, 120)
+        self.label_limit_spin.setValue(60)
         form.addRow("Label length:", self.label_limit_spin)
+
+        self.transpose_check = QCheckBox("Cell types on y-axis")
+        self.transpose_check.setChecked(True)
+        self.transpose_check.setToolTip(
+            "Recommended: long cell-type names are shown on the y-axis.")
+        form.addRow("", self.transpose_check)
 
         self.norm_combo = QComboBox()
         self.norm_combo.addItems(["Z-score", "None (raw)"])
@@ -250,17 +426,20 @@ class ExpressionSummaryDialog(BasePlotDialog):
         self.top_cell_spin.valueChanged.connect(self._update_plot)
         self.cmap_combo.currentIndexChanged.connect(self._update_plot)
         self.norm_combo.currentIndexChanged.connect(self._update_plot)
+        self.transpose_check.toggled.connect(self._update_plot)
 
         self._selected_genes = getattr(self, '_selected_genes', [])
         for gid in self._selected_genes:
             self.selected_genes.addItem(str(gid))
         self._update_gene_info()
+        self._restore_state()
         self._on_view_changed()
 
     def _on_view_changed(self):
         heat = self.view_combo.currentIndex() == 1
         self.norm_combo.setEnabled(heat)
         self.top_cell_spin.setEnabled(not heat)
+        self.transpose_check.setEnabled(not heat)
         self._update_plot()
 
     def _on_cell_type_changed(self):
@@ -287,7 +466,13 @@ class ExpressionSummaryDialog(BasePlotDialog):
                     f"(e.g. exact symbol).")
                 return
         if gid is None:
-            QMessageBox.warning(self, "Not found", f"No gene matches '{text}'.")
+            if self._allowed_genes is not None:
+                QMessageBox.information(
+                    self, "Gene not in filtered list",
+                    f"'{text}' is not in the current filtered gene list.\n"
+                    "Only genes from the filtered sheet can be added to this view.")
+            else:
+                QMessageBox.warning(self, "Not found", f"No gene matches '{text}'.")
             return
         gid = str(gid)
         if gid not in self._selected_genes:
@@ -348,12 +533,14 @@ class ExpressionSummaryDialog(BasePlotDialog):
     # ── Plot ──────────────────────────────────────────────────────────────
 
     def _dot_params(self) -> dict:
+        transpose = self.transpose_check.isChecked()
         return {
             'top_cell_types': self.top_cell_spin.value(),
             'label_limit': self.label_limit_spin.value(),
             'cmap': self.cmap_combo.currentText(),
-            'xlabel': 'Cell type',
-            'ylabel': 'Gene',
+            'transpose': transpose,
+            'xlabel': 'Gene' if transpose else 'Cell type',
+            'ylabel': 'Cell type' if transpose else 'Gene',
         }
 
     def _build_long(self) -> pd.DataFrame:
@@ -383,6 +570,7 @@ class ExpressionSummaryDialog(BasePlotDialog):
         return wide
 
     def _do_plot(self):
+        self._fit_figure_to_canvas()
         self.figure.clear()
         self._hover_points = []
         if not self._selected_genes:
@@ -418,6 +606,10 @@ class ExpressionSummaryDialog(BasePlotDialog):
                                    if c in heat_df.columns],
             }
             render_heatmap(self.figure, heat_df, params)
+            try:
+                self.figure.tight_layout()
+            except Exception:
+                pass
             self._hover_ax = None
             return
 

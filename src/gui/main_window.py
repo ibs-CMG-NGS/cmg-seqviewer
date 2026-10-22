@@ -3659,7 +3659,8 @@ class MainWindow(QMainWindow):
             if current_index < 0 or current_index not in self.tab_data:
                 QMessageBox.warning(self, "No Data", "Please load a dataset first.")
                 return
-            dataset = self.tab_data[current_index]['dataset']
+            entry = self.tab_data.get(current_index, {})
+            dataset = entry.get('dataset')
             from models.data_models import DatasetType as _DT
             if dataset is None or dataset.dataset_type != _DT.EXPRESSION_SUMMARY:
                 QMessageBox.warning(
@@ -3669,8 +3670,29 @@ class MainWindow(QMainWindow):
                     "database (manifest dataset_type: expression_summary)."
                 )
                 return
+
+            # 필터 시트에서 열면 루트의 full matrix를 쓰되, gene 추가/검색 범위는
+            # 현재 필터 시트의 gene 목록으로 제한한다.
+            root_name = entry.get('parent_dataset')
+            source_dataset = self.presenter.datasets.get(root_name) if root_name else None
+            if source_dataset is None:
+                source_dataset = dataset
+            initial_genes = None
+            allowed_genes = None
+            if entry.get('sheet_type') == 'filtered' and dataset.dataframe is not None:
+                df = dataset.dataframe
+                gid_col = 'gene_id' if 'gene_id' in df.columns else None
+                if gid_col:
+                    vals = [str(v).strip() for v in df[gid_col].dropna().unique()]
+                    vals = [v for v in vals if v and v.lower() != 'nan']
+                    if vals:
+                        allowed_genes = vals
+                        initial_genes = vals
+
             from gui.expression_summary_dialog import ExpressionSummaryDialog
-            dialog = ExpressionSummaryDialog(dataset, parent=self)
+            dialog = ExpressionSummaryDialog(
+                dataset, parent=self, source_dataset=source_dataset,
+                initial_genes=initial_genes, allowed_genes=allowed_genes)
             dialog.exec()
             self.logger.info("Visualization opened: expression_summary")
         except Exception as e:

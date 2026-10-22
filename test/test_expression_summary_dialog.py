@@ -1,9 +1,25 @@
 """ExpressionSummaryDialog smoke tests (pytest-qt)."""
 
 import pandas as pd
+import pytest
 
+from models.data_models import Dataset, DatasetType
 from gui.expression_summary_dialog import ExpressionSummaryDialog
 from utils.expression_summary_loader import ExpressionSummaryLoader
+
+
+@pytest.fixture(autouse=True)
+def _clear_expression_state():
+    ExpressionSummaryDialog._saved_states.clear()
+    yield
+    ExpressionSummaryDialog._saved_states.clear()
+
+
+def _many_cell_types():
+    df = pd.DataFrame({"gene_id": ["G1"], "gene_name": ["A"]})
+    for i in range(15):
+        df[f"CT_{i:02d}"] = [float(i)]
+    return ExpressionSummaryLoader().load_from_dataframe(df, name="many")
 
 
 def _dataset():
@@ -97,4 +113,48 @@ def test_dialog_with_companions(qtbot):
     heat = dialog._heatmap_df()
     assert len(heat) == 1
     assert heat.drop(columns=["gene_id", "symbol"]).isna().sum().sum() == 0
+
+def test_initial_selection_is_top10_by_mean(qtbot):
+    dialog = ExpressionSummaryDialog(_many_cell_types())
+    qtbot.addWidget(dialog)
+    selected = set(dialog._selected_cell_types())
+    assert len(selected) == 10
+    # mean이 높은 CT_14 ... CT_05가 선택되어야 한다.
+    assert selected == {f"CT_{i:02d}" for i in range(5, 15)}
+    assert dialog.top_cell_spin.value() == 0
+
+
+def test_cell_type_selection_is_restored_in_session(qtbot):
+    ds = _many_cell_types()
+    dialog = ExpressionSummaryDialog(ds)
+    qtbot.addWidget(dialog)
+    wanted = {"CT_00", "CT_01"}
+    for i in range(dialog.cell_type_list.count()):
+        item = dialog.cell_type_list.item(i)
+        item.setSelected(item.text() in wanted)
+    dialog._save_state()
+
+    dialog2 = ExpressionSummaryDialog(ds)
+    qtbot.addWidget(dialog2)
+    assert set(dialog2._selected_cell_types()) == wanted
+
+
+def test_filtered_sheet_uses_root_data_and_limits_genes(qtbot):
+    root = _dataset()
+    filtered = Dataset(
+        name="Filtered: Gene List (1 genes)",
+        dataset_type=DatasetType.EXPRESSION_SUMMARY,
+        dataframe=root.dataframe[root.dataframe["gene_id"] == "G2"].copy(),
+        metadata=root.metadata.copy(),
+    )
+    dialog = ExpressionSummaryDialog(
+        filtered, source_dataset=root,
+        initial_genes=["G2"], allowed_genes=["G2"])
+    qtbot.addWidget(dialog)
+
+    assert len(dialog.wide_df) == 3  # root full matrix
+    assert [r["gene_id"] for r in dialog._gene_rows] == ["G2"]
+    assert dialog._selected_genes == ["G2"]
+    assert "g1" not in dialog._gene_key_to_id
+    assert "g3" not in dialog._gene_key_to_id
 

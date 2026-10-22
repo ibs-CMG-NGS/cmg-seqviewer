@@ -103,14 +103,21 @@ Open the dataset in the Database Browser, then choose
 
 - **Gene search**: type a `gene_id` or `gene_name` (case-insensitive
   substring) and press Enter. Add multiple genes to compare them side by side.
-- **Cell types**: all cell types are selected by default; Ctrl/Shift-click to
-  narrow the selection.
-- **Dot plot** (default): x = cell type, y = gene, dot size = % expressing,
-  dot color = mean expression. Cell types below **Min n_cells** or **Min %
-  expressing** are shown in grey.
-- **Top-N heatmap**: the selected genes × top cell types as a heatmap
-  (Z-score or raw). Long cell-type labels are truncated; hover a dot to see
-  the full gene/cell-type name, mean, pct, and n_cells.
+- **Filtered Gene List sheets**: when opened from a `Filtered: Gene List`
+  sheet, the view uses the **root dataset's full matrix** but the gene list is
+  seeded from that sheet. **Add gene is limited to the filtered list**, so the
+  main Gene List filter remains the single source of truth.
+- **Cell types**: initially the **top 10 by mean expression** for the selected
+  gene(s) are selected (list is ranked by mean). Your selection and display
+  settings are restored the next time you open the dialog in the same session.
+  Use **Top 10 by mean**, **Select all**, or **Clear** to change it.
+- **Dot plot** (default): **cell types on the y-axis, genes on the x-axis**
+  (recommended for long labels). Dot size = % expressing, dot color = mean
+  expression. Cell types below **Min n_cells** or **Min % expressing** are
+  shown in grey. **Refresh Plot** fits the figure to the current window.
+- **Top-N heatmap**: the selected genes × selected cell types as a heatmap
+  (Z-score or raw). Long cell-type labels are truncated to **Label length**;
+  hover a dot to see the full gene/cell-type name, mean, pct, and n_cells.
 
 ## 21.6 Export and CLI
 
@@ -131,6 +138,9 @@ Open the dataset in the Database Browser, then choose
   metadata for now.
 - Expression summaries must come through the manifest/DB (or CLI with
   `--type expression_summary`), not plain File → Open.
+- Violin/box plots of expression distributions are **not available from the
+  aggregated export** (mean/pct/n_cells). They require per-sample pseudobulk or
+  cell-level expression data.
 
 ---
 **See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md) · [Dataset Database](03-dataset-database.md)

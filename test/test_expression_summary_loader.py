@@ -132,3 +132,18 @@ def test_pct_scale_conversion():
     long = build_expression_long(wide, pct_01, genes=["G1"], cell_types=["CT_A"],
                                  pct_scale="0-1")
     assert long["pct_display"].iloc[0] == 50.0
+
+def test_dot_renderer_transpose_puts_cell_types_on_y():
+    import matplotlib
+    matplotlib.use("Agg")
+    from matplotlib.figure import Figure
+    from plots.expression_dot import build_expression_long, render_expression_dot
+
+    long = build_expression_long(_wide(), genes=["Nkx2-4"],
+                                 cell_types=["CT_A", "CT_B"],
+                                 pct_scale="0-1")
+    fig = Figure()
+    ax = fig.add_subplot(111)
+    render_expression_dot(ax, long, {"transpose": True, "label_limit": 40})
+    assert [t.get_text() for t in ax.get_yticklabels()] == ["CT_A", "CT_B"]
+    assert [t.get_text() for t in ax.get_xticklabels()] == ["Nkx2-4"]
