@@ -151,6 +151,7 @@ database/metadata.json
 
 # External data folder (for post-deployment data)
 data/datasets/*.parquet
+data/datasets/*.json
 data/metadata.json
 # Keep data directory structure but exclude actual data
 !data/.gitkeep
