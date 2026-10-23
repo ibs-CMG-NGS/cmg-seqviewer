@@ -1,7 +1,7 @@
 # Expression Distribution (Violin/Box) Plan
 
 - **상태**: pilot 회신 완료, `feat/expression-distribution`에서 v1 구현 중
-- **목표 버전**: v1.5.0 (별도 `expression_distribution` 타입)
+- **목표 버전**: v1.4.1 (별도 `expression_distribution` 타입)
 - **작성일**: 2026-10-22
 - **관련 문서**: [Expression Distribution 도움말](../user/help/21-expression-distribution.md) · [Expression Summary](../user/help/22-expression-summary.md) · [파이프라인 연동](../developer/pipeline-integration.md) · [분석팀 요청 초안](EXPRESSION_DISTRIBUTION_ANALYSIS_TEAM_REQUEST.md)
 
