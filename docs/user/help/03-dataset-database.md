@@ -243,4 +243,4 @@ See the Right-Click Context Menu and Editing Metadata sections above for
 loading, editing (single/bulk), and exporting.
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md) · [Cell-Type Composition](20-cell-type-composition.md) · [Expression Summary](21-expression-summary.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](24-faq.md) · [Cell-Type Composition](20-cell-type-composition.md) · [Expression Distribution](21-expression-distribution.md) · [Expression Summary](22-expression-summary.md)

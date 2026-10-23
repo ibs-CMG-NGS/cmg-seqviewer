@@ -198,6 +198,15 @@ class StandardColumns:
         return [cls.GENE_ID]
 
     @classmethod
+    def get_expression_distribution_required(cls) -> list[str]:
+        """Expression distribution(long)에 최소 필수인 컬럼.
+
+        pseudobulk는 `sample`, quantile은 `median`이 추가로 필요하지만 layout에
+        따라 가변이라 여기서는 공통 컬럼만 반환하고 Dataset.is_valid /
+        ExpressionDistributionLoader가 layout별 컬럼을 확인한다."""
+        return [cls.GENE_ID, cls.CELL_TYPE, 'mean_expression']
+
+    @classmethod
     def get_atac_basic(cls) -> list[str]:
         """ATAC basic 표시 수준: 위치 + 대표 유전자"""
         return [cls.PEAK_ID, cls.CHROMOSOME, cls.PEAK_START, cls.PEAK_END, cls.NEAREST_GENE]

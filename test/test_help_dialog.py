@@ -18,7 +18,7 @@ class TestHelpDir:
         files = sorted(REPO_HELP.glob("*.md"))
         assert len(files) >= 18          # H1: 섹션 전부 (재구성 후 19개)
         assert files[0].name == "01-getting-started.md"
-        assert files[-1].name == "23-faq.md"  # FAQ is last
+        assert files[-1].name == "24-faq.md"  # FAQ is last
 
     def test_all_sections_are_english(self):
         # 한글/영문 정리: 도움말 전체(19개) 영문 단일화
@@ -126,8 +126,8 @@ class TestHelpImages:
 class TestHelpStructure:
     def test_last_section_is_faq(self):
         files = sorted(REPO_HELP.glob("*.md"))
-        assert files[-1].name == "23-faq.md"
-        assert len(files) == 23
+        assert files[-1].name == "24-faq.md"
+        assert len(files) == 24
         assert (REPO_HELP / "19-command-line-interface.md").exists()
 
     def test_second_level_numbering(self):
@@ -150,15 +150,15 @@ class TestHelpStructure:
             t = f.read_text(encoding="utf-8")
             assert "**See also**" in t, f.name                       # ③ 상호 링크
             assert "../user-guide.md" in t, f.name
-        faq = (REPO_HELP / "23-faq.md").read_text(encoding="utf-8")
-        assert "See also" in faq and "23-faq.md)" not in faq         # 자기참조 없음
+        faq = (REPO_HELP / "24-faq.md").read_text(encoding="utf-8")
+        assert "See also" in faq and "24-faq.md)" not in faq         # 자기참조 없음
 
     def test_faq_links_referenced(self):
         # FAQ(20)를 참조하는 See also가 전 섹션에 존재
         for f in sorted(REPO_HELP.glob("*.md")):
-            if f.name == "23-faq.md":
+            if f.name == "24-faq.md":
                 continue
-            assert "23-faq.md" in f.read_text(encoding="utf-8") or True
+            assert "24-faq.md" in f.read_text(encoding="utf-8"), f.name
 
 
 class TestHelpNavigation:

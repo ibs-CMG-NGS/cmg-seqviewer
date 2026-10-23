@@ -114,6 +114,46 @@ class TestCliLoad:
         assert report["valid"] is True
         assert report["missing_required_columns"] == []
 
+    def test_load_expression_distribution_json(self, tmp_path, capsys):
+        import json
+        df = pd.DataFrame({
+            "gene_id": ["G1", "G1", "G2", "G2"],
+            "gene_name": ["A", "A", "B", "B"],
+            "cell_type": ["CT_A", "CT_A", "CT_B", "CT_B"],
+            "sample": ["s1", "s2", "s1", "s2"],
+            "condition": ["Control", "Treated", "Control", "Treated"],
+            "n_cells": [20, 20, 20, 20],
+            "pct_expressing": [50.0, 60.0, 70.0, 80.0],
+            "mean_expression": [1.0, 2.0, 3.0, 4.0],
+        })
+        f = tmp_path / "distribution.parquet"
+        df.to_parquet(f, index=False)
+        rc = cli.main(["load", str(f), "--type", "expression_distribution", "--json"])
+        report = json.loads(capsys.readouterr().out)
+        assert rc == 0
+        assert report["dataset_type"] == "expression_distribution"
+        assert report["valid"] is True
+        assert report["missing_required_columns"] == []
+
+    def test_load_expression_distribution_autodetect(self, tmp_path, capsys):
+        import json
+        df = pd.DataFrame({
+            "gene_id": ["G1", "G1"],
+            "gene_name": ["A", "A"],
+            "cell_type": ["CT_A", "CT_A"],
+            "sample": ["s1", "s2"],
+            "condition": ["Control", "Treated"],
+            "n_cells": [20, 20],
+            "pct_expressing": [50.0, 60.0],
+            "mean_expression": [1.0, 2.0],
+        })
+        f = tmp_path / "distribution.parquet"
+        df.to_parquet(f, index=False)
+        rc = cli.main(["load", str(f), "--json"])
+        report = json.loads(capsys.readouterr().out)
+        assert rc == 0
+        assert report["dataset_type"] == "expression_distribution"
+
 
 class TestCliFilter:
     def test_filter_writes_table(self, tmp_path, capsys):

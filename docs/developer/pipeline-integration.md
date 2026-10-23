@@ -609,8 +609,10 @@ go_df$gene_symbols <- go_df$geneID  # "Tnf/Il6/Cxcl10" 형식
 | `row_count` | int | 선택 | 전체 행 수 |
 | `gene_count` | int | 선택 | DE 유전자 수 / ATAC peak 수 |
 | `significant_genes` | int | 선택 | padj(및 |log2FC|) 기준 유의 수 |
-| `cell_type_count` | int | 선택 | expression_summary 세포타입 수 |
+| `cell_type_count` | int | 선택 | expression_summary/distribution 세포타입 수 |
+| `sample_count` | int | 선택 | expression_distribution sample/replicate 수 |
 | `expression_schema` | object | 선택 | expression_summary layout/companion/pct_scale 등 |
+| `distribution_schema` | object | 선택 | expression_distribution layout/sample/condition/companion 등 |
 | `notes` | string | 선택 | 자유 메모 |
 | `tags` | string[] | 선택 | 검색 태그 (문자열 배열) |
 | `researcher` | string 또는 string[] | 선택 | 이니셜. tags에도 자동 추가 |
@@ -623,8 +625,9 @@ go_df$gene_symbols <- go_df$geneID  # "Tnf/Il6/Cxcl10" 형식
 **`dataset_type` 허용값:**
 `differential_expression`, `go_analysis`, `multi_group`, `atac_seq`, `multi_omics`,
 `motif_enrichment`, `tf_footprint`, `chromvar_diff_tf`, `composition`,
-`expression_summary`, `unknown`
-(별칭: `differential_accessibility`→`atac_seq`, `time_series`/`coexpression_module`→`multi_group`)
+`expression_summary`, `expression_distribution`, `unknown`
+(별칭: `differential_accessibility`→`atac_seq`, `time_series`/`coexpression_module`→`multi_group`,
+`pseudobulk`/`expression_pseudobulk`→`expression_distribution`)
 
 그 외 키(`schema_version`, `provenance`, `padj_cutoff`, `log2fc_cutoff` 등)는 현재
 저장되지 않고 무시됩니다. 파이프라인 provenance는 `notes`/`tags`로 표현하거나,
@@ -669,7 +672,7 @@ cmg-seqviewer-cli load datasets/Tcell_IFN_vs_Control_DE.parquet --json
 ```
 
 `missing_required_columns`가 비어 있고 `valid`가 `true`면 DB 반입 가능한 상태입니다.
-자동 감지가 실패하면 `--type differential_expression|go_analysis|multi_group|atac|composition`으로
+자동 감지가 실패하면 `--type differential_expression|go_analysis|multi_group|atac|composition|expression_summary|expression_distribution`으로
 강제할 수 있습니다.
 
 ### 9.6 Multi-Group parquet 규격
@@ -769,7 +772,7 @@ manifest 예시:
 ### 9.8 Expression Summary parquet 규격 (`expression_summary`)
 
 HypoMap 등 **전 유전자 × 세포타입** 발현 요약을 넘길 때의 규격입니다. v1은
-**wide layout**만 지원합니다.
+**wide layout**과 per-dataset **long layout**(최대 5M rows)을 지원합니다.
 
 **Primary (wide mean):**
 
@@ -831,8 +834,91 @@ manifest:
   단, `cell_type_level`/`organism`/provenance는 manifest가 있을 때만 채워집니다.
 - CLI 검증: `cmg-seqviewer-cli load <mean.parquet> --type expression_summary --json`
 
+### 9.9 Expression Distribution parquet 규격 (`expression_distribution`)
+
+Per-sample pseudobulk/quantile 분포(violin/box)를 넘길 때의 규격입니다.
+`expression_summary`의 mean/pct/n_cells 집계로는 분포를 그릴 수 없으므로,
+**sample(replicate) 단위 값** 또는 **quantile 통계**가 필요합니다.
+
+**Primary (long-format):**
+
+| 컬럼 | 필수 | 규칙 |
+|------|------|------|
+| `gene_id` | ✅ | symbol 또는 Ensembl ID |
+| `gene_name` | 권장 | 표시용 이름 (없으면 gene_id) |
+| `cell_type` | ✅ | 세포타입 라벨 |
+| `mean_expression` | ✅ | sample × cell_type의 정규화 mean |
+| `sample` | pseudobulk ✅ | biological replicate ID |
+| `dataset` | 권장 | study/dataset ID |
+| `condition` | 권장 | 조건 (예: `Normal chow`, `Fasted`) |
+| `n_cells` | 권장 | group 세포 수 |
+| `n_expressing` / `pct_expressing` | 권장 | detection 비율 (`pct_scale` 명시) |
+| `mean_counts` | 선택 | raw count mean |
+| `p10`/`p25`/`median`/`p75`/`p90` | quantile ✅ | `layout: "quantile"`일 때 `median` 필수 |
+
+**Companion 파일 (선택):**
+
+| 키 | 내용 |
+|----|------|
+| `gene_index` | `gene_id`, `max_mean_expression`, `max_pct_expressing`, `n_cell_types_detected` |
+| `cell_type_summary` | `cell_type`, `n_cells` |
+
+manifest:
+
+```json
+{
+  "datasets": [{
+    "alias": "HypoMap Dowsett10xnuc pseudobulk distribution",
+    "file_path": "hypomap_Dowsett10xnuc_pseudobulk.parquet",
+    "dataset_type": "expression_distribution",
+    "organism": "Mus musculus",
+    "row_count": 7740,
+    "gene_count": 30,
+    "cell_type_count": 43,
+    "sample_count": 6,
+    "distribution_schema": {
+      "schema_version": "1.0",
+      "layout": "pseudobulk",
+      "gene_id_type": "symbol",
+      "cell_type_column": "cell_type",
+      "sample_column": "sample",
+      "sample_unit": "biological_replicate",
+      "dataset_column": "dataset",
+      "condition_column": "condition",
+      "group_columns": ["condition", "dataset"],
+      "value_column": "mean_expression",
+      "pct_column": "pct_expressing",
+      "n_cells_column": "n_cells",
+      "pct_scale": "0-100",
+      "detection": "raw counts > 0",
+      "value_definition": "mean of normalized value layer per sample x cell_type",
+      "min_cells": 10,
+      "companion_files": {
+        "gene_index": "hypomap_Dowsett10xnuc_gene_index.parquet",
+        "cell_type_summary": "hypomap_Dowsett10xnuc_cell_type_summary.parquet"
+      }
+    }
+  }]
+}
+```
+
+- `sample_unit`은 `biological_replicate` / `dataset` / `unknown` 중 하나로 명시해
+  주세요. replicate가 없는데 `biological_replicate`로 표기하면 통계적 해석이
+  왜곡됩니다.
+- `layout`은 `pseudobulk` 또는 `quantile`입니다. quantile이면 viewer는 violin
+  대신 box/range를 그립니다.
+- `pct_scale`은 `0-1` 또는 `0-100`으로 명시해 주세요.
+- v1은 **dataset 단위** 로드(최대 5,000,000행)입니다. 전체 atlas는 dataset별로
+  나누거나 선택 gene panel로 export해 주세요.
+- manifest 없이 `data/datasets/`에 `*_pseudobulk.parquet` +
+  `*_gene_index.parquet` + `*_cell_type_summary.parquet`를 넣고 Refresh해도
+  자동 등록됩니다. 단 `sample_unit`/`condition`/provenance는 manifest가 있을
+  때만 채워집니다.
+- CLI 검증: `cmg-seqviewer-cli load <pseudobulk.parquet> --type expression_distribution --json`
+
 ---
 
 **See also**:
 [scRNA-seq 3차 분석 파이프라인 연동 회신](pipeline-integration-response.md) ·
-[HypoMap expression summary 연동 회신](hypomap-expression-integration-response.md)
+[HypoMap expression summary 연동 회신](hypomap-expression-integration-response.md) ·
+[Expression Distribution 계획](../planning/EXPRESSION_DISTRIBUTION_PLAN.md)

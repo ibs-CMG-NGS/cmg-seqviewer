@@ -102,4 +102,4 @@ Copy and paste data like in Excel:
 6. Apply filter to get detailed view of those genes
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](24-faq.md)

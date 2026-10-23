@@ -706,6 +706,15 @@ class MainWindow(QMainWindow):
         self.expression_summary_action.triggered.connect(self._on_expression_summary)
         single_cell_menu.addAction(self.expression_summary_action)
 
+        self.expression_distribution_action = QAction(
+            "🎻 Gene Expression Distribution", self)
+        self.expression_distribution_action.setToolTip(
+            "Visualize per-sample expression distributions (violin/box) "
+            "across cell types.")
+        self.expression_distribution_action.triggered.connect(
+            self._on_expression_distribution)
+        single_cell_menu.addAction(self.expression_distribution_action)
+
         viz_menu.addSeparator()
 
         # GO/KEGG 시각화 서브메뉴
@@ -1679,6 +1688,14 @@ class MainWindow(QMainWindow):
                         self, "Expression summary",
                         "Expression summary supports Gene List / Keyword filtering only.\n"
                         "Use the Gene List tab or the expression dialog's own filters.")
+                    return
+
+                elif dataset_type == DatasetType.EXPRESSION_DISTRIBUTION:
+                    QMessageBox.information(
+                        self, "Expression distribution",
+                        "Expression distribution supports Gene List / Keyword "
+                        "filtering only.\nUse the Gene List tab or the distribution "
+                        "dialog's own filters.")
                     return
 
                 elif dataset_type == DatasetType.GO_ANALYSIS:
@@ -3701,6 +3718,32 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.logger.error(f"Expression Summary failed: {e}")
             QMessageBox.critical(self, "Error", f"Failed to open Expression Summary:\n{str(e)}")
+
+    def _on_expression_distribution(self):
+        """Gene Expression Distribution (violin/box) 다이얼로그 열기."""
+        try:
+            current_index = self.data_tabs.currentIndex()
+            if current_index < 0 or current_index not in self.tab_data:
+                QMessageBox.warning(self, "No Data", "Please load a dataset first.")
+                return
+            dataset = self.tab_data[current_index].get('dataset')
+            from models.data_models import DatasetType as _DT
+            if dataset is None or dataset.dataset_type != _DT.EXPRESSION_DISTRIBUTION:
+                QMessageBox.warning(
+                    self, "Expression Distribution Required",
+                    "Gene Expression Distribution is only available for "
+                    "expression_distribution datasets.\nImport a pseudobulk/quantile "
+                    "bundle (manifest dataset_type: expression_distribution)."
+                )
+                return
+            from gui.expression_distribution_dialog import ExpressionDistributionDialog
+            dialog = ExpressionDistributionDialog(dataset, parent=self)
+            dialog.exec()
+            self.logger.info("Visualization opened: expression_distribution")
+        except Exception as e:
+            self.logger.error(f"Expression Distribution failed: {e}")
+            QMessageBox.critical(
+                self, "Error", f"Failed to open Expression Distribution:\n{str(e)}")
 
     def _on_gene_expression_bar(self):
         """Gene Expression Bar+Scatter (Grouped) 다이얼로그 열기.

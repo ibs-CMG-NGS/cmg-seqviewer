@@ -1,9 +1,48 @@
 # Expression Distribution (Violin/Box) Plan
 
-- **상태**: 계획 (분석팀 회신 대기)
-- **목표 버전**: v1.5.x 이후 (별도 `expression_distribution` 타입)
+- **상태**: pilot 회신 완료, `feat/expression-distribution`에서 v1 구현 중
+- **목표 버전**: v1.5.0 (별도 `expression_distribution` 타입)
 - **작성일**: 2026-10-22
-- **관련 문서**: [Expression Summary](../user/help/21-expression-summary.md) · [파이프라인 연동](../developer/pipeline-integration.md) · [분석팀 요청 초안](EXPRESSION_DISTRIBUTION_ANALYSIS_TEAM_REQUEST.md)
+- **관련 문서**: [Expression Distribution 도움말](../user/help/21-expression-distribution.md) · [Expression Summary](../user/help/22-expression-summary.md) · [파이프라인 연동](../developer/pipeline-integration.md) · [분석팀 요청 초안](EXPRESSION_DISTRIBUTION_ANALYSIS_TEAM_REQUEST.md)
+
+---
+
+## 0. Pilot Confirmation (2026-10-22)
+
+분석팀이 `expression_distribution` pilot bundle을 제공했다.
+
+- Dataset: Dowsett10xnuc (HypoMap subset)
+- Genes: 30 marker genes
+- Cell types: 43
+- Samples: 6 biological samples (4 Normal chow, 2 Fasted)
+- Rows: 7,740 (gene × cell_type × sample, `n_cells >= 10`)
+- Layout: `pseudobulk`, `sample_unit: "biological_replicate"`
+- Main: `hypomap_Dowsett10xnuc_pseudobulk.parquet` (~111 KB)
+- Companions: `gene_index`, `cell_type_summary`
+- Full bundle: analysis 69 + distribution 1 = 70 datasets, **70/70 imported**
+  in the implementation branch (v1.4.0 would import 69/70).
+
+확정된 핵심 답변:
+
+- `sample`은 biological replicate이며, HypoMap에 별도 `donor` 컬럼은 없다.
+- per-sample pseudobulk export 가능. quantile/cell-level도 협의 가능하지만
+  pilot에는 포함되지 않았다.
+- 조건 간 통계 검정은 pseudobulk DE 결과를 별도로 사용한다 (이 뷰는 descriptive).
+- 전체 57k gene은 lazy query/전달 크기 협의 후 결정한다.
+
+### 0.1 Implementation status (`feat/expression-distribution`)
+
+- ✅ `DatasetType.EXPRESSION_DISTRIBUTION` + alias
+- ✅ pseudobulk/quantile loader (`expression_distribution_loader.py`)
+- ✅ manifest `distribution_schema`, `sample_count`, companion import
+- ✅ import-fold auto-detect (`*_pseudobulk.parquet` + companions)
+- ✅ DB load + full bundle **70/70 imported**
+- ✅ CLI `load --type expression_distribution --json`
+- ✅ violin/box/strip + condition/dataset/sample grouping dialog
+- ✅ Export Data / Export Bundle / Pin to Tab
+- ✅ F1 help section 21 + pipeline integration §9.9
+- ⏳ cell-level on-demand store (Phase 3)
+- ⏳ full-atlas lazy DuckDB query (v2)
 
 ---
 

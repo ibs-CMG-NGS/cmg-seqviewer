@@ -443,6 +443,14 @@ class MainPresenter(QObject):
                     self.fsm.trigger(Event.FILTER_FAILED)
                     return
 
+                elif dataset_type == DatasetType.EXPRESSION_DISTRIBUTION:
+                    self.error_occurred.emit(
+                        "Expression distribution supports Gene List / Keyword "
+                        "filtering only. Use the Gene List tab or the distribution "
+                        "dialog's own filters.")
+                    self.fsm.trigger(Event.FILTER_FAILED)
+                    return
+
                 elif dataset_type == DatasetType.ATAC_SEQ:
                     # ATAC-seq: adj_pvalue, log2fc + ATAC 전용 필터
                     filtered_df = self._filter_atac_by_statistics(

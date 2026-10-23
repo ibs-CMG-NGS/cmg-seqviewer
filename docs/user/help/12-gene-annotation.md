@@ -248,4 +248,4 @@ Right-click on description columns for general searches:
 16. ✅ **Auto ID extraction** - No need to copy-paste IDs manually
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](24-faq.md)

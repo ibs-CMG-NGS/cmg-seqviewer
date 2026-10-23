@@ -75,4 +75,4 @@ Composition data can also be imported through the database by setting
 `"dataset_type": "composition"` in `seqviewer_manifest.json`.
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md) · [Command Line Interface](19-command-line-interface.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](24-faq.md) · [Command Line Interface](19-command-line-interface.md)

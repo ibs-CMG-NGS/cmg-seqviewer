@@ -128,4 +128,4 @@ matches pipeline statistics — local GO)”** in the analysis dialog
 `stat_test` (`fisher_one_sided` / `fisher_two_sided`).
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](24-faq.md)

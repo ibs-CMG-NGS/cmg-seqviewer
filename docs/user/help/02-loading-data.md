@@ -99,4 +99,4 @@ Adjust number display precision via **View →Decimal Precision**:
 9. Applies to all numeric columns in the data view
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](24-faq.md)
