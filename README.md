@@ -1,9 +1,9 @@
 # CMG-SeqViewer - Multi-omics Data Analysis & Visualization
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyQt6](https://img.shields.io/badge/PyQt-6-green.svg)](https://www.riverbankcomputing.com/software/pyqt/)
-[![Release](https://img.shields.io/badge/release-v1.3.2-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
+[![Release](https://img.shields.io/badge/release-v1.4.0-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
 [![Docs](https://img.shields.io/badge/docs-online%20guide-blue.svg)](https://ibs-cmg-ngs.github.io/cmg-seqviewer/)
 
 ---
@@ -32,14 +32,19 @@
 
 ---
 
-## Latest Update: v1.3.2 (Oct 2026)
+## Latest Update: v1.4.0 (Oct 2026)
+
+- [NEW] **Command-line interface** — `cmg-seqviewer-cli load/filter/export` with `--json` machine-readable validation, plus recipe-driven `run`/`batch`; supports DE/GO/Multi-Group/ATAC/Composition/Expression Summary CSV, TSV, and Parquet inputs without opening the GUI
+- [NEW] **Cell-Type Composition datasets + view** (`Visualization → 🧬 Single-cell RNA-seq → 🧫 Cell-Type Composition`): propeller/limma `cell_type` / `PropMean.<condition>` / `PropRatio` / `FDR` results render as PropRatio bars or grouped mean-proportion bars, with FDR filtering and `--type composition`
+- [NEW] **Expression Summary datasets + view** (`Visualization → 🧬 Single-cell RNA-seq → 🧬 Gene × Cell-Type Expression`): HypoMap-style wide mean/pct matrices, long-format pivot up to 5M rows, optional gene_index/cell_type_summary companions, gene search, % expressing dot plot, top-N heatmap, and `--type expression_summary`
+- [NEW] **HypoMap/pipeline bundle support**: pipeline-specific `manifest.json` (`table=expression`) is auto-recognized; `expression_summary` bundles are auto-detected even without a manifest; `cell_type_count` is preserved
+- [NEW] **Single-cell submenu** groups composition, expression summary, and future single-cell views under `Visualization → 🧬 Single-cell RNA-seq`
+- [FIX] **WSLg mixed-DPI** menu/popup ghosting and invisible cursors mitigated (Wayland default, opt-in xcb path); Windows builds use a Per-Monitor V2 manifest
+- [FIX] Expression dot-plot labels stay fully visible, transpose/colormap are shared with the heatmap, and selection state persists across refresh; import column auto-mapping and validation are more robust
+
+### Previous: v1.3.2 (Oct 2026)
 
 - [NEW] **Online user guide** at [ibs-cmg-ngs.github.io/cmg-seqviewer](https://ibs-cmg-ngs.github.io/cmg-seqviewer/) — the same `docs/user/help/*.md` content as the in-app F1 help, published automatically on every change so the app and the website never drift apart
-- [NEW] **Cell-Type Composition datasets + view** (`Visualization → 🧬 Single-cell RNA-seq → 🧫 Cell-Type Composition`): propeller/limma `cell_type` / `PropMean.<condition>` / `PropRatio` / `FDR` results render as PropRatio bars or grouped mean-proportion bars, with FDR filtering and CLI support (`--type composition`)
-- [NEW] **Expression Summary datasets + view** (`Visualization → 🧬 Single-cell RNA-seq → 🧬 Gene × Cell-Type Expression`): HypoMap-style wide mean/pct matrices with optional gene_index/cell_type_summary companions; gene search, % expressing dot plot, top-N heatmap, and `--type expression_summary` CLI/DB import
-- [NEW] **CLI machine-readable validation** (`cmg-seqviewer-cli load --json`) and **DE/GO/Multi-Group CSV/TSV/Parquet inputs** — pipeline CI can validate parquet exports without Excel; `--type` now covers DE/GO/Multi-Group/ATAC/Composition
-- [NEW] **`seqviewer_manifest.json`**: `dataset_id`/`original_filename`/`file_path` are auto-derived when omitted; researcher/analysis_date inferred from `/YYYY-initials-organism-type/` folder names
-- [FIX] Multi-Group sample-column detection no longer treats `fdr`, `qvalue`, or numeric `cluster_id` as samples
 - [FIX] An internal "See also" link in the F1 help (GO/KEGG Enrichment Analysis section) now correctly jumps to the referenced section instead of silently doing nothing
 
 ### Previous: v1.3.1 (Oct 2026)
