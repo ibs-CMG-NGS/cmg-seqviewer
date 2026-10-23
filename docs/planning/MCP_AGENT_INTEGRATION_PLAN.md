@@ -3,7 +3,7 @@
 - **상태**: 계획 (Phase 0 시작 전)
 - **목표 버전**: v1.4.x 이후 (별도 `cmg-seqviewer-mcp` optional extra)
 - **작성일**: 2026-10-21
-- **관련 문서**: [CLI 도움말](../user/help/19-command-line-interface.md) · [파이프라인 연동](../developer/pipeline-integration.md) · [Expression Summary](../user/help/21-expression-summary.md)
+- **관련 문서**: [CLI 도움말](../user/help/19-command-line-interface.md) · [파이프라인 연동](../developer/pipeline-integration.md) · [Expression Summary](../user/help/22-expression-summary.md)
 
 > **Privacy warning (중요)**
 > MCP tool의 출력은 **AI 클라이언트로 전달되며**, 클라이언트/모델 제공자에 따라

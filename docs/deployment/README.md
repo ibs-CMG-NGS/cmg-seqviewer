@@ -8,6 +8,7 @@
 |------|------|------|
 | [빌드 가이드](build-guide.md) | Windows/macOS 실행 파일 빌드 (Apple Silicon 포함) | 빌드 담당자 |
 | [배포 가이드](deployment.md) | GitHub Release 및 CI/CD | 릴리스 매니저 |
+| [v1.4.1 릴리스 노트](release-notes-v1.4.1.md) | v1.4.1 변경사항/업그레이드 노트 | 릴리스 매니저 |
 | [v1.4.0 릴리스 노트](release-notes-v1.4.0.md) | v1.4.0 변경사항/업그레이드 노트 | 릴리스 매니저 |
 | [Windows 설치 프로그램](windows-installer.md) | PyInstaller 설정, Inno Setup 인스톨러 | Windows 빌드 담당자 |
 | [배포 전략](distribution-strategy.md) | Portable vs Installer 비교, 배포 단계 | 배포 전략 담당자 |
@@ -36,7 +37,7 @@ pip install -r requirements-dev.txt
 .\dist\CMG-SeqViewer\CMG-SeqViewer.exe
 
 # 4. 압축
-Compress-Archive -Path "dist\CMG-SeqViewer" -DestinationPath "CMG-SeqViewer-v1.4.0-Windows.zip"
+Compress-Archive -Path "dist\CMG-SeqViewer" -DestinationPath "CMG-SeqViewer-v1.4.1-Windows.zip"
 
 # 5. GitHub Release 업로드
 # GitHub → Releases → Draft new release
@@ -61,7 +62,7 @@ chmod +x build-macos.sh
 open dist/CMG-SeqViewer.app
 
 # 4. DMG 생성
-hdiutil create -volname "CMG-SeqViewer" -srcfolder dist/CMG-SeqViewer.app -ov -format UDZO CMG-SeqViewer-v1.4.0-macOS.dmg
+hdiutil create -volname "CMG-SeqViewer" -srcfolder dist/CMG-SeqViewer.app -ov -format UDZO CMG-SeqViewer-v1.4.1-macOS.dmg
 
 # 5. GitHub Release 업로드
 ```
@@ -150,28 +151,28 @@ zip -r CMG-SeqViewer-macOS.zip dist/CMG-SeqViewer.app
 ```python
 # src/__init__.py, setup.py, src/gui/main_window.py,
 # cmg-seqviewer-macos.spec, installer.iss
-__version__ = "1.4.0"
+__version__ = "1.4.1"
 ```
 
 **2. 릴리스 노트 업데이트**:
 ```markdown
-## [1.4.0] - 2026-10-23
+## [1.4.1] - 2026-10-23
 
 ### Added
-- Command-line interface (`cmg-seqviewer-cli`)
-- Cell-Type Composition and Expression Summary views
-- HypoMap/pipeline bundle auto-detection
+- Gene Expression Distribution (violin/box)
+- `expression_distribution` bundle support
+- CLI `--type expression_distribution`
 ```
 
 **3. Git 태그 생성**:
 ```powershell
-git tag -a v1.4.0 -m "Release v1.4.0: CLI, single-cell views, and pipeline bundles"
-git push origin v1.4.0
+git tag -a v1.4.1 -m "Release v1.4.1: expression distribution view and bundles"
+git push origin v1.4.1
 ```
 
 **4. GitHub Release 생성**:
 - Releases → Draft new release
-- 태그: v1.4.0
+- 태그: v1.4.1
 - 빌드 파일 업로드
 
 ### CI/CD 자동 릴리스

@@ -29,8 +29,9 @@ Usage:
     python -m cli batch recipe.yaml --inputs "data/*.xlsx" --out-dir results/ --manifest results/manifest.json
 
 `load`/`filter` accept CSV/TSV/Parquet inputs as well as Excel. `--type`
-accepts atac / differential_expression / go_analysis / multi_group to bypass
-auto-detection (e.g. for parquet exports from external pipelines).
+accepts atac / differential_expression / go_analysis / multi_group / composition /
+expression_summary / expression_distribution to bypass auto-detection (e.g. for
+parquet exports from external pipelines).
 """
 
 from __future__ import annotations
@@ -56,7 +57,7 @@ def _build_presenter():
 
 
 _TYPE_CHOICES = ["atac", "differential_expression", "go_analysis", "multi_group",
-                 "composition", "expression_summary"]
+                 "composition", "expression_summary", "expression_distribution"]
 
 
 def _dataset_type_hint(type_arg: Optional[str]):
@@ -70,6 +71,7 @@ def _dataset_type_hint(type_arg: Optional[str]):
         "multi_group": DatasetType.MULTI_GROUP,
         "composition": DatasetType.COMPOSITION,
         "expression_summary": DatasetType.EXPRESSION_SUMMARY,
+        "expression_distribution": DatasetType.EXPRESSION_DISTRIBUTION,
     }
     if type_arg not in mapping:
         raise ValueError(f"--type must be one of {sorted(mapping)}, got {type_arg!r}")
@@ -117,6 +119,8 @@ def _dataset_report(dataset) -> dict:
         DatasetType.ATAC_SEQ: StandardColumns.get_atac_required(),
         DatasetType.COMPOSITION: StandardColumns.get_composition_required(),
         DatasetType.EXPRESSION_SUMMARY: StandardColumns.get_expression_summary_required(),
+        DatasetType.EXPRESSION_DISTRIBUTION: (
+            StandardColumns.get_expression_distribution_required()),
     }.get(dataset.dataset_type, [])
     present = list(dataset.dataframe.columns)
     return {

@@ -53,13 +53,15 @@ def _is_composition_dataframe(df) -> bool:
     return CompositionLoader.is_composition_dataframe(df)
 
 
-def _expression_companion_names(item: dict) -> list:
-    """manifest 항목의 expression_schema.companion_files 값(파일명) 목록."""
-    schema = item.get('expression_schema') or {}
-    comp = schema.get('companion_files') or {}
-    if not isinstance(comp, dict):
-        return []
-    return [Path(str(v)).name for v in comp.values() if v]
+def _bundle_companion_names(item: dict) -> list:
+    """manifest 항목의 expression/distribution companion 파일명 목록."""
+    names = []
+    for schema_key in ('expression_schema', 'distribution_schema'):
+        schema = item.get(schema_key) or {}
+        comp = schema.get('companion_files') or {}
+        if isinstance(comp, dict):
+            names.extend(Path(str(v)).name for v in comp.values() if v)
+    return names
 
 
 _SPECIES_NAMES = {
@@ -220,6 +222,68 @@ def _is_expression_companion(datasets_dir: Path, filename: str) -> bool:
     return False
 
 
+def _is_distribution_companion(datasets_dir: Path, filename: str) -> bool:
+    """primary(_pseudobulk/_distribution)가 같은 폴더에 있는 distribution companion인지."""
+    for suffix in ('_gene_index.parquet', '_cell_type_summary.parquet'):
+        if filename.endswith(suffix):
+            prefix = filename[:-len(suffix)]
+            return ((datasets_dir / f'{prefix}_pseudobulk.parquet').exists()
+                    or (datasets_dir / f'{prefix}_distribution.parquet').exists())
+    return False
+
+
+def _detect_expression_distribution_bundle(datasets_dir: Path, filename: str, df):
+    """manifest 없이 `*_pseudobulk.parquet` + companion 세트를 자동 감지한다."""
+    if not filename.endswith('_pseudobulk.parquet'):
+        return None, []
+    if not {'gene_id', 'cell_type', 'sample', 'mean_expression'}.issubset(df.columns):
+        return None, []
+    prefix = filename[:-len('_pseudobulk.parquet')]
+    companions = {
+        'gene_index': f'{prefix}_gene_index.parquet',
+        'cell_type_summary': f'{prefix}_cell_type_summary.parquet',
+    }
+    required = [v for v in companions.values() if (datasets_dir / v).exists()]
+    if not required:
+        return None, []
+    schema = {
+        'schema_version': '1.0',
+        'layout': 'pseudobulk',
+        'gene_id_type': 'symbol',
+        'cell_type_column': 'cell_type',
+        'sample_column': 'sample',
+        'sample_unit': 'biological_replicate',
+        'value_column': 'mean_expression',
+        'pct_column': 'pct_expressing',
+        'n_cells_column': 'n_cells',
+        'pct_scale': '0-100',
+        'companion_files': {k: v for k, v in companions.items()
+                            if (datasets_dir / v).exists()},
+        'source': 'auto-detected',
+    }
+    try:
+        pct_max = pd.to_numeric(df.get('pct_expressing'), errors='coerce').max()
+        if pd.notna(pct_max) and float(pct_max) <= 1.5:
+            schema['pct_scale'] = '0-1'
+    except Exception:
+        pass
+    entry = {
+        'dataset_id': str(uuid.uuid4()),
+        'alias': f'{prefix} pseudobulk distribution',
+        'original_filename': filename,
+        'file_path': filename,
+        'dataset_type': DatasetType.EXPRESSION_DISTRIBUTION.value,
+        'row_count': len(df),
+        'gene_count': int(df['gene_id'].nunique()) if 'gene_id' in df.columns else 0,
+        'cell_type_count': int(df['cell_type'].nunique()) if 'cell_type' in df.columns else 0,
+        'sample_count': int(df['sample'].nunique()) if 'sample' in df.columns else 0,
+        'notes': 'Auto-detected expression distribution bundle (pseudobulk); no manifest',
+        'tags': ['expression', 'distribution', 'pseudobulk', 'auto-detected'],
+        'distribution_schema': schema,
+    }
+    return entry, required
+
+
 def _detect_expression_summary_bundle(datasets_dir: Path, filename: str, df):
     """companion 파일명 규칙으로 expression_summary를 자동 감지한다.
 
@@ -342,6 +406,17 @@ def _normalize_manifest_item(item: Dict[str, Any]) -> Dict[str, Any]:
     for target, source in _MANIFEST_FIELD_FALLBACK.items():
         if not norm.get(target) and norm.get(source):
             norm[target] = norm[source]
+
+    # distribution manifest가 schema 안에 count를 둔 경우 보완
+    dist_schema = norm.get('distribution_schema') or {}
+    if isinstance(dist_schema, dict):
+        if not norm.get('gene_count') and dist_schema.get('n_genes'):
+            norm['gene_count'] = dist_schema.get('n_genes')
+        if not norm.get('sample_count') and dist_schema.get('n_samples'):
+            norm['sample_count'] = dist_schema.get('n_samples')
+        if not norm.get('cell_type_count') and dist_schema.get('n_cell_types'):
+            norm['cell_type_count'] = dist_schema.get('n_cell_types')
+
     # researcher: str → list 통일
     r = norm.get('researcher')
     if isinstance(r, str) and r:
@@ -557,7 +632,7 @@ class DatabaseManager:
                         norm_item = _normalize_manifest_item(item)
                         # companion 파일(pct/gene_index/summary)은 독립 데이터셋이 아니므로
                         # 아래 parquet 자동 스캔에서 다시 등록되지 않도록 미리 claim한다.
-                        claimed_files.update(_expression_companion_names(norm_item))
+                        claimed_files.update(_bundle_companion_names(norm_item))
                         filename = Path(norm_item.get('file_path', '')).name
                         if not filename or filename in known_files or filename in claimed_files:
                             claimed_files.add(filename)
@@ -595,9 +670,10 @@ class DatabaseManager:
                 if filename in known_files:
                     continue
 
-                # expression summary companion은 primary(_wide_mean/_long)에서 함께
+                # expression summary/distribution companion은 primary에서 함께
                 # 등록되므로 여기서는 조용히 건너뛴다 (불필요한 경고 방지).
-                if _is_expression_companion(datasets_dir, filename):
+                if (_is_expression_companion(datasets_dir, filename)
+                        or _is_distribution_companion(datasets_dir, filename)):
                     continue
 
                 # ── parquet 열어서 컬럼 확인 ──────────────────────────────
@@ -606,6 +682,27 @@ class DatabaseManager:
                 except Exception as e:
                     self.logger.warning(f"Cannot read parquet (skipping): {filename} — {e}")
                     continue
+
+                # manifest 없는 expression distribution bundle fallback
+                _dist_entry, _dist_companions = _detect_expression_distribution_bundle(
+                    datasets_dir, filename, df)
+                if _dist_entry:
+                    try:
+                        _meta = PreloadedDatasetMetadata.from_dict(_dist_entry)
+                        self.metadata_list.append(_meta)
+                        self._file_source_dirs[filename] = str(datasets_dir)
+                        claimed_files.add(filename)
+                        claimed_files.update(_dist_companions)
+                        auto_imported += 1
+                        self.logger.info(
+                            f"Auto-imported '{_meta.alias}' from distribution bundle "
+                            f"({_meta.dataset_type.value}, {_meta.row_count} rows)"
+                        )
+                        continue
+                    except Exception as e:
+                        self.logger.warning(
+                            f"Failed to register auto-detected distribution bundle "
+                            f"'{filename}': {e}")
 
                 # manifest 없는 expression summary bundle fallback
                 _expr_entry, _expr_companions = _detect_expression_summary_bundle(
@@ -1077,10 +1174,13 @@ class DatabaseManager:
                 shutil.copy2(src_parquet, dest_parquet)
                 meta.file_path = dest_name
 
-                # Expression summary companion(pct/gene_index/summary)도 함께 복사하고
-                # manifest의 파일명을 실제 destination 이름으로 갱신한다.
-                companions = (meta.expression_schema or {}).get('companion_files') or {}
-                if isinstance(companions, dict) and companions:
+                # Expression summary/distribution companion(pct/gene_index/summary)도
+                # 함께 복사하고 manifest의 파일명을 실제 destination 이름으로 갱신한다.
+                for schema_attr in ('expression_schema', 'distribution_schema'):
+                    schema = getattr(meta, schema_attr, None) or {}
+                    companions = schema.get('companion_files') or {}
+                    if not isinstance(companions, dict) or not companions:
+                        continue
                     updated = {}
                     for key, cname in companions.items():
                         cname = Path(str(cname)).name
@@ -1100,8 +1200,9 @@ class DatabaseManager:
                         if not dest_c.exists():
                             shutil.copy2(src_c, dest_c)
                         updated[key] = cname
-                    meta.expression_schema = dict(meta.expression_schema or {})
-                    meta.expression_schema['companion_files'] = updated
+                    schema = dict(schema)
+                    schema['companion_files'] = updated
+                    setattr(meta, schema_attr, schema)
 
                 self.metadata_list.append(meta)
                 self._file_source_dirs[meta.file_path] = str(self.datasets_dir)
@@ -1330,6 +1431,33 @@ class DatabaseManager:
                 self.logger.info(
                     f"Loaded composition dataset from database: {metadata.alias} "
                     f"({len(dataset.dataframe)} rows)"
+                )
+                return dataset
+
+            if metadata.dataset_type == DatasetType.EXPRESSION_DISTRIBUTION:
+                from utils.expression_distribution_loader import ExpressionDistributionLoader
+                loader = ExpressionDistributionLoader(metadata.distribution_schema)
+                dataset = loader.load(
+                    file_path, metadata.alias,
+                    distribution_schema=metadata.distribution_schema)
+                if Path(file_path).parent != self.datasets_dir and any(
+                        dataset.metadata.get(k) is None
+                        for k in ('gene_index', 'cell_type_summary')):
+                    loader.load_companions(dataset, self.datasets_dir)
+                dataset.metadata.update({
+                    'experiment_condition': metadata.experiment_condition,
+                    'organism': metadata.organism,
+                    'tissue': metadata.tissue,
+                    'timepoint': metadata.timepoint,
+                    'import_date': metadata.import_date,
+                    'notes': metadata.notes,
+                    'tags': metadata.tags,
+                    'cell_type_count': metadata.cell_type_count,
+                    'sample_count': metadata.sample_count,
+                })
+                self.logger.info(
+                    f"Loaded expression-distribution dataset from database: "
+                    f"{metadata.alias} ({len(dataset.dataframe)} rows)"
                 )
                 return dataset
 

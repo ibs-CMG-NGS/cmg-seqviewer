@@ -142,8 +142,10 @@ The **Visualization → 🧬 Single-cell RNA-seq** submenu groups the atlas-styl
 views:
 
 - **🧫 Cell-Type Composition** — propeller/limma proportion changes (section 20)
+- **🎻 Gene Expression Distribution** — per-sample violin/box/strip across
+  cell types from a pseudobulk/quantile distribution bundle (section 21)
 - **🧬 Gene × Cell-Type Expression** — gene search, % expressing dot plot, and
-  top-N heatmap from a HypoMap-style expression summary (section 21)
+  top-N heatmap from a HypoMap-style expression summary (section 22)
 
 ## 9.7 Cross-Dataset Comparison (Multiple Datasets)
 
@@ -244,4 +246,4 @@ When a pinned plot tab is active, a **Plot Settings** panel automatically appear
 8. Can be moved or floated like any standard dock panel
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](24-faq.md)

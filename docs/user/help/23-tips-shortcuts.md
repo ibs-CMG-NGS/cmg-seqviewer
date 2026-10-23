@@ -1,6 +1,6 @@
-# 22. Tips & Shortcuts
+# 23. Tips & Shortcuts
 
-## 22.1 Keyboard Shortcuts
+## 23.1 Keyboard Shortcuts
 
  | Shortcut
  | Action
@@ -66,7 +66,7 @@
  Save Project As, etc.) share one remembered "last used folder" for the session,
  so each new export defaults to wherever you saved most recently.*
 
-## 22.2 Best Practices
+## 23.2 Best Practices
 
 - **Dataset Naming:** Use descriptive names when loading datasets for easier identification
 
@@ -92,7 +92,7 @@
 
 - **Drag & Drop:** Quickly load files by dragging them onto the application window
 
-## 22.3 New Features Summary
+## 23.3 New Features Summary
 
 - **📂 Dataset Tree Panel:** Left panel now shows datasets as a tree with child nodes
  for each derived sheet (Whole, Filtered, Comparison, Plot). Click to switch tabs,
@@ -118,6 +118,8 @@
 - **🧫 Cell-Type Composition** (`Visualization → 🧬 Single-cell RNA-seq`): propeller/limma composition results
  (`cell_type`, `PropMean.<condition>`, `PropRatio`, `FDR`) → PropRatio bars
  or grouped mean-proportion bars, with FDR significance marks
+
+- **🎻 Expression Distribution** (`Visualization → 🧬 Single-cell RNA-seq`): per-sample pseudobulk or quantile bundle → violin/box/strip by cell type, grouped by condition/dataset/sample, with `n_cells`/% expressing filters
 
 - **🧬 Expression Summary** (`Visualization → 🧬 Single-cell RNA-seq`): HypoMap-style gene × cell-type atlas → search a
  gene, then view a dot plot (size = % expressing, color = mean expression) or
@@ -160,7 +162,7 @@
 
 - **Comparison Panel:** Dedicated panel for dataset comparisons with clear options
 
-## 22.4 Performance Tips
+## 23.4 Performance Tips
 
 - **Large Datasets:** Use Basic or DE Analysis column view to improve responsiveness
 
@@ -170,7 +172,7 @@
 
 - **Multiple Tabs:** Close tabs you're not using to free up memory
 
-## 22.5 Getting Help
+## 23.5 Getting Help
 
 - Press **F1** anytime to open this documentation
 
@@ -179,4 +181,4 @@
 - Review log messages at the bottom of the window for detailed status
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](24-faq.md)

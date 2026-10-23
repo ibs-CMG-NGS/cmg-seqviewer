@@ -24,4 +24,4 @@ Perform Fisher's exact test for gene set enrichment:
 3. View enrichment scores and leading-edge genes
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md) · [6.2 Meta-signature enrichment](06-go-enrichment-analysis.md#62-meta-signature-enrichment-comparison-statistics)
+**See also**: [User Guide](../user-guide.md) · [FAQ](24-faq.md) · [6.2 Meta-signature enrichment](06-go-enrichment-analysis.md#62-meta-signature-enrichment-comparison-statistics)

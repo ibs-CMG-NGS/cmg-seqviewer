@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyQt6](https://img.shields.io/badge/PyQt-6-green.svg)](https://www.riverbankcomputing.com/software/pyqt/)
-[![Release](https://img.shields.io/badge/release-v1.4.0-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
+[![Release](https://img.shields.io/badge/release-v1.4.1-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
 [![Docs](https://img.shields.io/badge/docs-online%20guide-blue.svg)](https://ibs-cmg-ngs.github.io/cmg-seqviewer/)
 
 ---
@@ -32,7 +32,14 @@
 
 ---
 
-## Latest Update: v1.4.0 (Oct 2026)
+## Latest Update: v1.4.1 (Oct 2026)
+
+- [NEW] **Gene Expression Distribution (violin/box)** (`Visualization → 🧬 Single-cell RNA-seq → 🎻 Gene Expression Distribution`): per-sample pseudobulk or quantile summary, grouped by condition/dataset/sample, with violin/box/strip, n_cells/% expressing filters, and export/bundle/pin
+- [NEW] **`expression_distribution` bundle support**: manifest `distribution_schema`, `sample_unit`, `gene_index`/`cell_type_summary` companions, and `*_pseudobulk.parquet` auto-detection; the 70-dataset pilot bundle imports 70/70
+- [NEW] **CLI `--type expression_distribution`** for `load --json` validation and auto-detection
+- [DOC] **F1 help section 21** for Expression Distribution and pipeline integration §9.9 schema reference
+
+### Previous: v1.4.0 (Oct 2026)
 
 - [NEW] **Command-line interface** — `cmg-seqviewer-cli load/filter/export` with `--json` machine-readable validation, plus recipe-driven `run`/`batch`; supports DE/GO/Multi-Group/ATAC/Composition/Expression Summary CSV, TSV, and Parquet inputs without opening the GUI
 - [NEW] **Cell-Type Composition datasets + view** (`Visualization → 🧬 Single-cell RNA-seq → 🧫 Cell-Type Composition`): propeller/limma `cell_type` / `PropMean.<condition>` / `PropRatio` / `FDR` results render as PropRatio bars or grouped mean-proportion bars, with FDR filtering and `--type composition`

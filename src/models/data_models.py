@@ -23,6 +23,7 @@ class DatasetType(Enum):
     CHROMVAR_DIFF_TF = "chromvar_diff_tf"
     COMPOSITION = "composition"
     EXPRESSION_SUMMARY = "expression_summary"
+    EXPRESSION_DISTRIBUTION = "expression_distribution"
     UNKNOWN = "unknown"
 
 
@@ -43,6 +44,10 @@ DATASET_TYPE_ALIASES: Dict[str, str] = {
     # HypoMap 등 전 유전자 × 세포타입 발현 요약
     'expression_atlas': DatasetType.EXPRESSION_SUMMARY.value,
     'cell_type_expression': DatasetType.EXPRESSION_SUMMARY.value,
+    # pseudobulk / quantile 분포 뷰
+    'pseudobulk': DatasetType.EXPRESSION_DISTRIBUTION.value,
+    'expression_pseudobulk': DatasetType.EXPRESSION_DISTRIBUTION.value,
+    'cell_type_distribution': DatasetType.EXPRESSION_DISTRIBUTION.value,
 }
 
 
@@ -193,6 +198,16 @@ class Dataset:
             if cell_types:
                 return len(cell_types) >= 1
             return 'cell_type' in cols
+        elif self.dataset_type == DatasetType.EXPRESSION_DISTRIBUTION:
+            cols = set(self.dataframe.columns)
+            if not {'gene_id', 'cell_type', 'mean_expression'}.issubset(cols):
+                return False
+            layout = str(self.metadata.get('layout') or '').lower()
+            if layout == 'pseudobulk':
+                return 'sample' in cols
+            if layout == 'quantile':
+                return 'median' in cols
+            return 'sample' in cols or 'median' in cols
         else:
             return True
         
@@ -312,6 +327,16 @@ class Dataset:
                 summary['cell_type_count'] = (
                     len(self.metadata.get('cell_types', []))
                     or int(self.metadata.get('cell_type_count', 0) or 0))
+
+            elif self.dataset_type == DatasetType.EXPRESSION_DISTRIBUTION:
+                summary['total_genes'] = int(
+                    self.metadata.get('gene_count')
+                    or self.dataframe['gene_id'].nunique())
+                summary['cell_type_count'] = int(
+                    self.metadata.get('cell_type_count')
+                    or self.dataframe['cell_type'].nunique())
+                summary['sample_count'] = int(
+                    self.metadata.get('sample_count', 0) or 0)
 
         return summary
 
@@ -442,7 +467,8 @@ class PreloadedDatasetMetadata:
     row_count: int = 0                   # 행 개수
     gene_count: int = 0                  # 유전자 개수
     significant_genes: int = 0           # 유의미한 유전자 수 (padj<0.05)
-    cell_type_count: int = 0             # expression_summary: 세포타입 수
+    cell_type_count: int = 0             # expression_summary/distribution: 세포타입 수
+    sample_count: int = 0                # expression_distribution: sample/replicate 수
     
     # 메타데이터
     import_date: str = ""                # 데이터베이스 임포트 날짜
@@ -461,6 +487,9 @@ class PreloadedDatasetMetadata:
 
     # Expression summary 전용 (wide/long layout, companion files, normalization 등)
     expression_schema: Dict[str, Any] = field(default_factory=dict)
+
+    # Expression distribution 전용 (pseudobulk/quantile layout, sample/condition, companions)
+    distribution_schema: Dict[str, Any] = field(default_factory=dict)
     
     def to_dict(self) -> Dict[str, Any]:
         """딕셔너리로 변환 (JSON 저장용)"""
@@ -478,6 +507,7 @@ class PreloadedDatasetMetadata:
             'gene_count': int(self.gene_count),
             'significant_genes': int(self.significant_genes),
             'cell_type_count': int(self.cell_type_count),
+            'sample_count': int(self.sample_count),
             'import_date': self.import_date,
             'file_path': self.file_path,
             'notes': self.notes,
@@ -488,6 +518,7 @@ class PreloadedDatasetMetadata:
             'genome_build': self.genome_build,
             'peak_caller': self.peak_caller,
             'expression_schema': self.expression_schema,
+            'distribution_schema': self.distribution_schema,
         }
     
     @staticmethod
@@ -508,6 +539,7 @@ class PreloadedDatasetMetadata:
             gene_count=data.get('gene_count', 0),
             significant_genes=data.get('significant_genes', 0),
             cell_type_count=data.get('cell_type_count', 0),
+            sample_count=data.get('sample_count', 0),
             import_date=data.get('import_date', ''),
             file_path=data.get('file_path', ''),
             notes=data.get('notes', ''),
@@ -518,4 +550,5 @@ class PreloadedDatasetMetadata:
             genome_build=data.get('genome_build', ''),
             peak_caller=data.get('peak_caller', ''),
             expression_schema=data.get('expression_schema', {}) or {},
+            distribution_schema=data.get('distribution_schema', {}) or {},
         )

@@ -56,6 +56,10 @@ def _load_with_type_hint(file_path: Path, final_name: str, dataset_type: Dataset
         from utils.expression_summary_loader import ExpressionSummaryLoader
         return ExpressionSummaryLoader().load(file_path, final_name)
 
+    if dataset_type == DatasetType.EXPRESSION_DISTRIBUTION:
+        from utils.expression_distribution_loader import ExpressionDistributionLoader
+        return ExpressionDistributionLoader().load(file_path, final_name)
+
     if dataset_type == DatasetType.GO_ANALYSIS:
         if file_path.suffix.lower() in ('.xlsx', '.xls', '.xlsm'):
             from utils.go_kegg_loader import GOKEGGLoader
@@ -155,6 +159,12 @@ def load_any_dataset(
             from utils.composition_loader import CompositionLoader
             if CompositionLoader.is_composition_dataframe(peek):
                 return CompositionLoader().load(file_path, final_name)
+
+            # pseudobulk/quantile long-format. expression_summary long과 구분하기
+            # 위해 sample 또는 quantile 통계 컬럼이 함께 있어야 한다.
+            from utils.expression_distribution_loader import ExpressionDistributionLoader
+            if ExpressionDistributionLoader.is_distribution_dataframe(peek):
+                return ExpressionDistributionLoader().load(file_path, final_name)
 
             from utils.multi_group_loader import MultiGroupLoader
             if MultiGroupLoader.is_multi_group_dataframe(peek):

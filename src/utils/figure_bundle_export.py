@@ -190,6 +190,8 @@ def _build_regeneration_script(source_stem: str, plot_type: str, plot_params: Ma
         return _build_composition_plot_script(source_stem, params_repr)
     elif plot_type.lower() == "expression_dot":
         return _build_expression_dot_plot_script(source_stem, params_repr)
+    elif plot_type.lower() == "expression_distribution":
+        return _build_expression_distribution_plot_script(source_stem, params_repr)
     elif plot_type.lower() == "go_comparison_dot":
         return _build_go_comparison_dot_plot_script(source_stem, params_repr)
     elif plot_type.lower() == "quadrant":
@@ -1031,6 +1033,50 @@ df = pd.read_csv(root / "inputs" / "data.csv")
 fig = Figure(figsize=(12, 7))
 ax = fig.add_subplot(111)
 render_expression_dot(ax, df, plot_params)
+fig.tight_layout()
+fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.pdf", bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.svg", bbox_inches="tight")
+'''
+
+
+def _build_expression_distribution_plot_script(source_stem: str, params_repr: str) -> str:
+    render_src = _render_source(
+        "expression_distribution", "_truncate", "_pct_factor", "_group_column",
+        "_jitter", "_quantile_stats", "render_expression_distribution")
+    if render_src is None:
+        return _build_generic_plot_script(
+            source_stem, "expression_distribution", params_repr)
+
+    return f'''"""Recreate the Gene Expression Distribution plot from this bundle.
+
+render_expression_distribution 은 cmg-seqviewer 화면 렌더링과 동일한 함수를 inline 한 것이다.
+inputs/data.csv 는 gene_id/gene_name/cell_type/sample/condition/mean_expression 등의
+long-format 표다.
+"""
+from pathlib import Path
+import numpy as np
+import matplotlib
+matplotlib.use("Agg")
+import pandas as pd
+from matplotlib.figure import Figure
+from matplotlib.patches import Patch
+
+_GROUP_COLORS = (
+    '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+    '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf',
+)
+
+# ── inlined from src/plots/expression_distribution.py ──────────────────
+{render_src}
+# ───────────────────────────────────────────────────────────────────────
+
+root = Path(__file__).resolve().parents[1]
+plot_params = {params_repr}
+
+df = pd.read_csv(root / "inputs" / "data.csv")
+fig = Figure(figsize=(12, 7))
+render_expression_distribution(fig, df, plot_params)
 fig.tight_layout()
 fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")
 fig.savefig(root / "outputs" / "{source_stem}.pdf", bbox_inches="tight")

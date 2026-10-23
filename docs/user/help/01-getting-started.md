@@ -24,9 +24,10 @@ All sections of this guide (numbers match the first/second-level headings; click
 - [18. IGV Integration](18-igv-integration.md)
 - [19. Command Line Interface](19-command-line-interface.md)
 - [20. Cell-Type Composition](20-cell-type-composition.md)
-- [21. Expression Summary (Gene × Cell Type)](21-expression-summary.md)
-- [22. Tips & Shortcuts](22-tips-shortcuts.md)
-- [23. FAQ](23-faq.md)
+- [21. Expression Distribution (Violin/Box)](21-expression-distribution.md)
+- [22. Expression Summary (Gene × Cell Type)](22-expression-summary.md)
+- [23. Tips & Shortcuts](23-tips-shortcuts.md)
+- [24. FAQ](24-faq.md)
 
 
 ## 1.1 Overview
@@ -113,4 +114,4 @@ All menus are always accessible. The application will show appropriate error mes
 - **Help:** About dialog and user documentation
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](24-faq.md)

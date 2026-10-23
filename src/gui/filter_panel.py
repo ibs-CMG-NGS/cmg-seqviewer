@@ -696,9 +696,12 @@ class FilterPanel(QWidget):
                           dataset.dataset_type == DatasetType.COMPOSITION)
         is_expression = (dataset is not None and
                          dataset.dataset_type == DatasetType.EXPRESSION_SUMMARY)
+        is_distribution = (dataset is not None and
+                           dataset.dataset_type == DatasetType.EXPRESSION_DISTRIBUTION)
 
-        # Statistical 탭: DE/DA 섹션 — GO/composition/expression일 때 숨김
-        self.de_filter_widget.setVisible(not (is_go or is_composition or is_expression))
+        # Statistical 탭: DE/DA 섹션 — GO/composition/expression/distribution일 때 숨김
+        self.de_filter_widget.setVisible(
+            not (is_go or is_composition or is_expression or is_distribution))
         # Statistical 탭: GO/KEGG 섹션 — GO 또는 composition일 때 표시
         # (composition은 FDR 입력만 재사용하고 나머지 GO 전용 행은 숨긴다)
         self.go_filter_widget.setVisible(is_go or is_composition)
