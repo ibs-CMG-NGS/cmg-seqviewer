@@ -81,15 +81,19 @@
          <lastmod>2026-10-23</lastmod>
     </url>
     <url>
-         <loc>https://ibs-cmg-ngs.github.io/cmg-seqviewer/21-expression-summary/</loc>
+         <loc>https://ibs-cmg-ngs.github.io/cmg-seqviewer/21-expression-distribution/</loc>
          <lastmod>2026-10-23</lastmod>
     </url>
     <url>
-         <loc>https://ibs-cmg-ngs.github.io/cmg-seqviewer/22-tips-shortcuts/</loc>
+         <loc>https://ibs-cmg-ngs.github.io/cmg-seqviewer/22-expression-summary/</loc>
          <lastmod>2026-10-23</lastmod>
     </url>
     <url>
-         <loc>https://ibs-cmg-ngs.github.io/cmg-seqviewer/23-faq/</loc>
+         <loc>https://ibs-cmg-ngs.github.io/cmg-seqviewer/23-tips-shortcuts/</loc>
+         <lastmod>2026-10-23</lastmod>
+    </url>
+    <url>
+         <loc>https://ibs-cmg-ngs.github.io/cmg-seqviewer/24-faq/</loc>
          <lastmod>2026-10-23</lastmod>
     </url>
 </urlset>

@@ -909,14 +909,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../21-expression-summary/" class="md-nav__link">
+      <a href="../21-expression-distribution/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    21. Expression Summary (Gene × Cell Type)
+    21. Expression Distribution (Violin/Box)
   
 
     
@@ -936,14 +936,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../22-tips-shortcuts/" class="md-nav__link">
+      <a href="../22-expression-summary/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    22. Tips &amp; Shortcuts
+    22. Expression Summary (Gene × Cell Type)
   
 
     
@@ -963,14 +963,41 @@
   
   
     <li class="md-nav__item">
-      <a href="../23-faq/" class="md-nav__link">
+      <a href="../23-tips-shortcuts/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    23. FAQ
+    23. Tips &amp; Shortcuts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../24-faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    24. FAQ
   
 
     
@@ -1046,8 +1073,8 @@ purpose as <strong>File → Open ATAC-seq Dataset...</strong> in the GUI:</p>
 <pre><code class="language-bash">cmg-seqviewer-cli load weird_headers.parquet --type atac
 </code></pre>
 <p><code>--type</code> also accepts <code>differential_expression</code>, <code>go_analysis</code>,
-<code>multi_group</code>, <code>composition</code>, and <code>expression_summary</code> to bypass
-auto-detection for those types.</p>
+<code>multi_group</code>, <code>composition</code>, <code>expression_summary</code>, and
+<code>expression_distribution</code> to bypass auto-detection for those types.</p>
 <h3 id="machine-readable-output-json">Machine-readable output (<code>--json</code>)<a class="headerlink" href="#machine-readable-output-json" title="Permanent link">&para;</a></h3>
 <p>For scripted/CI validation, add <code>--json</code> to print the same verdict as a
 JSON object instead of human-readable lines:</p>
@@ -1089,7 +1116,7 @@ file. Output format is chosen from the <code>--out</code> extension: <code>.xlsx
 <tr>
 <td><code>--type</code></td>
 <td>all</td>
-<td>Force dataset type instead of auto-detecting: <code>atac</code>, <code>differential_expression</code>, <code>go_analysis</code>, <code>multi_group</code>, <code>composition</code>, <code>expression_summary</code></td>
+<td>Force dataset type instead of auto-detecting: <code>atac</code>, <code>differential_expression</code>, <code>go_analysis</code>, <code>multi_group</code>, <code>composition</code>, <code>expression_summary</code>, <code>expression_distribution</code></td>
 </tr>
 <tr>
 <td><code>--adj-pvalue-max</code></td>
@@ -1174,7 +1201,7 @@ unrecognized file, missing required columns, a bad recipe, or — for
 shell <code>&amp;&amp;</code> / CI pipelines. Pass <code>--verbose</code> to any subcommand for a full
 traceback instead of the one-line <code>Error: ...</code> message on stderr.</p>
 <hr />
-<p><strong>See also</strong>: <a href="../user-guide.md">User Guide</a> · <a href="../23-faq/">FAQ</a></p>
+<p><strong>See also</strong>: <a href="../user-guide.md">User Guide</a> · <a href="../24-faq/">FAQ</a></p>
 
 
 
