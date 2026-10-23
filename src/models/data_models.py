@@ -21,6 +21,8 @@ class DatasetType(Enum):
     MOTIF_ENRICHMENT = "motif_enrichment"
     TF_FOOTPRINT = "tf_footprint"
     CHROMVAR_DIFF_TF = "chromvar_diff_tf"
+    COMPOSITION = "composition"
+    EXPRESSION_SUMMARY = "expression_summary"
     UNKNOWN = "unknown"
 
 
@@ -35,6 +37,12 @@ DATASET_TYPE_ALIASES: Dict[str, str] = {
     'time_series': DatasetType.MULTI_GROUP.value,
     # src/analysis/10_run_coexpression_modules.R (coexpression module 결과): 위와 동일 형태
     'coexpression_module': DatasetType.MULTI_GROUP.value,
+    # propeller/limma 기반 cell-type composition 결과
+    'cell_composition': DatasetType.COMPOSITION.value,
+    'composition_analysis': DatasetType.COMPOSITION.value,
+    # HypoMap 등 전 유전자 × 세포타입 발현 요약
+    'expression_atlas': DatasetType.EXPRESSION_SUMMARY.value,
+    'cell_type_expression': DatasetType.EXPRESSION_SUMMARY.value,
 }
 
 
@@ -168,12 +176,23 @@ class Dataset:
         elif self.dataset_type == DatasetType.GO_ANALYSIS:
             required = StandardColumns.get_go_required()
         elif self.dataset_type == DatasetType.MULTI_GROUP:
-            # gene_id + padj + 3개 이상의 샘플 컬럼
-            stat_cols = {'gene_id', 'basemean', 'stat', 'pvalue', 'padj', 'gene_symbol'}
-            df_cols_lower = {c.lower() for c in self.dataframe.columns}
-            has_padj = 'padj' in df_cols_lower
+            # gene_id + 3개 이상의 샘플 컬럼 (padj는 선택 — 순수 발현행렬 허용)
             sample_cols = self.metadata.get('sample_columns', [])
-            return has_padj and len(sample_cols) >= 3
+            return len(sample_cols) >= 3
+        elif self.dataset_type == DatasetType.COMPOSITION:
+            cols = set(self.dataframe.columns)
+            if 'cell_type' not in cols:
+                return False
+            mean_cols = self.metadata.get('mean_columns', [])
+            return bool(mean_cols) or 'prop_ratio' in cols
+        elif self.dataset_type == DatasetType.EXPRESSION_SUMMARY:
+            cols = set(self.dataframe.columns)
+            if 'gene_id' not in cols:
+                return False
+            cell_types = self.metadata.get('cell_types', [])
+            if cell_types:
+                return len(cell_types) >= 1
+            return 'cell_type' in cols
         else:
             return True
         
@@ -281,6 +300,18 @@ class Dataset:
                     sig_terms = self.dataframe[self.dataframe['fdr'] < 0.05]
                     summary['total_terms'] = len(self.dataframe)
                     summary['significant_terms'] = len(sig_terms)
+
+            elif self.dataset_type == DatasetType.COMPOSITION:
+                summary['total_cell_types'] = len(self.dataframe)
+                if 'fdr' in self.dataframe.columns:
+                    summary['significant_cell_types'] = int(
+                        (pd.to_numeric(self.dataframe['fdr'], errors='coerce') < 0.05).sum())
+
+            elif self.dataset_type == DatasetType.EXPRESSION_SUMMARY:
+                summary['total_genes'] = len(self.dataframe)
+                summary['cell_type_count'] = (
+                    len(self.metadata.get('cell_types', []))
+                    or int(self.metadata.get('cell_type_count', 0) or 0))
 
         return summary
 
@@ -411,6 +442,7 @@ class PreloadedDatasetMetadata:
     row_count: int = 0                   # 행 개수
     gene_count: int = 0                  # 유전자 개수
     significant_genes: int = 0           # 유의미한 유전자 수 (padj<0.05)
+    cell_type_count: int = 0             # expression_summary: 세포타입 수
     
     # 메타데이터
     import_date: str = ""                # 데이터베이스 임포트 날짜
@@ -426,6 +458,9 @@ class PreloadedDatasetMetadata:
     # ATAC-seq 전용 메타데이터
     genome_build: str = ""               # 참조 게놈 (예: mm10, hg38)
     peak_caller: str = ""                # Peak caller (예: MACS2, HOMER)
+
+    # Expression summary 전용 (wide/long layout, companion files, normalization 등)
+    expression_schema: Dict[str, Any] = field(default_factory=dict)
     
     def to_dict(self) -> Dict[str, Any]:
         """딕셔너리로 변환 (JSON 저장용)"""
@@ -442,6 +477,7 @@ class PreloadedDatasetMetadata:
             'row_count': int(self.row_count),
             'gene_count': int(self.gene_count),
             'significant_genes': int(self.significant_genes),
+            'cell_type_count': int(self.cell_type_count),
             'import_date': self.import_date,
             'file_path': self.file_path,
             'notes': self.notes,
@@ -451,6 +487,7 @@ class PreloadedDatasetMetadata:
             'analysis_date': self.analysis_date,
             'genome_build': self.genome_build,
             'peak_caller': self.peak_caller,
+            'expression_schema': self.expression_schema,
         }
     
     @staticmethod
@@ -470,6 +507,7 @@ class PreloadedDatasetMetadata:
             row_count=data.get('row_count', 0),
             gene_count=data.get('gene_count', 0),
             significant_genes=data.get('significant_genes', 0),
+            cell_type_count=data.get('cell_type_count', 0),
             import_date=data.get('import_date', ''),
             file_path=data.get('file_path', ''),
             notes=data.get('notes', ''),
@@ -479,4 +517,5 @@ class PreloadedDatasetMetadata:
             analysis_date=data.get('analysis_date', ''),
             genome_build=data.get('genome_build', ''),
             peak_caller=data.get('peak_caller', ''),
+            expression_schema=data.get('expression_schema', {}) or {},
         )

@@ -130,4 +130,4 @@ Visualizes the meta-analysis columns produced by a
 7. Hover a point for its gene name and underlying statistics
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](20-faq.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md)

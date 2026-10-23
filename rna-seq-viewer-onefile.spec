@@ -82,4 +82,5 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon='cmg-seqviewer.ico',
+    manifest='cmg-seqviewer.manifest',
 )

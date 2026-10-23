@@ -22,10 +22,15 @@ Subcommands:
 
 Usage:
     python -m cli load data.xlsx
+    python -m cli load data.parquet --json          # CI용 기계 판독 출력
     python -m cli filter data.xlsx --adj-pvalue-max 0.05 --log2fc-min 1.0 --out filtered.xlsx
     python -m cli filter atac.parquet --type atac --out filtered.csv
     python -m cli run recipe.yaml
     python -m cli batch recipe.yaml --inputs "data/*.xlsx" --out-dir results/ --manifest results/manifest.json
+
+`load`/`filter` accept CSV/TSV/Parquet inputs as well as Excel. `--type`
+accepts atac / differential_expression / go_analysis / multi_group to bypass
+auto-detection (e.g. for parquet exports from external pipelines).
 """
 
 from __future__ import annotations
@@ -50,12 +55,21 @@ def _build_presenter():
     return MainPresenter(SimpleNamespace())
 
 
+_TYPE_CHOICES = ["atac", "differential_expression", "go_analysis", "multi_group",
+                 "composition", "expression_summary"]
+
+
 def _dataset_type_hint(type_arg: Optional[str]):
     if not type_arg:
         return None
     from models.data_models import DatasetType
     mapping = {
         "atac": DatasetType.ATAC_SEQ,
+        "differential_expression": DatasetType.DIFFERENTIAL_EXPRESSION,
+        "go_analysis": DatasetType.GO_ANALYSIS,
+        "multi_group": DatasetType.MULTI_GROUP,
+        "composition": DatasetType.COMPOSITION,
+        "expression_summary": DatasetType.EXPRESSION_SUMMARY,
     }
     if type_arg not in mapping:
         raise ValueError(f"--type must be one of {sorted(mapping)}, got {type_arg!r}")
@@ -91,9 +105,38 @@ def _write_table(df: pd.DataFrame, out_path: Path) -> None:
             f"Unsupported output format: {suffix!r} (use .xlsx/.csv/.tsv/.parquet)")
 
 
+def _dataset_report(dataset) -> dict:
+    """`load --json` 출력 — 파이프라인 CI가 타입/행수/컬럼/필수 컬럼 충족 여부를
+    기계적으로 검증할 수 있는 최소 스키마."""
+    from models.data_models import DatasetType
+    from models.standard_columns import StandardColumns
+
+    required = {
+        DatasetType.DIFFERENTIAL_EXPRESSION: StandardColumns.get_de_required(),
+        DatasetType.GO_ANALYSIS: StandardColumns.get_go_required(),
+        DatasetType.ATAC_SEQ: StandardColumns.get_atac_required(),
+        DatasetType.COMPOSITION: StandardColumns.get_composition_required(),
+        DatasetType.EXPRESSION_SUMMARY: StandardColumns.get_expression_summary_required(),
+    }.get(dataset.dataset_type, [])
+    present = list(dataset.dataframe.columns)
+    return {
+        "dataset_type": dataset.dataset_type.value,
+        "rows": len(dataset.dataframe),
+        "columns": present,
+        "valid": bool(dataset.is_valid),
+        "required_columns": list(required),
+        "missing_required_columns": [c for c in required if c not in present],
+    }
+
+
 def cmd_load(args: argparse.Namespace) -> int:
     logger = logging.getLogger("cmg_cli.load")
     dataset = _load(Path(args.file), args.type, logger)
+    if args.json:
+        report = _dataset_report(dataset)
+        report["file"] = str(args.file)
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0
     df = dataset.dataframe
     print(f"type: {dataset.dataset_type.value}")
     print(f"rows: {len(df)}")
@@ -236,8 +279,8 @@ def cmd_batch(args: argparse.Namespace) -> int:
 def _add_filter_args(parser: argparse.ArgumentParser) -> None:
     """데이터셋 타입마다 다른 필터 파라미터 전부 — compute_filtered_df가 타입을 보고
     해당하는 것만 쓰고 나머지는 무시한다 (FilterCriteria 기본값과 동일)."""
-    parser.add_argument("--type", choices=["atac"], default=None,
-                        help="명시적 데이터셋 타입 힌트 (자동 감지를 건너뜀; 현재 atac만 지원)")
+    parser.add_argument("--type", choices=_TYPE_CHOICES, default=None,
+                        help="명시적 데이터셋 타입 힌트 (자동 감지를 건너뜀)")
     parser.add_argument("--adj-pvalue-max", type=float, default=0.05,
                         help="DE/ATAC: adjusted p-value 상한 (default: 0.05)")
     parser.add_argument("--log2fc-min", type=float, default=1.0,
@@ -279,8 +322,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_load = sub.add_parser("load", help="파일을 로드해 타입/행수/컬럼/유효성만 보고")
     p_load.add_argument("file", help="DE/GO/ATAC/chromVAR/motif/footprint 등 입력 파일")
-    p_load.add_argument("--type", choices=["atac"], default=None,
+    p_load.add_argument("--type", choices=_TYPE_CHOICES, default=None,
                         help="명시적 데이터셋 타입 힌트 (자동 감지를 건너뜀)")
+    p_load.add_argument("--json", action="store_true",
+                        help="판정 결과를 JSON으로 출력 (CI 기계 판독용)")
     p_load.set_defaults(func=cmd_load)
 
     p_filter = sub.add_parser("filter", help="로드 + 통계 필터 적용 + 결과 export")

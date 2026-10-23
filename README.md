@@ -1,9 +1,9 @@
 # CMG-SeqViewer - Multi-omics Data Analysis & Visualization
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyQt6](https://img.shields.io/badge/PyQt-6-green.svg)](https://www.riverbankcomputing.com/software/pyqt/)
-[![Release](https://img.shields.io/badge/release-v1.3.2-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
+[![Release](https://img.shields.io/badge/release-v1.4.0-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
 [![Docs](https://img.shields.io/badge/docs-online%20guide-blue.svg)](https://ibs-cmg-ngs.github.io/cmg-seqviewer/)
 
 ---
@@ -32,7 +32,17 @@
 
 ---
 
-## Latest Update: v1.3.2 (Oct 2026)
+## Latest Update: v1.4.0 (Oct 2026)
+
+- [NEW] **Command-line interface** — `cmg-seqviewer-cli load/filter/export` with `--json` machine-readable validation, plus recipe-driven `run`/`batch`; supports DE/GO/Multi-Group/ATAC/Composition/Expression Summary CSV, TSV, and Parquet inputs without opening the GUI
+- [NEW] **Cell-Type Composition datasets + view** (`Visualization → 🧬 Single-cell RNA-seq → 🧫 Cell-Type Composition`): propeller/limma `cell_type` / `PropMean.<condition>` / `PropRatio` / `FDR` results render as PropRatio bars or grouped mean-proportion bars, with FDR filtering and `--type composition`
+- [NEW] **Expression Summary datasets + view** (`Visualization → 🧬 Single-cell RNA-seq → 🧬 Gene × Cell-Type Expression`): HypoMap-style wide mean/pct matrices, long-format pivot up to 5M rows, optional gene_index/cell_type_summary companions, gene search, % expressing dot plot, top-N heatmap, and `--type expression_summary`
+- [NEW] **HypoMap/pipeline bundle support**: pipeline-specific `manifest.json` (`table=expression`) is auto-recognized; `expression_summary` bundles are auto-detected even without a manifest; `cell_type_count` is preserved
+- [NEW] **Single-cell submenu** groups composition, expression summary, and future single-cell views under `Visualization → 🧬 Single-cell RNA-seq`
+- [FIX] **WSLg mixed-DPI** menu/popup ghosting and invisible cursors mitigated (Wayland default, opt-in xcb path); Windows builds use a Per-Monitor V2 manifest
+- [FIX] Expression dot-plot labels stay fully visible, transpose/colormap are shared with the heatmap, and selection state persists across refresh; import column auto-mapping and validation are more robust
+
+### Previous: v1.3.2 (Oct 2026)
 
 - [NEW] **Online user guide** at [ibs-cmg-ngs.github.io/cmg-seqviewer](https://ibs-cmg-ngs.github.io/cmg-seqviewer/) — the same `docs/user/help/*.md` content as the in-app F1 help, published automatically on every change so the app and the website never drift apart
 - [FIX] An internal "See also" link in the F1 help (GO/KEGG Enrichment Analysis section) now correctly jumps to the referenced section instead of silently doing nothing
@@ -207,6 +217,8 @@
 - **MA Plot**: log₂(base mean) vs log₂FC — ATAC-seq and RNA-seq
 - **Heatmap**: Expression patterns with hierarchical clustering
 - **Gene Expression Bar + Scatter (Grouped)**: Per-gene grouped bar (mean) + replicate points with significance stars, manual group reassignment, and per-group colors (DE / Multi-Group)
+- **Cell-Type Composition**: PropRatio bars or grouped mean-proportion bars from propeller/limma results, with FDR significance marks and filtering
+- **Expression Summary (Gene × Cell Type)**: HypoMap-style atlas summary with a % expressing dot plot and top-N heatmap
 - **P-adj Histogram**: Distribution of significance values
 
 ### Multi-Omics Integration (RNA-seq + ATAC-seq)
@@ -419,6 +431,9 @@ nodes, or scripted pipelines.
 # Inspect a file (type/rows/columns/validity)
 cmg-seqviewer-cli load sample1_DE.xlsx
 
+# Machine-readable validation for CI (works on CSV/TSV/Parquet too)
+cmg-seqviewer-cli load sample1_DE.parquet --json
+
 # One-off filter -> write a file
 cmg-seqviewer-cli filter sample1_DE.xlsx \
   --adj-pvalue-max 0.05 --log2fc-min 1.0 --out sample1_filtered.xlsx
@@ -443,7 +458,7 @@ output:
   table: results/sample1_filtered.xlsx
 ```
 
-Full reference: [in-app / online help, § 21 Command Line Interface](https://ibs-cmg-ngs.github.io/cmg-seqviewer/21-command-line-interface/).
+Full reference: [in-app / online help, § 19 Command Line Interface](https://ibs-cmg-ngs.github.io/cmg-seqviewer/19-command-line-interface/).
 
 ---
 

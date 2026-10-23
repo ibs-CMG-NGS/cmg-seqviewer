@@ -190,4 +190,4 @@ Use **File → Export Multi-Omics Results…** to save a multi-sheet Excel file:
    `ATAC_only`, `discordant`, ...) feed downstream filtering.
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](20-faq.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md)

@@ -1,3 +1,3 @@
 # RNA-Seq Data Analysis and Visualization Program
-__version__ = "1.3.2"
+__version__ = "1.4.0"
 __author__ = "ibs Center for Memory and Glioscience NGS core"

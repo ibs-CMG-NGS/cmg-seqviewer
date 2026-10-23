@@ -71,8 +71,15 @@ class MultiGroupHeatmapDialog(BasePlotDialog):
         if not self.sample_columns and not self.df.empty:
             import re as _re
             _stat_lower = {
-                'gene_id', 'gene_symbol', 'gene_name', 'basemean',
-                'stat', 'pvalue', 'padj', 'lfcse', 'log2foldchange', 'log2fc',
+                'gene_id', 'gene', 'geneid', 'id',
+                'gene_symbol', 'gene_name', 'symbol',
+                'basemean', 'base_mean',
+                'stat', 'statistic',
+                'pvalue', 'p_value', 'p.value',
+                'padj', 'p_adj', 'p.adj', 'adj_pvalue', 'adj_p',
+                'fdr', 'qvalue', 'q_value', 'q.value',
+                'cluster_id', 'cluster',
+                'lfcse', 'log2foldchange', 'log2fc',
             }
             self.sample_columns = [
                 c for c in self.df.columns

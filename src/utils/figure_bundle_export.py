@@ -186,6 +186,10 @@ def _build_regeneration_script(source_stem: str, plot_type: str, plot_params: Ma
         return _build_genomic_distribution_plot_script(source_stem, params_repr)
     elif plot_type.lower() == "gene_expression_bar":
         return _build_gene_expression_bar_plot_script(source_stem, params_repr)
+    elif plot_type.lower() == "composition":
+        return _build_composition_plot_script(source_stem, params_repr)
+    elif plot_type.lower() == "expression_dot":
+        return _build_expression_dot_plot_script(source_stem, params_repr)
     elif plot_type.lower() == "go_comparison_dot":
         return _build_go_comparison_dot_plot_script(source_stem, params_repr)
     elif plot_type.lower() == "quadrant":
@@ -956,6 +960,78 @@ plot_params = {params_repr}
 df = pd.read_csv(root / "inputs" / "data.csv")
 fig, _info = render_multi_group_heatmap(df, plot_params)
 
+fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.pdf", bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.svg", bbox_inches="tight")
+'''
+
+
+def _build_composition_plot_script(source_stem: str, params_repr: str) -> str:
+    render_src = _render_source("composition", "render_composition",
+                                "select_composition_rows", "fdr_stars")
+    if render_src is None:
+        return _build_generic_plot_script(source_stem, "composition", params_repr)
+
+    return f'''"""Recreate the Cell-Type Composition plot from this bundle.
+
+render_composition 은 cmg-seqviewer 화면 렌더링과 동일한 함수를 inline 한 것이다.
+inputs/data.csv 는 cell_type + PropMean.* + prop_ratio + pvalue + fdr 표다.
+"""
+from pathlib import Path
+import matplotlib
+matplotlib.use("Agg")
+import numpy as np
+import pandas as pd
+from matplotlib.figure import Figure
+
+# ── inlined from src/plots/composition.py ──────────────────────────────
+{render_src}
+# ───────────────────────────────────────────────────────────────────────
+
+root = Path(__file__).resolve().parents[1]
+plot_params = {params_repr}
+
+df = pd.read_csv(root / "inputs" / "data.csv")
+fig = Figure(figsize=(10, 7))
+ax = fig.add_subplot(111)
+render_composition(ax, df, plot_params)
+fig.tight_layout()
+fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.pdf", bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.svg", bbox_inches="tight")
+'''
+
+
+def _build_expression_dot_plot_script(source_stem: str, params_repr: str) -> str:
+    render_src = _render_source("expression_dot", "render_expression_dot", "_truncate")
+    if render_src is None:
+        return _build_generic_plot_script(source_stem, "expression_dot", params_repr)
+
+    return f'''"""Recreate the Gene × Cell-Type expression dot plot from this bundle.
+
+render_expression_dot 은 cmg-seqviewer 화면 렌더링과 동일한 함수를 inline 한 것이다.
+inputs/data.csv 는 long-format 표다:
+  gene_id, gene_name, cell_type, mean_expression, pct_expressing, n_cells, pct_display, dimmed
+"""
+from pathlib import Path
+import matplotlib
+matplotlib.use("Agg")
+import numpy as np
+import pandas as pd
+from matplotlib.figure import Figure
+
+# ── inlined from src/plots/expression_dot.py ───────────────────────────
+{render_src}
+# ───────────────────────────────────────────────────────────────────────
+
+root = Path(__file__).resolve().parents[1]
+plot_params = {params_repr}
+
+df = pd.read_csv(root / "inputs" / "data.csv")
+fig = Figure(figsize=(12, 7))
+ax = fig.add_subplot(111)
+render_expression_dot(ax, df, plot_params)
+fig.tight_layout()
 fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")
 fig.savefig(root / "outputs" / "{source_stem}.pdf", bbox_inches="tight")
 fig.savefig(root / "outputs" / "{source_stem}.svg", bbox_inches="tight")

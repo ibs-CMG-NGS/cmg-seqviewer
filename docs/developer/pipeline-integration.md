@@ -14,6 +14,7 @@ RNA-seq DE/GO 분석 파이프라인 출력물을 cmg-seqviewer에 바로 연결
 6. [앱 연결 방법](#6-앱-연결-방법)
 7. [R 파이프라인 구현 예시](#7-r-파이프라인-구현-예시)
 8. [주의사항](#8-주의사항)
+9. [`seqviewer_manifest.json` 규격](#9-seqviewer_manifestjson-규격)
 
 ---
 
@@ -540,3 +541,298 @@ GO 결과의 `gene_symbols` 컬럼은 `/` 구분자를 사용해야 합니다.
 # clusterProfiler의 geneID 컬럼은 이미 "/" 구분자를 사용하므로 그대로 사용 가능
 go_df$gene_symbols <- go_df$geneID  # "Tnf/Il6/Cxcl10" 형식
 ```
+
+---
+
+## 9. `seqviewer_manifest.json` 규격
+
+`metadata.json` 대신 **`seqviewer_manifest.json`** 을 사용할 수 있습니다. 두 파일 모두
+`datasets` 배열을 가지며, manifest는 파이프라인이 이미 알고 있는 메타데이터
+(`cell_type`, `organism`, `tags`, `provenance` 성격의 값)를 함께 담기에 적합합니다.
+
+### 9.1 인식 위치
+
+| 경로 | 인식 시점 |
+|------|-----------|
+| `{DB}/datasets/seqviewer_manifest.json` + 같은 폴더의 `*.parquet` | DB 스캔/새로고침 |
+| `{source}/seqviewer_manifest.json` + `{source}/datasets/*.parquet` | **Import Folder** |
+| `{source}/metadata.json` + `{source}/datasets/*.parquet` | **Import Folder** (기존 방식) |
+
+`metadata.json`과 manifest가 동시에 있으면 `metadata.json`이 우선합니다.
+
+### 9.2 최소 예시
+
+```json
+{
+  "datasets": [
+    {
+      "alias": "Tcell_IFN_vs_Control_DE",
+      "original_filename": "Tcell_IFN_vs_Control_DE.parquet",
+      "dataset_type": "differential_expression",
+      "experiment_condition": "IFN vs Control",
+      "cell_type": "T cell",
+      "organism": "Homo sapiens",
+      "tags": ["scRNA", "Tcell", "IFN"],
+      "row_count": 1523,
+      "gene_count": 1523,
+      "significant_genes": 210
+    }
+  ]
+}
+```
+
+현재 앱은 다음 키를 **자동 보완**합니다 (이전에는 누락 시 항목 전체가 조용히
+컬럼 추측으로 fallback됐습니다).
+
+| 키 | 자동 보완 규칙 |
+|----|----------------|
+| `file_path` | `original_filename`의 basename |
+| `original_filename` | `file_path`의 basename |
+| `alias` | `file_path`/`original_filename`의 stem |
+| `dataset_id` | 파일명 기반 uuid5 (재반입 시 중복 방지) |
+
+`dataset_type`은 자동 추론하지 않으므로 **반드시 명시**해야 합니다.
+
+### 9.3 전체 필드
+
+| 필드 | 타입 | 필수 | 비고 |
+|------|------|------|------|
+| `dataset_type` | string | ✅ | 아래 허용값 참고 |
+| `file_path` 또는 `original_filename` | string | ✅ (하나 이상) | `filename.parquet` 또는 `datasets/filename.parquet` (importer가 basename으로 정규화) |
+| `alias` | string | 권장 | 없으면 파일명 stem |
+| `dataset_id` | string | 선택 | 없으면 uuid5 자동 생성 |
+| `experiment_condition` | string | 권장 | 비교 조건 |
+| `cell_type` | string | 선택 | 세포 타입 |
+| `organism` | string | 권장 | 예: `Homo sapiens` |
+| `tissue` | string | 선택 | 조직 |
+| `timepoint` | string | 선택 | 시간점 |
+| `row_count` | int | 선택 | 전체 행 수 |
+| `gene_count` | int | 선택 | DE 유전자 수 / ATAC peak 수 |
+| `significant_genes` | int | 선택 | padj(및 |log2FC|) 기준 유의 수 |
+| `cell_type_count` | int | 선택 | expression_summary 세포타입 수 |
+| `expression_schema` | object | 선택 | expression_summary layout/companion/pct_scale 등 |
+| `notes` | string | 선택 | 자유 메모 |
+| `tags` | string[] | 선택 | 검색 태그 (문자열 배열) |
+| `researcher` | string 또는 string[] | 선택 | 이니셜. tags에도 자동 추가 |
+| `project_name` | string | 선택 | 프로젝트 식별자 |
+| `analysis_date` | string | 선택 | `YYYY-MM-DD` |
+| `import_date` | string | 선택 | ISO 8601 |
+| `genome_build` | string | 선택 | 예: `hg38`, `mm10` |
+| `peak_caller` | string | 선택 | ATAC 전용 (예: `MACS2`) |
+
+**`dataset_type` 허용값:**
+`differential_expression`, `go_analysis`, `multi_group`, `atac_seq`, `multi_omics`,
+`motif_enrichment`, `tf_footprint`, `chromvar_diff_tf`, `composition`,
+`expression_summary`, `unknown`
+(별칭: `differential_accessibility`→`atac_seq`, `time_series`/`coexpression_module`→`multi_group`)
+
+그 외 키(`schema_version`, `provenance`, `padj_cutoff`, `log2fc_cutoff` 등)는 현재
+저장되지 않고 무시됩니다. 파이프라인 provenance는 `notes`/`tags`로 표현하거나,
+추가가 필요하면 이슈로 요청해 주세요.
+
+### 9.4 폴더명에서 researcher/analysis_date 추론
+
+`metadata.json`/`seqviewer_manifest.json`에 `researcher` 또는 `analysis_date`가
+비어 있으면 **Import Folder로 선택한 폴더의 이름**에서 추론합니다.
+
+```
+2026-ljh-human-de
+│    │   │     └─ type (마지막 2개는 organism/type으로 간주)
+│    │   └─────── organism
+│    └─────────── researcher (알파벳, 길이 ≤ 4)
+└──────────────── year
+```
+
+- 첫 segment가 4자리 숫자이고 전체 segment가 3개 이상일 때만 동작
+- `analysis_date`는 `YYYY-01-01`로 채워짐
+- researcher 후보는 마지막 2개를 제외한 중간 segment 중 알파벳·길이 ≤4인 것
+- `tags`에도 researcher 이니셜이 자동 추가됨
+
+### 9.5 CLI로 반입 전 검증
+
+파이프라인 CI에서는 parquet을 직접 검증할 수 있습니다.
+
+```bash
+cmg-seqviewer-cli load datasets/Tcell_IFN_vs_Control_DE.parquet --json
+```
+
+```json
+{
+  "dataset_type": "differential_expression",
+  "rows": 1523,
+  "columns": ["gene_id", "log2fc", "adj_pvalue", "baseMean"],
+  "valid": true,
+  "required_columns": ["gene_id", "log2fc", "adj_pvalue"],
+  "missing_required_columns": [],
+  "file": "datasets/Tcell_IFN_vs_Control_DE.parquet"
+}
+```
+
+`missing_required_columns`가 비어 있고 `valid`가 `true`면 DB 반입 가능한 상태입니다.
+자동 감지가 실패하면 `--type differential_expression|go_analysis|multi_group|atac|composition`으로
+강제할 수 있습니다.
+
+### 9.6 Multi-Group parquet 규격
+
+pseudobulk count matrix나 LRT/time-series/module 결과를 Multi-Group Heatmap ·
+PCA · Gene Expression Bar로 넘길 때의 규격입니다.
+
+| 항목 | 규칙 |
+|------|------|
+| 유전자 식별 컬럼 | `gene_id` 또는 `gene_symbol` 권장 (없으면 히트맵 라벨이 행 번호로 표시됨) |
+| 샘플 컬럼 | 숫자형 컬럼 3개 이상. 이름 규칙은 자유 (`<condition>_<rep>` 권장) |
+| `padj` | 선택 — 있으면 히트맵 유의성 필터에 사용. 없으면 필터만 생략됨 |
+| `cluster_id` | 선택 — `padj`가 없을 때 자동 감지용으로 사용 (`"Cluster01"` 같은 문자열 권장) |
+| `fdr` / `qvalue` | 통계 컬럼으로 간주되어 **샘플 컬럼에서 제외** |
+| `baseMean`, `stat`, `pvalue`, `lfcse` | 통계 컬럼으로 간주되어 샘플에서 제외 |
+| `cluster_id` (숫자형) | 메타 컬럼으로 간주되어 샘플에서 제외 |
+
+**자동 감지 조건** (`is_multi_group_dataframe`):
+
+1. `padj`/`p_adj`/`p_value`/`p_val` 중 하나, **또는** `cluster_id` 존재
+2. `log2foldchange`/`log2fc`/`lfc` 계열 컬럼 **없음**
+3. 통계·메타 컬럼을 제외한 숫자형 컬럼이 **3개 이상**
+
+`padj`도 `cluster_id`도 없는 **순수 발현행렬**은 자동 감지되지 않습니다.
+이 경우 다음 중 하나로 명시하세요.
+
+```bash
+cmg-seqviewer-cli load matrix.csv --type multi_group
+```
+
+```json
+{ "dataset_type": "multi_group", "file_path": "matrix.parquet", "...": "..." }
+```
+
+**최소 예시 (pseudobulk matrix):**
+
+```text
+gene_id  Tcell_ctrl_1  Tcell_ctrl_2  Tcell_IFN_1  Tcell_IFN_2
+G1       120.5         118.2         340.1        355.0
+G2       0.0           1.2           88.4         91.2
+```
+
+**예시 (LRT/time-series 결과):**
+
+```text
+gene_id  padj    baseMean  stat    ctrl_1  ctrl_2  24h_1  24h_2  3D_1  3D_2
+G1       0.001   210.4     45.2    100.1   98.2    220.1  230.4  310.5 320.1
+```
+
+### 9.7 Cell-type Composition parquet 규격
+
+propeller/limma 기반 세포타입 비율 변화 결과를 `dataset_type: "composition"`으로
+넘길 때의 규격입니다.
+
+| 컬럼 | 필수 | 규칙 |
+|------|------|------|
+| `cell_type` | ✅ | 세포 타입 이름. `CellType`/`population` 등도 자동 인식 |
+| `PropMean.<condition>` | ✅ (또는 `PropRatio`) | 조건별 평균 비율. 조건명은 `PropMean.` 뒤 문자열 |
+| `PropRatio` | ✅ (또는 `PropMean` 2개↑) | 조건 간 비율 차이 |
+| `P.Value` / `pvalue` | 권장 | `P.Value`, `p_value`, `pvalue` 모두 인식 |
+| `FDR` / `padj` | 권장 | `FDR`, `padj`, `adj_pvalue`, `qvalue` 모두 인식 |
+
+표준화 결과: `cell_type`, `prop_ratio`, `pvalue`, `fdr` (PropMean 컬럼은 원본 이름 유지).
+
+**최소 예시:**
+
+```text
+cell_type  PropMean.Control  PropMean.Treatment  PropRatio  P.Value  FDR
+T cell     0.45              0.55                0.10       0.001    0.003
+B cell     0.30              0.20               -0.10       0.020    0.030
+NK cell    0.25              0.25                0.00       0.900    0.950
+```
+
+manifest 예시:
+
+```json
+{
+  "alias": "Tcell_IFN_composition",
+  "file_path": "Tcell_IFN_composition.parquet",
+  "dataset_type": "composition",
+  "experiment_condition": "IFN vs Control",
+  "cell_type": "T cell",
+  "organism": "Homo sapiens",
+  "tags": ["scRNA", "composition", "propeller"]
+}
+```
+
+> 순수 `PropRatio`만 있고 `PropMean.*`가 없어도 비율 차이 막대로 시각화할 수
+> 있습니다. 반대로 `PropMean.*`가 2개 이상이면 평균 비율 그룹 막대도 사용할 수
+> 있습니다.
+
+---
+
+**See also**: [scRNA-seq 3차 분석 파이프라인 연동 회신](pipeline-integration-response.md)
+(원문 Q1~Q7/R1에 대한 항목별 답변과 예시)
+
+### 9.8 Expression Summary parquet 규격 (`expression_summary`)
+
+HypoMap 등 **전 유전자 × 세포타입** 발현 요약을 넘길 때의 규격입니다. v1은
+**wide layout**만 지원합니다.
+
+**Primary (wide mean):**
+
+| 컬럼 | 필수 | 규칙 |
+|------|------|------|
+| `gene_id` | ✅ | symbol 또는 Ensembl ID |
+| `gene_name` / `symbol` | 권장 | 표시용 이름 (없으면 gene_id) |
+| 세포타입 컬럼 | ✅ 1개 이상 | 숫자형. 컬럼명이 세포타입 라벨 |
+| `cell_type` | long 전용 | long layout(≤5M rows)은 pivot 후 사용 |
+
+**Companion 파일 (선택):**
+
+| 키 | 내용 |
+|----|------|
+| `pct` | mean과 동일 shape의 `pct_expressing` |
+| `gene_index` | `gene_id`, `max_mean`, `max_pct`, `n_cell_types_detected` |
+| `cell_type_summary` | `cell_type`, `n_cells`, `dataset` 구성 |
+
+manifest:
+
+```json
+{
+  "datasets": [{
+    "alias": "HypoMap C66 mean expression",
+    "file_path": "hypomap_C66_wide_mean.parquet",
+    "dataset_type": "expression_summary",
+    "organism": "Mus musculus",
+    "expression_schema": {
+      "schema_version": "1.0",
+      "layout": "wide",
+      "value_type": "mean_expression",
+      "cell_type_level": "C66",
+      "gene_id_type": "symbol",
+      "normalization": "log1p_normalized",
+      "detection": "count > 0",
+      "pct_scale": "0-100",
+      "companion_files": {
+        "pct": "hypomap_C66_wide_pct.parquet",
+        "gene_index": "hypomap_gene_index.parquet",
+        "cell_type_summary": "hypomap_cell_type_summary.parquet"
+      }
+    }
+  }]
+}
+```
+
+- `pct_scale`는 `0-1` 또는 `0-100` 중 하나로 명시해 주세요.
+- wide 표에 세포타입이 아닌 숫자형 메타 컬럼이 섞여 있으면 `expression_schema.cell_type_columns`에 세포타입 컬럼 목록을 명시해 주세요.
+- `cell_type_level`(C66/C185)은 **별도 dataset entry**로 분리하는 것을 권장합니다.
+- long layout은 최대 5,000,000행까지 pivot으로 지원합니다. 10^7 규모의 전체
+  long table은 거부되므로 wide mean/pct를 사용하거나 v2 DuckDB loader를 기다려 주세요.
+- `Import Folder`는 위 `seqviewer_manifest.json` 외에 파이프라인 고유의
+  `manifest.json`(`"table": "expression"`, `"files": {...}`)도 자동 인식합니다.
+  이 경우 `expression_wide_mean`을 primary로 사용하고, `pct_scale`은 pct 행렬의
+  최대값(>1.5)을 보고 `0-100`으로 자동 판별합니다.
+- manifest 없이 `data/datasets/`에 `*_wide_mean.parquet` + `*_wide_pct.parquet` +
+  `*_gene_index.parquet` + `*_cell_type_summary.parquet` 세트를 넣고 Refresh해도
+  expression_summary로 자동 등록됩니다(`*_long.parquet` + gene_index/summary도 동일).
+  단, `cell_type_level`/`organism`/provenance는 manifest가 있을 때만 채워집니다.
+- CLI 검증: `cmg-seqviewer-cli load <mean.parquet> --type expression_summary --json`
+
+---
+
+**See also**:
+[scRNA-seq 3차 분석 파이프라인 연동 회신](pipeline-integration-response.md) ·
+[HypoMap expression summary 연동 회신](hypomap-expression-integration-response.md)

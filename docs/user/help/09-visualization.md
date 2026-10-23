@@ -136,7 +136,16 @@ Compare per-gene expression across sample groups with a grouped bar (mean)
 - **Export:** figure (PNG / PDF / SVG / TIFF, 300 dpi) and per-group
  mean / SD / SEM / n + p-value table (CSV / Excel)
 
-## 9.6 Cross-Dataset Comparison (Multiple Datasets)
+## 9.6 Single-cell RNA-seq
+
+The **Visualization → 🧬 Single-cell RNA-seq** submenu groups the atlas-style
+views:
+
+- **🧫 Cell-Type Composition** — propeller/limma proportion changes (section 20)
+- **🧬 Gene × Cell-Type Expression** — gene search, % expressing dot plot, and
+  top-N heatmap from a HypoMap-style expression summary (section 21)
+
+## 9.7 Cross-Dataset Comparison (Multiple Datasets)
 
 The **Visualization → 🧩 Cross-Dataset Comparison** submenu groups every
  plot that aggregates *several* loaded datasets at once. You do **not** need to
@@ -197,7 +206,7 @@ Compares the genomic-feature composition of peaks (Promoter, Exon, Intron, UTR,
 - In-dialog `FDR` / `|log2FC|` thresholds define
  "significant"; **Export Data** saves the category×dataset matrix
 
-## 9.7 Common Features (All Plots)
+## 9.8 Common Features (All Plots)
 
 - **High z-order:** Tooltips always appear above plot elements and colorbars
 
@@ -207,7 +216,7 @@ Compares the genomic-feature composition of peaks (Promoter, Exon, Intron, UTR,
  **outside right** option that places the legend beside the plot so it never
  covers the data (useful for stacked bars with many categories)
 
-## 9.8 📌 Pin to Tab
+## 9.9 📌 Pin to Tab
 
 Keep a plot open as a persistent tab instead of a dialog popup:
 
@@ -221,7 +230,7 @@ Keep a plot open as a persistent tab instead of a dialog popup:
 
 Pinned plot tabs are saved with the project (**.seqproj**) and restored on next open.
 
-## 9.9 Plot Settings Dock (Right Panel)
+## 9.10 Plot Settings Dock (Right Panel)
 
 When a pinned plot tab is active, a **Plot Settings** panel automatically appears
  on the right side of the window:
@@ -235,4 +244,4 @@ When a pinned plot tab is active, a **Plot Settings** panel automatically appear
 8. Can be moved or floated like any standard dock panel
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](20-faq.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md)

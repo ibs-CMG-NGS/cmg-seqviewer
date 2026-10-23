@@ -55,6 +55,12 @@ python -c "from PIL import Image; img = Image.open('logo.png'); img.save('icon.i
 
 ### 3. spec 파일 생성 및 수정
 
+> **Mixed-DPI note:** the repository specs (`rna-seq-viewer.spec`,
+> `rna-seq-viewer-onefile.spec`) embed `cmg-seqviewer.manifest`
+> (Per-Monitor V2 DPI aware). Keep that `manifest=...` argument when creating
+> a custom spec — without it, a 120% laptop + 100% external monitor setup can
+> leave stale menu/popup frames (ghosting) on Windows.
+
 #### 기본 spec 파일 생성:
 ```powershell
 pyi-makespec --onefile --windowed --name="CMG-SeqViewer" main.py

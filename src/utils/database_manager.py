@@ -46,6 +46,267 @@ def _is_go_dataframe(df) -> bool:
             pass
     return False
 
+
+def _is_composition_dataframe(df) -> bool:
+    """Cell-type composition(propeller/limma) parquet 감지."""
+    from utils.composition_loader import CompositionLoader
+    return CompositionLoader.is_composition_dataframe(df)
+
+
+def _expression_companion_names(item: dict) -> list:
+    """manifest 항목의 expression_schema.companion_files 값(파일명) 목록."""
+    schema = item.get('expression_schema') or {}
+    comp = schema.get('companion_files') or {}
+    if not isinstance(comp, dict):
+        return []
+    return [Path(str(v)).name for v in comp.values() if v]
+
+
+_SPECIES_NAMES = {
+    'mouse': 'Mus musculus',
+    'human': 'Homo sapiens',
+    'rat': 'Rattus norvegicus',
+}
+
+
+def _expression_manifest_alias(manifest: dict, source_dir: Path) -> str:
+    if manifest.get('alias'):
+        return str(manifest['alias'])
+    level = manifest.get('cell_type_column') or manifest.get('cell_type_level') or ''
+    ds_label = ''
+    if manifest.get('by_dataset'):
+        datasets = manifest.get('datasets')
+        if isinstance(datasets, str):
+            ds_label = datasets
+        elif isinstance(datasets, list) and datasets:
+            ds_label = ','.join(str(d) for d in datasets[:3])
+            if len(datasets) > 3:
+                ds_label += '…'
+    parts = ['HypoMap']
+    if level:
+        parts.append(str(level))
+    if ds_label:
+        parts.append(ds_label)
+    parts.append('expression')
+    alias = ' '.join(parts)
+    # Import Folder가 .../export/expression 형태면 상위 프로젝트명을 앞에 붙인다.
+    if source_dir.name == 'expression' and len(source_dir.parents) >= 2:
+        project = source_dir.parents[1].name
+        if project and project not in ('datasets', 'export'):
+            alias = f"{project} — {alias}"
+    return alias
+
+
+def _expression_manifest_to_dataset(manifest: dict, source_dir: Path) -> Optional[dict]:
+    """파이프라인 고유의 expression manifest.json을 seqviewer dataset 항목으로 변환.
+
+    기대 형태:
+      {"table": "expression", "files": {"expression_wide_mean": "...", ...}, ...}
+    """
+    if not isinstance(manifest, dict) or manifest.get('table') != 'expression':
+        return None
+    files = manifest.get('files') or {}
+    if not isinstance(files, dict):
+        return None
+
+    primary = files.get('expression_wide_mean') or files.get('expression_long')
+    if not primary:
+        return None
+    layout = 'wide' if files.get('expression_wide_mean') else 'long'
+    primary_path = source_dir / Path(str(primary)).name
+    if not primary_path.exists():
+        return None
+
+    cell_type_columns = None
+    if layout == 'wide':
+        try:
+            import pyarrow.parquet as pq
+            names = pq.ParquetFile(primary_path).schema_arrow.names
+            cell_type_columns = [c for c in names if c != 'gene_id']
+        except Exception:
+            cell_type_columns = None
+
+    pct_scale = '0-100'  # 이 파이프라인은 100 * n_expressing / n_cells 를 쓴다.
+    pct_name = files.get('expression_wide_pct')
+    if pct_name:
+        pct_path = source_dir / Path(str(pct_name)).name
+        try:
+            import pandas as _pd
+            pct_df = _pd.read_parquet(pct_path)
+            num = pct_df.select_dtypes(include='number')
+            if not num.empty and float(num.max().max()) <= 1.5:
+                pct_scale = '0-1'
+        except Exception:
+            pass
+
+    companions = {}
+    for key, manifest_key in (
+            ('pct', 'expression_wide_pct'),
+            ('gene_index', 'gene_index'),
+            ('cell_type_summary', 'cell_type_summary'),
+            ('cell_type_dataset_counts', 'cell_type_dataset_counts'),
+            ('skipped_groups', 'skipped_groups')):
+        name = files.get(manifest_key)
+        if name:
+            companions[key] = Path(str(name)).name
+
+    species = str(manifest.get('species') or '')
+    schema = {
+        'schema_version': str(manifest.get('schema_version') or '1.0'),
+        'layout': layout,
+        'value_type': 'mean_expression',
+        'cell_type_level': manifest.get('cell_type_column') or '',
+        'cell_type_columns': cell_type_columns,
+        'gene_id_type': manifest.get('gene_id_type') or 'symbol',
+        'normalization': manifest.get('normalization') or '',
+        'detection': manifest.get('detection') or '',
+        'pct_scale': pct_scale,
+        'by_dataset': bool(manifest.get('by_dataset')),
+        'dataset_column': manifest.get('dataset_column'),
+        'min_cells': manifest.get('min_cells'),
+        'n_cells_input': manifest.get('n_cells_input'),
+        'n_cells_used': manifest.get('n_cells_used'),
+        'source': manifest.get('source') or '',
+        'companion_files': companions,
+    }
+
+    return {
+        'alias': _expression_manifest_alias(manifest, source_dir),
+        'original_filename': Path(str(primary)).name,
+        'file_path': Path(str(primary)).name,
+        'dataset_type': DatasetType.EXPRESSION_SUMMARY.value,
+        'organism': _SPECIES_NAMES.get(species.lower(), species),
+        'row_count': int(manifest.get('n_genes') or 0),
+        'gene_count': int(manifest.get('n_genes') or 0),
+        'significant_genes': 0,
+        'cell_type_count': int(manifest.get('n_cell_types')
+                               or len(cell_type_columns or []) or 0),
+        'notes': (
+            f"HypoMap expression export; normalization={manifest.get('normalization') or ''}; "
+            f"detection={manifest.get('detection') or ''}; source={manifest.get('source') or ''}"),
+        'tags': ['HypoMap', schema['cell_type_level'], 'expression'],
+        'expression_schema': schema,
+    }
+
+
+def _expression_bundle_companions(filename: str):
+    """HypoMap-style expression bundle의 primary/companion 파일명 규칙.
+
+    Returns: (prefix, layout, {companion_key: filename}) or (None, None, {})
+    """
+    if filename.endswith('_wide_mean.parquet'):
+        prefix = filename[:-len('_wide_mean.parquet')]
+        return prefix, 'wide', {
+            'pct': f'{prefix}_wide_pct.parquet',
+            'gene_index': f'{prefix}_gene_index.parquet',
+            'cell_type_summary': f'{prefix}_cell_type_summary.parquet',
+        }
+    if filename.endswith('_long.parquet'):
+        prefix = filename[:-len('_long.parquet')]
+        return prefix, 'long', {
+            'gene_index': f'{prefix}_gene_index.parquet',
+            'cell_type_summary': f'{prefix}_cell_type_summary.parquet',
+        }
+    return None, None, {}
+
+
+def _is_expression_companion(datasets_dir: Path, filename: str) -> bool:
+    """primary(_wide_mean/_long)가 같은 폴더에 있는 expression companion인지."""
+    for suffix in ('_wide_pct.parquet', '_gene_index.parquet', '_cell_type_summary.parquet'):
+        if filename.endswith(suffix):
+            prefix = filename[:-len(suffix)]
+            return ((datasets_dir / f'{prefix}_wide_mean.parquet').exists()
+                    or (datasets_dir / f'{prefix}_long.parquet').exists())
+    return False
+
+
+def _detect_expression_summary_bundle(datasets_dir: Path, filename: str, df):
+    """companion 파일명 규칙으로 expression_summary를 자동 감지한다.
+
+    manifest가 없는 경우의 fallback이다. `*_wide_mean.parquet`(+pct/gene_index/
+    summary) 또는 `*_long.parquet`(+gene_index/summary) 세트만 인정해, 일반
+    wide matrix를 expression summary로 오인하지 않도록 한다.
+    """
+    prefix, layout, companions = _expression_bundle_companions(filename)
+    if not prefix:
+        return None, []
+    if layout == 'wide':
+        required = ('pct', 'gene_index', 'cell_type_summary')
+    else:
+        required = ('gene_index', 'cell_type_summary')
+    if not all((datasets_dir / companions[k]).exists() for k in required):
+        return None, []
+
+    pct_scale = '0-100'
+    if layout == 'wide' and 'pct' in companions:
+        try:
+            pct_df = pd.read_parquet(datasets_dir / companions['pct'])
+            num = pct_df.select_dtypes(include='number')
+            if not num.empty and float(num.max().max()) <= 1.5:
+                pct_scale = '0-1'
+        except Exception:
+            pass
+    elif layout == 'long' and 'pct_expressing' in df.columns:
+        try:
+            mx = pd.to_numeric(df['pct_expressing'], errors='coerce').max()
+            pct_scale = '0-100' if pd.notna(mx) and float(mx) > 1.5 else '0-1'
+        except Exception:
+            pass
+
+    gene_count = len(df)
+    cell_type_count = 0
+    schema = {
+        'schema_version': '1.0',
+        'layout': layout,
+        'value_type': 'mean_expression' if layout == 'wide' else 'long',
+        'pct_scale': pct_scale,
+        'companion_files': {k: companions[k] for k in required},
+        'source': 'auto-detected',
+    }
+    if layout == 'wide':
+        cell_types = [c for c in df.columns
+                      if c != 'gene_id'
+                      and pd.api.types.is_numeric_dtype(df[c])]
+        schema['cell_type_columns'] = cell_types
+        cell_type_count = len(cell_types)
+    else:
+        try:
+            gene_index = pd.read_parquet(datasets_dir / companions['gene_index'])
+            gene_count = len(gene_index)
+        except Exception:
+            pass
+        if 'cell_type' in df.columns:
+            cell_type_count = int(df['cell_type'].nunique())
+
+    entry = {
+        'dataset_id': str(uuid.uuid4()),
+        'alias': f'{prefix} expression',
+        'original_filename': filename,
+        'file_path': filename,
+        'dataset_type': DatasetType.EXPRESSION_SUMMARY.value,
+        'row_count': len(df),
+        'gene_count': gene_count,
+        'cell_type_count': cell_type_count,
+        'notes': f'Auto-detected expression summary bundle ({layout}); no manifest',
+        'tags': ['expression', 'auto-detected'],
+        'expression_schema': schema,
+    }
+    return entry, [companions[k] for k in required]
+
+
+def _load_expression_manifest(source_dir: Path, filename: str = 'manifest.json'):
+    """source_dir의 expression manifest.json을 seqviewer manifest 형태로 반환."""
+    path = source_dir / filename
+    if not path.exists():
+        return None
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception:
+        return None
+    entry = _expression_manifest_to_dataset(data, source_dir)
+    return {'datasets': [entry]} if entry else None
+
 # dataset_type 문자열 별칭 매핑(differential_accessibility → atac_seq 등)은
 # PreloadedDatasetMetadata.from_dict()에서 단일 지점으로 적용된다
 # (models.data_models.DATASET_TYPE_ALIASES) — manifest/metadata.json 어느 경로든 동일 적용.
@@ -60,8 +321,24 @@ _MANIFEST_FIELD_FALLBACK = {
 def _normalize_manifest_item(item: Dict[str, Any]) -> Dict[str, Any]:
     """seqviewer_manifest.json의 datasets[] 항목을 PreloadedDatasetMetadata.from_dict()가
     이해하는 스키마로 변환한다 (peak_count/significant_peaks 등 ATAC 전용 필드명 보완).
-    dataset_type 별칭 변환은 from_dict()에서 공통 처리되므로 여기서는 건드리지 않는다."""
+    dataset_type 별칭 변환은 from_dict()에서 공통 처리되므로 여기서는 건드리지 않는다.
+
+    파이프라인이 `dataset_id`/`original_filename`/`file_path`를 모두 채우지 않아도
+    되도록 여기서 보완한다 — 예전에는 이 키가 없으면 항목 전체가 조용히 컬럼 추측으로
+    fallback됐다. dataset_id는 파일명 기반 uuid5로 고정해 재반입 시 중복을 막는다."""
     norm = dict(item)
+
+    filename = Path(norm.get('file_path') or norm.get('original_filename') or '').name
+    if filename:
+        if not norm.get('file_path'):
+            norm['file_path'] = filename
+        if not norm.get('original_filename'):
+            norm['original_filename'] = filename
+    if not norm.get('alias') and filename:
+        norm['alias'] = Path(filename).stem
+    if not norm.get('dataset_id') and filename:
+        norm['dataset_id'] = str(uuid.uuid5(uuid.NAMESPACE_URL, f"seqviewer:{filename}"))
+
     for target, source in _MANIFEST_FIELD_FALLBACK.items():
         if not norm.get(target) and norm.get(source):
             norm[target] = norm[source]
@@ -259,13 +536,28 @@ class DatabaseManager:
             # ── datasets_dir에 seqviewer_manifest.json이 직접 들어있으면 우선 사용 ──
             # (3차 파이프라인이 만든 풍부한 메타데이터를 컬럼 추측보다 먼저 적용)
             manifest_file = datasets_dir / "seqviewer_manifest.json"
+            manifest_data = None
+            manifest_source = manifest_file.name
             if manifest_file.exists():
                 try:
                     with open(manifest_file, 'r', encoding='utf-8') as f:
                         manifest_data = json.load(f)
+                except Exception as e:
+                    self.logger.warning(f"Failed to read seqviewer_manifest.json: {e}")
+
+            # HypoMap 등 파이프라인 고유 manifest.json도 동일하게 인식한다.
+            if manifest_data is None:
+                manifest_data = _load_expression_manifest(datasets_dir, 'manifest.json')
+                manifest_source = 'manifest.json'
+
+            if manifest_data is not None:
+                try:
                     existing_ids = {meta.dataset_id for meta in self.metadata_list}
                     for item in manifest_data.get('datasets', []):
                         norm_item = _normalize_manifest_item(item)
+                        # companion 파일(pct/gene_index/summary)은 독립 데이터셋이 아니므로
+                        # 아래 parquet 자동 스캔에서 다시 등록되지 않도록 미리 claim한다.
+                        claimed_files.update(_expression_companion_names(norm_item))
                         filename = Path(norm_item.get('file_path', '')).name
                         if not filename or filename in known_files or filename in claimed_files:
                             claimed_files.add(filename)
@@ -289,11 +581,11 @@ class DatabaseManager:
                         claimed_files.add(filename)
                         auto_imported += 1
                         self.logger.info(
-                            f"Auto-imported '{meta.alias}' from seqviewer_manifest.json "
+                            f"Auto-imported '{meta.alias}' from {manifest_source} "
                             f"({meta.dataset_type.value}, {meta.row_count} rows)"
                         )
                 except Exception as e:
-                    self.logger.warning(f"Failed to read seqviewer_manifest.json: {e}")
+                    self.logger.warning(f"Failed to process {manifest_source}: {e}")
 
             for parquet_file in sorted(datasets_dir.glob("*.parquet")):
                 if parquet_file.name in claimed_files:
@@ -303,12 +595,37 @@ class DatabaseManager:
                 if filename in known_files:
                     continue
 
+                # expression summary companion은 primary(_wide_mean/_long)에서 함께
+                # 등록되므로 여기서는 조용히 건너뛴다 (불필요한 경고 방지).
+                if _is_expression_companion(datasets_dir, filename):
+                    continue
+
                 # ── parquet 열어서 컬럼 확인 ──────────────────────────────
                 try:
                     df = pd.read_parquet(parquet_file, engine='pyarrow')
                 except Exception as e:
                     self.logger.warning(f"Cannot read parquet (skipping): {filename} — {e}")
                     continue
+
+                # manifest 없는 expression summary bundle fallback
+                _expr_entry, _expr_companions = _detect_expression_summary_bundle(
+                    datasets_dir, filename, df)
+                if _expr_entry:
+                    try:
+                        _meta = PreloadedDatasetMetadata.from_dict(_expr_entry)
+                        self.metadata_list.append(_meta)
+                        self._file_source_dirs[filename] = str(datasets_dir)
+                        claimed_files.add(filename)
+                        claimed_files.update(_expr_companions)
+                        auto_imported += 1
+                        self.logger.info(
+                            f"Auto-imported '{_meta.alias}' from expression bundle "
+                            f"naming convention ({_meta.dataset_type.value}, {_meta.row_count} rows)"
+                        )
+                        continue
+                    except Exception as e:
+                        self.logger.warning(
+                            f"Failed to register auto-detected expression bundle '{filename}': {e}")
 
                 cols = set(df.columns)
 
@@ -332,6 +649,8 @@ class DatabaseManager:
                 #  (data_loader.py:_detect_dataset_type)와 동일한 우선순위를 유지한다)
                 elif _is_go_dataframe(df):
                     dataset_type = DatasetType.GO_ANALYSIS
+                elif _is_composition_dataframe(df):
+                    dataset_type = DatasetType.COMPOSITION
                 elif MultiGroupLoader.is_multi_group_dataframe(df):
                     dataset_type = DatasetType.MULTI_GROUP
                 elif de_required.issubset(cols):
@@ -339,7 +658,9 @@ class DatabaseManager:
                 else:
                     self.logger.warning(
                         f"Cannot determine type of '{filename}' "
-                        f"(no ATAC, DE, GO or Multi-Group standard columns found). Skipping."
+                        f"(no DE/GO/ATAC/Multi-Group/Composition standard columns found). "
+                        f"If this is an Expression Summary bundle, place "
+                        f"seqviewer_manifest.json in datasets/ or use Import Folder. Skipping."
                     )
                     continue
 
@@ -414,6 +735,16 @@ class DatabaseManager:
                             # Multi-Group은 log2fc가 없으므로 padj만으로 유의미 유전자 판정
                             significant_genes = int(
                                 (pd.to_numeric(df['padj'], errors='coerce') < 0.05).sum()
+                            )
+                        except Exception:
+                            significant_genes = 0
+
+                elif dataset_type == DatasetType.COMPOSITION:
+                    gene_count = row_count  # composition에서는 cell type 수
+                    if 'fdr' in cols:
+                        try:
+                            significant_genes = int(
+                                (pd.to_numeric(df['fdr'], errors='coerce') < 0.05).sum()
                             )
                         except Exception:
                             significant_genes = 0
@@ -654,10 +985,24 @@ class DatabaseManager:
         skipped_dup = 0
         skipped_no_file = 0
 
+        # 경로명에서 researcher / analysis_date 추론 (metadata·manifest 양쪽 공통 fallback)
+        path_researchers, path_date = _parse_researcher_from_path(source_dir)
+
+        def _apply_path_fallback(meta: PreloadedDatasetMetadata) -> None:
+            if not meta.researcher and path_researchers:
+                meta.researcher = list(path_researchers)
+                for initials in path_researchers:
+                    if initials and initials not in meta.tags:
+                        meta.tags.append(initials)
+            if not meta.analysis_date and path_date:
+                meta.analysis_date = path_date
+
         meta_file = source_dir / "metadata.json"
         manifest_file = source_dir / "seqviewer_manifest.json"
+        expression_manifest = source_dir / "manifest.json"
         is_manifest = not meta_file.exists() and manifest_file.exists()
         chosen_file = manifest_file if is_manifest else meta_file
+        data = None
 
         if chosen_file.exists():
             # ── metadata.json / seqviewer_manifest.json 기반 병합 ──────────
@@ -667,7 +1012,13 @@ class DatabaseManager:
             except Exception as e:
                 self.logger.error(f"import_from_folder: failed to read {chosen_file}: {e}")
                 return 0, 0, 0
+        elif expression_manifest.exists():
+            # HypoMap 등 파이프라인 고유 manifest.json (단일 expression 테이블)
+            data = _load_expression_manifest(source_dir, 'manifest.json')
+            is_manifest = True
+            chosen_file = expression_manifest
 
+        if data is not None:
             existing_ids = {m.dataset_id for m in self.metadata_list}
             existing_files = {m.file_path for m in self.metadata_list}
 
@@ -693,6 +1044,7 @@ class DatabaseManager:
 
                 # 파일 경로를 파일명만으로 정규화
                 meta.file_path = Path(meta.file_path).name
+                _apply_path_fallback(meta)
 
                 # 중복 체크: dataset_id(UUID)가 동일하면 이미 반입된 데이터셋
                 # file_path는 검사하지 않음 — organism이 달라도 조건명이 같으면
@@ -725,6 +1077,32 @@ class DatabaseManager:
                 shutil.copy2(src_parquet, dest_parquet)
                 meta.file_path = dest_name
 
+                # Expression summary companion(pct/gene_index/summary)도 함께 복사하고
+                # manifest의 파일명을 실제 destination 이름으로 갱신한다.
+                companions = (meta.expression_schema or {}).get('companion_files') or {}
+                if isinstance(companions, dict) and companions:
+                    updated = {}
+                    for key, cname in companions.items():
+                        cname = Path(str(cname)).name
+                        src_c = source_datasets_dir / cname
+                        if not src_c.exists():
+                            src_c = source_dir / cname
+                        if not src_c.exists():
+                            self.logger.warning(
+                                f"import_from_folder: companion '{cname}' not found "
+                                f"for '{meta.alias}'")
+                            updated[key] = cname
+                            continue
+                        dest_c = self.datasets_dir / cname
+                        if dest_c.exists() and dest_c.stat().st_size != src_c.stat().st_size:
+                            cname = f"{Path(cname).stem}_{str(uuid.uuid4())[:8]}.parquet"
+                            dest_c = self.datasets_dir / cname
+                        if not dest_c.exists():
+                            shutil.copy2(src_c, dest_c)
+                        updated[key] = cname
+                    meta.expression_schema = dict(meta.expression_schema or {})
+                    meta.expression_schema['companion_files'] = updated
+
                 self.metadata_list.append(meta)
                 self._file_source_dirs[meta.file_path] = str(self.datasets_dir)
                 imported += 1
@@ -755,22 +1133,13 @@ class DatabaseManager:
                 # auto-import 스캔이 새 파일을 감지하도록 datasets_dir 를 다시 스캔
                 # (직접 등록하지 않고 _scan_and_auto_import 에 맡김)
 
-            # 경로명에서 researcher / analysis_date 추론 (fallback)
-            path_researchers, path_date = _parse_researcher_from_path(source_dir)
-
             # 복사 후 자동 스캔 실행 → 새로 복사된 파일 등록
             imported = self._scan_and_auto_import(self.datasets_dir)
 
             # 방금 스캔으로 추가된 항목에 path 추론 메타데이터 채우기
             if path_researchers or path_date:
                 for meta in self.metadata_list:
-                    if not meta.researcher and path_researchers:
-                        meta.researcher = path_researchers
-                        for initials in path_researchers:
-                            if initials not in meta.tags:
-                                meta.tags.append(initials)
-                    if not meta.analysis_date and path_date:
-                        meta.analysis_date = path_date
+                    _apply_path_fallback(meta)
 
         if imported > 0:
             self._save_metadata()
@@ -946,6 +1315,50 @@ class DatabaseManager:
                 )
                 return dataset
 
+            if metadata.dataset_type == DatasetType.COMPOSITION:
+                from utils.composition_loader import CompositionLoader
+                dataset = CompositionLoader().load(file_path, metadata.alias)
+                dataset.metadata.update({
+                    'experiment_condition': metadata.experiment_condition,
+                    'organism': metadata.organism,
+                    'tissue': metadata.tissue,
+                    'timepoint': metadata.timepoint,
+                    'import_date': metadata.import_date,
+                    'notes': metadata.notes,
+                    'tags': metadata.tags,
+                })
+                self.logger.info(
+                    f"Loaded composition dataset from database: {metadata.alias} "
+                    f"({len(dataset.dataframe)} rows)"
+                )
+                return dataset
+
+            if metadata.dataset_type == DatasetType.EXPRESSION_SUMMARY:
+                from utils.expression_summary_loader import ExpressionSummaryLoader
+                loader = ExpressionSummaryLoader(metadata.expression_schema)
+                dataset = loader.load(
+                    file_path, metadata.alias,
+                    expression_schema=metadata.expression_schema)
+                if Path(file_path).parent != self.datasets_dir and any(
+                        dataset.metadata.get(k) is None
+                        for k in ('pct_matrix', 'gene_index', 'cell_type_summary')):
+                    loader.load_companions(dataset, self.datasets_dir)
+                dataset.metadata.update({
+                    'experiment_condition': metadata.experiment_condition,
+                    'organism': metadata.organism,
+                    'tissue': metadata.tissue,
+                    'timepoint': metadata.timepoint,
+                    'import_date': metadata.import_date,
+                    'notes': metadata.notes,
+                    'tags': metadata.tags,
+                    'cell_type_count': metadata.cell_type_count,
+                })
+                self.logger.info(
+                    f"Loaded expression-summary dataset from database: {metadata.alias} "
+                    f"({len(dataset.dataframe)} genes)"
+                )
+                return dataset
+
             df = pd.read_parquet(file_path, engine='pyarrow')
             
             # GO 데이터의 경우 _gene_set 컬럼을 set으로 복원
@@ -1118,7 +1531,7 @@ class DatabaseManager:
         metadata = self.get_metadata(dataset_id)
         if metadata is None:
             return False
-        
+
         try:
             # 파일 삭제 - _find_dataset_file()로 실제 경로 찾기
             file_path = self._find_dataset_file(metadata.file_path)

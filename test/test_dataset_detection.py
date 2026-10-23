@@ -86,6 +86,53 @@ class TestLoadAnyDatasetNoQt:
         with pytest.raises(ValueError):
             load_any_dataset(f, DataLoader())
 
+    def test_de_csv_and_parquet(self, tmp_path):
+        # 파이프라인 산출물(parquet)을 CLI/CI가 직접 검증할 수 있어야 한다.
+        df = pd.DataFrame({
+            "gene_id": ["G1", "G2"], "log2fc": [1.0, -2.0],
+            "adj_pvalue": [0.01, 0.02], "baseMean": [100.0, 200.0],
+        })
+        for name in ("de.csv", "de.parquet"):
+            f = tmp_path / name
+            df.to_csv(f, index=False) if name.endswith(".csv") else df.to_parquet(f)
+            ds = load_any_dataset(f, DataLoader())
+            assert ds.dataset_type == DatasetType.DIFFERENTIAL_EXPRESSION
+            assert ds.is_valid
+
+    def test_de_parquet_via_hint(self, tmp_path):
+        df = pd.DataFrame({"gene_id": ["G1"], "log2fc": [1.5], "adj_pvalue": [0.01],
+                           "baseMean": [50.0]})
+        f = tmp_path / "de_hint.parquet"
+        df.to_parquet(f)
+        ds = load_any_dataset(f, DataLoader(),
+                              dataset_type_hint=DatasetType.DIFFERENTIAL_EXPRESSION)
+        assert ds.dataset_type == DatasetType.DIFFERENTIAL_EXPRESSION
+        assert ds.is_valid
+
+    def test_go_parquet_via_hint(self, tmp_path):
+        df = pd.DataFrame([{
+            "term_id": "GO:0000001", "description": "x", "gene_count": 2,
+            "fdr": 0.01, "gene_symbols": "A/B",
+        }])
+        f = tmp_path / "go.parquet"
+        df.to_parquet(f)
+        ds = load_any_dataset(f, DataLoader(),
+                              dataset_type_hint=DatasetType.GO_ANALYSIS)
+        assert ds.dataset_type == DatasetType.GO_ANALYSIS
+        assert ds.is_valid
+
+    def test_multi_group_excel_via_hint(self, tmp_path):
+        df = pd.DataFrame({
+            "gene_id": ["G1", "G2"], "padj": [0.01, 0.2],
+            "s1": [1.0, 2.0], "s2": [1.1, 2.1], "s3": [1.2, 2.2],
+        })
+        f = tmp_path / "mg.xlsx"
+        df.to_excel(f, index=False)
+        ds = load_any_dataset(f, DataLoader(),
+                              dataset_type_hint=DatasetType.MULTI_GROUP)
+        assert ds.dataset_type == DatasetType.MULTI_GROUP
+        assert len(ds.metadata["sample_columns"]) == 3
+
 
 def test_looks_like_go_frame():
     assert looks_like_go_frame(pd.DataFrame(columns=["term_id", "description", "ontology"]))

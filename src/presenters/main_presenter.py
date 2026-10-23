@@ -299,6 +299,8 @@ class MainPresenter(QObject):
         if dt == DatasetType.MULTI_GROUP:
             return self._filter_mg_by_statistics(
                 padj_max=criteria.mg_padj_max, basemean_min=criteria.mg_basemean_min)
+        if dt == DatasetType.COMPOSITION:
+            return self._filter_composition_by_statistics(fdr_max=criteria.fdr_max)
         if dt == DatasetType.ATAC_SEQ:
             return self._filter_atac_by_statistics(
                 adj_pvalue_max=criteria.adj_pvalue_max, log2fc_min=criteria.log2fc_min,
@@ -427,6 +429,19 @@ class MainPresenter(QObject):
                         basemean_min=criteria.mg_basemean_min,
                     )
                     tab_name = f"Filtered: padj≤{criteria.mg_padj_max:.3g}, baseMean≥{criteria.mg_basemean_min:.3g}"
+
+                elif dataset_type == DatasetType.COMPOSITION:
+                    # Cell-type composition: FDR 기준
+                    filtered_df = self._filter_composition_by_statistics(
+                        fdr_max=criteria.fdr_max)
+                    tab_name = f"Filtered: FDR≤{criteria.fdr_max:.3g}"
+
+                elif dataset_type == DatasetType.EXPRESSION_SUMMARY:
+                    self.error_occurred.emit(
+                        "Expression summary supports Gene List / Keyword filtering "
+                        "only. Use the Gene List tab or the expression dialog's filters.")
+                    self.fsm.trigger(Event.FILTER_FAILED)
+                    return
 
                 elif dataset_type == DatasetType.ATAC_SEQ:
                     # ATAC-seq: adj_pvalue, log2fc + ATAC 전용 필터
@@ -764,6 +779,17 @@ class MainPresenter(QObject):
             f"Multi-Group filter: {len(df)}/{len(self.current_dataset.dataframe)} rows "
             f"(padj≤{padj_max}, baseMean≥{basemean_min})"
         )
+        return df
+
+    def _filter_composition_by_statistics(self, fdr_max: float) -> pd.DataFrame:
+        """Cell-type composition을 FDR 기준으로 필터링 (pvalue fallback)."""
+        df = self.current_dataset.dataframe.copy()
+        col = 'fdr' if 'fdr' in df.columns else ('pvalue' if 'pvalue' in df.columns else None)
+        if col is not None:
+            df = df[pd.to_numeric(df[col], errors='coerce') <= fdr_max]
+        self.logger.info(
+            f"Composition filter: {len(df)}/{len(self.current_dataset.dataframe)} rows "
+            f"(fdr≤{fdr_max})")
         return df
 
     def _filter_atac_by_statistics(

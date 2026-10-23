@@ -41,6 +41,79 @@ class TestCliLoad:
         assert "Missing required ATAC-seq columns" in err
         assert "Region" in err  # 실제 사용 가능한 컬럼도 메시지에 포함
 
+    def test_load_de_parquet(self, tmp_path, capsys):
+        df = pd.DataFrame({
+            "gene_id": ["G1", "G2"], "log2fc": [1.0, -2.0],
+            "adj_pvalue": [0.01, 0.02], "baseMean": [100.0, 200.0],
+        })
+        f = tmp_path / "de.parquet"
+        df.to_parquet(f)
+        rc = cli.main(["load", str(f)])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "type: differential_expression" in out
+        assert "rows: 2" in out
+
+    def test_load_json_reports_machine_readable_fields(self, tmp_path, capsys):
+        import json
+        f = _write_de_xlsx(tmp_path)
+        rc = cli.main(["load", str(f), "--json"])
+        out = capsys.readouterr().out
+        assert rc == 0
+        report = json.loads(out)
+        assert report["dataset_type"] == "differential_expression"
+        assert report["rows"] == 10
+        assert report["valid"] is True
+        assert report["missing_required_columns"] == []
+        assert report["file"] == str(f)
+
+    def test_load_type_hint_forces_multi_group(self, tmp_path, capsys):
+        # padj/샘플 3개 패턴이 아니어도 --type으로 강제 가능해야 한다.
+        df = pd.DataFrame({
+            "gene_id": ["G1"], "condition": ["x"],
+            "s1": [1.0], "s2": [2.0], "s3": [3.0],
+        })
+        f = tmp_path / "expression.csv"
+        df.to_csv(f, index=False)
+        rc = cli.main(["load", str(f), "--type", "multi_group", "--json"])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert '"multi_group"' in out
+
+    def test_load_composition_parquet_json(self, tmp_path, capsys):
+        import json
+        df = pd.DataFrame({
+            "cell_type": ["T", "B"],
+            "PropMean.Control": [0.6, 0.4],
+            "PropMean.Treatment": [0.5, 0.5],
+            "PropRatio": [-0.1, 0.1],
+            "P.Value": [0.01, 0.02],
+            "FDR": [0.02, 0.03],
+        })
+        f = tmp_path / "composition.parquet"
+        df.to_parquet(f)
+        rc = cli.main(["load", str(f), "--json"])
+        report = json.loads(capsys.readouterr().out)
+        assert rc == 0
+        assert report["dataset_type"] == "composition"
+        assert report["valid"] is True
+        assert report["missing_required_columns"] == []
+
+    def test_load_expression_summary_json(self, tmp_path, capsys):
+        import json
+        df = pd.DataFrame({
+            "gene_id": ["G1", "G2"], "gene_name": ["A", "B"],
+            "CT_A": [1.0, 2.0], "CT_B": [3.0, 4.0],
+        })
+        f = tmp_path / "expression.parquet"
+        df.to_parquet(f)
+        rc = cli.main(["load", str(f), "--type", "expression_summary", "--json"])
+        report = json.loads(capsys.readouterr().out)
+        assert rc == 0
+        assert report["dataset_type"] == "expression_summary"
+        assert report["valid"] is True
+        assert report["missing_required_columns"] == []
+
 
 class TestCliFilter:
     def test_filter_writes_table(self, tmp_path, capsys):

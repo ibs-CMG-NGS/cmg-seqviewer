@@ -94,28 +94,33 @@ class DataLoader:
         """저장된 사용자 정의 매핑 가져오기"""
         return self.custom_mappings.get(dataset_type.value)
     
-    def load_from_excel(self, file_path: Path, dataset_name: Optional[str] = None,
+    def load_from_file(self, file_path: Path, dataset_name: Optional[str] = None,
                        dataset_type: Optional[DatasetType] = None,
                        sheet_name: Optional[str] = None,
                        column_mapper_callback: Optional[Callable] = None) -> Dataset:
         """
-        Excel 파일로부터 데이터셋 로드
-        
+        Excel/CSV/TSV/Parquet 파일로부터 데이터셋 로드.
+
+        확장자에 맞는 리더로 읽은 뒤에는 Excel 경로와 완전히 동일한
+        타입 감지·컬럼 매핑·표준화 파이프라인을 적용한다 — CLI/CI가 파이프라인의
+        parquet 산출물을 직접 검증할 수 있도록 하기 위한 경로다.
+
         Args:
-            file_path: Excel 파일 경로
+            file_path: 입력 파일 경로 (.xlsx/.xls/.xlsm/.csv/.tsv/.txt/.parquet)
             dataset_name: 데이터셋 이름 (None이면 파일명 사용)
             dataset_type: 데이터셋 타입 (None이면 자동 감지)
-            sheet_name: 시트명 (None이면 첫 번째 시트)
+            sheet_name: Excel 시트명 (None이면 첫 번째 시트; 다른 포맷에서는 무시)
             column_mapper_callback: 컬럼 매핑 UI 콜백 함수
                                    (df, dataset_type, auto_mapping) -> Dict[str, str] 반환
-            
+
         Returns:
             로드된 Dataset 객체
-            
+
         Raises:
             FileNotFoundError: 파일이 존재하지 않을 때
             ValueError: 데이터 형식이 올바르지 않을 때
         """
+        file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
         
@@ -126,11 +131,7 @@ class DataLoader:
             dataset_name = file_path.stem
         
         try:
-            # Excel 파일 읽기
-            if sheet_name:
-                df = pd.read_excel(file_path, sheet_name=sheet_name)
-            else:
-                df = pd.read_excel(file_path)
+            df = self._read_table(file_path, sheet_name)
             
             self.logger.debug(f"Loaded {len(df)} rows, {len(df.columns)} columns")
             
@@ -139,10 +140,23 @@ class DataLoader:
                 dataset_type = self._detect_dataset_type(df)
                 self.logger.debug(f"Detected dataset type: {dataset_type.value}")
 
+            if dataset_type == DatasetType.UNKNOWN:
+                raise ValueError(
+                    f"Could not determine dataset type from columns: {list(df.columns)}\n"
+                    f"Provide an explicit type (CLI: --type differential_expression/"
+                    f"go_analysis/multi_group/atac) or rename columns to the standard "
+                    f"names (see StandardColumns).")
+
             # ATAC-seq 타입은 전용 로더로 위임 (필수 컬럼 누락 시 동일 콜백으로 매핑 요청)
             if dataset_type == DatasetType.ATAC_SEQ:
                 from utils.atac_seq_loader import ATACSeqLoader
                 return ATACSeqLoader().load(file_path, dataset_name, column_mapper_callback)
+
+            # Cell-type composition은 전용 로더로 위임
+            if dataset_type == DatasetType.COMPOSITION:
+                from utils.composition_loader import CompositionLoader
+                return CompositionLoader().load_from_dataframe(
+                    df, file_path, dataset_name)
 
             # Motif enrichment 타입은 전용 로더로 위임
             if dataset_type == DatasetType.MOTIF_ENRICHMENT:
@@ -215,7 +229,33 @@ class DataLoader:
         except Exception as e:
             self.logger.error(f"Failed to load data: {e}", exc_info=True)
             raise
-    
+
+    def load_from_excel(self, file_path: Path, dataset_name: Optional[str] = None,
+                       dataset_type: Optional[DatasetType] = None,
+                       sheet_name: Optional[str] = None,
+                       column_mapper_callback: Optional[Callable] = None) -> Dataset:
+        """Excel 로더 — 하위 호환 별칭 (`load_from_file`과 동일 동작)."""
+        return self.load_from_file(
+            file_path, dataset_name=dataset_name, dataset_type=dataset_type,
+            sheet_name=sheet_name, column_mapper_callback=column_mapper_callback)
+
+    def _read_table(self, file_path: Path, sheet_name: Optional[str] = None) -> pd.DataFrame:
+        """확장자에 맞는 리더로 표를 읽는다 (Excel/CSV/TSV/Parquet)."""
+        suffix = file_path.suffix.lower()
+        if suffix in ('.xlsx', '.xls', '.xlsm'):
+            if sheet_name:
+                return pd.read_excel(file_path, sheet_name=sheet_name)
+            return pd.read_excel(file_path)
+        if suffix == '.parquet':
+            return pd.read_parquet(file_path)
+        if suffix == '.csv':
+            return pd.read_csv(file_path)
+        if suffix in ('.tsv', '.txt'):
+            return pd.read_csv(file_path, sep='\t')
+        raise ValueError(
+            f"Unsupported input format: {suffix!r} "
+            "(use .xlsx/.xls/.xlsm/.csv/.tsv/.txt/.parquet)")
+
     def _detect_dataset_type(self, df: pd.DataFrame) -> DatasetType:
         """
         데이터프레임으로부터 데이터셋 타입 자동 감지
@@ -248,6 +288,10 @@ class DataLoader:
 
         # Multi-Group (LRT) 타입 확인: DE/GO 감지 전에 먼저 확인
         # (padj는 있으나 log2FC가 없고, 숫자형 샘플 컬럼 3개 이상)
+        from utils.composition_loader import CompositionLoader
+        if CompositionLoader.is_composition_dataframe(df):
+            return DatasetType.COMPOSITION
+
         from utils.multi_group_loader import MultiGroupLoader
         if MultiGroupLoader.is_multi_group_dataframe(df):
             return DatasetType.MULTI_GROUP

@@ -19,6 +19,8 @@ _REGISTRY = {
     'go_bar':                 ('go_bar',               'render_go_bar',               'ax',  True),
     'genomic_distribution':   ('genomic_distribution', 'render_genomic_distribution', 'fig', True),
     'gene_expression_bar':    ('gene_expression_bar',  'render_gene_expression_bar',  'ax',  True),
+    'composition':            ('composition',           'render_composition',          'ax',  True),
+    'expression_dot':         ('expression_dot',        'render_expression_dot',       'ax',  False),
     'quadrant':               ('quadrant',             'render_quadrant',             'ax',  True),
     'concordance_heatmap':    ('concordance_heatmap',  'render_concordance_heatmap',  'fig', True),
     'concordance_summary':    ('concordance_summary',  'render_concordance_summary',  'ax',  True),

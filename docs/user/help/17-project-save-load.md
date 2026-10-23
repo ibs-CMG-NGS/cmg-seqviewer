@@ -107,4 +107,4 @@ Other notes:
 9. Restored plots are drawn from the parent dataset's full table.
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](20-faq.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](23-faq.md)
