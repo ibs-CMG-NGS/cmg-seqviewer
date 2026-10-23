@@ -35,6 +35,6 @@ such as "미구현" or "계획" reflect the state at the time of writing.
 See [Planning Documentation](../README.md) for active plans:
 
 - MCP / AI Agent integration
-- Figure quality / reproducibility (P2–P3)
+- Figure bundle handoff / coverage (P2)
 - Expression Distribution (cell-level / full-atlas lazy query)
 - External pipeline packaging requirements

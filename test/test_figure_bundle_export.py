@@ -48,9 +48,42 @@ def test_export_figure_bundle_creates_required_files(tmp_path):
     metadata = (bundle_dir / "metadata" / "metadata.yaml").read_text(encoding="utf-8")
     assert "figure_title" in metadata
     assert "plot_type" in metadata
+    assert "panel_notes:" in metadata
+    assert "environment:" in metadata
+    assert "output_formats:" in metadata
+    assert "outputs/demo_figure.png" in metadata
+    assert "statistics_tables: []" in metadata
 
     manifest = json.loads((bundle_dir / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["status"] == "ok"
+    assert "outputs/demo_figure.png" in manifest["files"]
+    assert "inputs/statistics.csv" not in manifest["files"]
+
+
+def test_bundle_metadata_includes_statistics_only_when_present(tmp_path):
+    fig = Figure(figsize=(4, 3))
+    ax = fig.add_subplot(111)
+    ax.plot([0, 1], [1, 2])
+    context = {
+        "figure": fig,
+        "dataframe": pd.DataFrame({"x": [0, 1], "y": [1, 2]}),
+        "plot_params": {},
+        "dataset_name": "demo",
+        "plot_type": "line",
+        "figure_title": "Demo Figure",
+        "figure_slug": "demo_figure",
+        "source_stem": "demo_figure",
+        "panel_notes": "Panel a: demo",
+        "statistics": pd.DataFrame({"n": [2]}),
+    }
+    bundle_dir = export_figure_bundle(
+        context, tmp_path / "bundle", "demo_figure", "Demo Figure", "line")
+    metadata = (bundle_dir / "metadata" / "metadata.yaml").read_text(encoding="utf-8")
+    manifest = json.loads((bundle_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert "inputs/statistics.csv" in manifest["files"]
+    assert "statistics_tables:" in metadata
+    assert "inputs/statistics.csv" in metadata
+    assert "Panel a: demo" in metadata
 
 
 def test_generated_regeneration_script_runs(tmp_path):

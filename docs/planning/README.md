@@ -8,7 +8,7 @@
 | Document | Description | Status | Remaining work |
 |---|---|---|---|
 | [MCP / AI Agent integration](MCP_AGENT_INTEGRATION_PLAN.md) | Headless service layer + MCP tools for AI clients | Planned (Phase 0 not started) | Privacy/threat model, tool schema, headless service, MCP server |
-| [Figure quality & reproducibility](FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md) | Publication-quality figures + `FigureSpec` reproducibility | P1 + P4 implemented; P2–P3 planned | `FigureSpec` serialization/presets/round-trip, significance layer, multi-panel, batch export |
+| [Figure bundle handoff](FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md) | Reproducible per-panel bundles for the external figure-atlas layout pipeline | P1 + P4 done; P2 coverage active | 6 missing figures, metadata contract, coverage test ([audit](FIGURE_BUNDLE_COVERAGE.md)) |
 | [Expression Distribution](EXPRESSION_DISTRIBUTION_PLAN.md) | Per-sample pseudobulk/quantile violin-box view | **v1.4.1 released** | Phase 3 cell-level store, full-atlas lazy DuckDB query, full-atlas export scope |
 | [ATAC pipeline packaging](ATAC_PIPELINE_SEQVIEWER_PACKAGING.md) | Requirements for the external ATAC 3rd-party pipeline | External coordination | Pipeline-side manifest/companion fields |
 | [RNA pipeline packaging](RNA_PIPELINE_SEQVIEWER_PACKAGING.md) | Requirements for the external RNA-seq 3rd-party pipeline | External coordination | Pipeline-side metadata/manifest fields |

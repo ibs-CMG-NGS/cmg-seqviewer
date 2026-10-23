@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import platform
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
@@ -93,25 +95,37 @@ def export_figure_bundle(
     script_path = bundle_dir / "scripts" / "figure.py"
     script_path.write_text(_build_regeneration_script(source_stem, plot_type, plot_params), encoding="utf-8")
 
+    stats_path = bundle_dir / "inputs" / "statistics.csv"
+    has_statistics = stats_path.exists()
+    saved_outputs = []
+    for stem in dict.fromkeys(("figure", source_stem)):
+        for ext in ("png", "pdf", "svg"):
+            path = bundle_dir / "outputs" / f"{stem}.{ext}"
+            if path.exists():
+                saved_outputs.append(str(path.relative_to(bundle_dir)))
+    output_formats = [
+        ext for ext in ("png", "pdf", "svg")
+        if (bundle_dir / "outputs" / f"{source_stem}.{ext}").exists()
+    ]
+
     metadata_path = bundle_dir / "metadata" / "metadata.yaml"
     metadata_path.write_text(
         _build_metadata_yaml(
             figure_slug=figure_slug,
+            figure_number=context.get("figure_number") or "",
             figure_title=figure_title,
             plot_type=plot_type,
             source_stem=source_stem,
             dataset_name=dataset_name,
             plot_params=plot_params,
             notes=notes,
+            panel_notes=context.get("panel_notes") or notes,
+            output_files=saved_outputs,
+            output_formats=output_formats,
+            has_statistics=has_statistics,
         ),
         encoding="utf-8",
     )
-
-    saved_outputs = [
-        str((bundle_dir / "outputs" / f"{source_stem}.{ext}").relative_to(bundle_dir))
-        for ext in ("png", "pdf", "svg")
-        if (bundle_dir / "outputs" / f"{source_stem}.{ext}").exists()
-    ]
 
     manifest = {
         "status": "ok",
@@ -121,6 +135,7 @@ def export_figure_bundle(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "files": [
             str(data_path.relative_to(bundle_dir)),
+            *([str(stats_path.relative_to(bundle_dir))] if has_statistics else []),
             str(script_path.relative_to(bundle_dir)),
             str(metadata_path.relative_to(bundle_dir)),
             *saved_outputs,
@@ -134,34 +149,60 @@ def export_figure_bundle(
 def _build_metadata_yaml(
     *,
     figure_slug: str,
+    figure_number: str,
     figure_title: str,
     plot_type: str,
     source_stem: str,
     dataset_name: str,
     plot_params: Mapping[str, Any],
     notes: str,
+    panel_notes: str,
+    output_files: list[str],
+    output_formats: list[str],
+    has_statistics: bool,
 ) -> str:
     now = datetime.now(timezone.utc).isoformat()
+    try:
+        from src import __version__ as app_version
+    except Exception:
+        app_version = "unknown"
     lines = [
         "figure_id: " + figure_slug,
+        "figure_number: " + _yaml_quote(figure_number or ""),
         "figure_title: " + _yaml_quote(figure_title),
         "figure_slug: " + _yaml_quote(figure_slug),
         "plot_type: " + _yaml_quote(plot_type),
         "source_stem: " + _yaml_quote(source_stem),
         "dataset_name: " + _yaml_quote(dataset_name),
         "claim_boundary: " + _yaml_quote(notes or "No claim boundary provided"),
+        "panel_notes: " + _yaml_quote(panel_notes or notes or ""),
         "created_at: " + _yaml_quote(now),
-        "app_version: " + _yaml_quote("cmg-seqviewer-bundle-export"),
+        "app_version: " + _yaml_quote(app_version),
+        "environment:",
+        "  python: " + _yaml_quote(platform.python_version()),
+        "  platform: " + _yaml_quote(platform.platform()),
+    ]
+    if output_formats:
+        lines.append("output_formats:")
+        for fmt in output_formats:
+            lines.append("  - " + _yaml_quote(fmt))
+    else:
+        lines.append("output_formats: []")
+    lines += [
         "input_files:",
         "  - inputs/data.csv",
-        "output_files:",
-        "  - outputs/figure.png",
-        "  - outputs/figure.pdf",
-        "  - outputs/figure.svg",
-        "statistics_tables:",
-        "  - inputs/statistics.csv",
-        "plot_params:",
     ]
+    if has_statistics:
+        lines.append("  - inputs/statistics.csv")
+    lines.append("output_files:")
+    for path in output_files:
+        lines.append("  - " + _yaml_quote(path))
+    if has_statistics:
+        lines.append("statistics_tables:")
+        lines.append("  - inputs/statistics.csv")
+    else:
+        lines.append("statistics_tables: []")
+    lines.append("plot_params:")
     for key, value in plot_params.items():
         lines.append(f"  {key}: {_yaml_quote(str(value))}")
     return "\n".join(lines) + "\n"

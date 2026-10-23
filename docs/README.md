@@ -44,6 +44,7 @@ docs/
 ├── planning/          # 기획 문서
 │   ├── MCP_AGENT_INTEGRATION_PLAN.md
 │   ├── FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md
+│   ├── FIGURE_BUNDLE_COVERAGE.md
 │   ├── EXPRESSION_DISTRIBUTION_PLAN.md
 │   ├── ATAC_PIPELINE_SEQVIEWER_PACKAGING.md
 │   ├── RNA_PIPELINE_SEQVIEWER_PACKAGING.md
@@ -111,7 +112,7 @@ docs/
 **미래 계획**
 - [기획 문서 인덱스](planning/README.md) - 현재 계획/아카이브 상태
 - [MCP / AI Agent 연동](planning/MCP_AGENT_INTEGRATION_PLAN.md) - headless MCP 계획
-- [Figure 품질·재현성](planning/FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md) - P2–P3 계획
+- [Figure bundle handoff](planning/FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md) - P2 coverage 계획
 - [Expression Distribution](planning/EXPRESSION_DISTRIBUTION_PLAN.md) - Phase 3/v2 계획
 - [ATAC 파이프라인 패키징](planning/ATAC_PIPELINE_SEQVIEWER_PACKAGING.md) - 외부 파이프라인 요구사항
 - [RNA 파이프라인 패키징](planning/RNA_PIPELINE_SEQVIEWER_PACKAGING.md) - 외부 파이프라인 요구사항
@@ -161,7 +162,8 @@ docs/
 |------|------|------|
 | [planning/README.md](planning/README.md) | 현재 계획/아카이브 인덱스 | ✅ |
 | [MCP_AGENT_INTEGRATION_PLAN.md](planning/MCP_AGENT_INTEGRATION_PLAN.md) | MCP / AI Agent 연동 | 📝 Phase 0 전 |
-| [FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md](planning/FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md) | Figure 품질·재현성 | 🚧 P2–P3 |
+| [FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md](planning/FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md) | Figure bundle handoff (external layout) | 🚧 P2 coverage |
+| [FIGURE_BUNDLE_COVERAGE.md](planning/FIGURE_BUNDLE_COVERAGE.md) | Figure별 bundle export 커버리지 감사 | 📋 감사 |
 | [EXPRESSION_DISTRIBUTION_PLAN.md](planning/EXPRESSION_DISTRIBUTION_PLAN.md) | Expression Distribution | 🚧 Phase 3/v2 |
 | [ATAC_PIPELINE_SEQVIEWER_PACKAGING.md](planning/ATAC_PIPELINE_SEQVIEWER_PACKAGING.md) | ATAC 파이프라인 요구사항 | 🔄 외부 협의 |
 | [RNA_PIPELINE_SEQVIEWER_PACKAGING.md](planning/RNA_PIPELINE_SEQVIEWER_PACKAGING.md) | RNA 파이프라인 요구사항 | 🔄 외부 협의 |
