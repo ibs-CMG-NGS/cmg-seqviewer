@@ -816,14 +816,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../19-tips-shortcuts/" class="md-nav__link">
+      <a href="../19-command-line-interface/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    19. Tips &amp; Shortcuts
+    19. Command Line Interface
   
 
     
@@ -843,14 +843,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../20-faq/" class="md-nav__link">
+      <a href="../20-cell-type-composition/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    20. FAQ
+    20. Cell-Type Composition
   
 
     
@@ -870,14 +870,68 @@
   
   
     <li class="md-nav__item">
-      <a href="../21-command-line-interface/" class="md-nav__link">
+      <a href="../21-expression-summary/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    21. Command Line Interface
+    21. Expression Summary (Gene × Cell Type)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../22-tips-shortcuts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    22. Tips &amp; Shortcuts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../23-faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    23. FAQ
   
 
     
@@ -919,8 +973,20 @@ group-level patterns.</p>
 <h2 id="152-requirements">15.2 Requirements<a class="headerlink" href="#152-requirements" title="Permanent link">&para;</a></h2>
 <ul>
 <li>A <strong>Differential Expression dataset with 3+ sample columns</strong>, or a
-  <strong>Multi-Group dataset</strong> (<code>gene_id</code> + <code>padj</code> + 3+ sample columns).</li>
+  <strong>Multi-Group dataset</strong> (<code>gene_id</code> + 3+ sample columns). <code>padj</code> is used
+  for the optional significance filter but is not required; <code>cluster_id</code>
+  is enough for auto-detection when there is no <code>padj</code>.</li>
+<li>Gene labels come from <code>gene_symbol</code>, then <code>gene_id</code> (falling back to row
+  numbers) — name the first column <code>gene_id</code> or <code>gene_symbol</code>.</li>
+<li>Statistic/metadata columns (<code>padj</code>, <code>fdr</code>, <code>qvalue</code>, <code>baseMean</code>, <code>stat</code>,
+  <code>cluster_id</code>, ...) are never treated as sample columns, even when numeric.</li>
 </ul>
+<blockquote>
+<p>A plain expression matrix (genes × samples) with neither <code>padj</code> nor
+<code>cluster_id</code> is not auto-detected. Load it explicitly with
+<code>cmg-seqviewer-cli load matrix.csv --type multi_group</code> or set
+<code>dataset_type: multi_group</code> in <code>seqviewer_manifest.json</code>.</p>
+</blockquote>
 <h2 id="153-end-to-end-workflow-example-time-course">15.3 End-to-end workflow example (time course)<a class="headerlink" href="#153-end-to-end-workflow-example-time-course" title="Permanent link">&para;</a></h2>
 <ol>
 <li>Load RNA-seq results that contain normalised sample counts (the pipeline
@@ -951,7 +1017,7 @@ group-level patterns.</p>
 Comparison</em> views are more appropriate.</p>
 </blockquote>
 <hr />
-<p><strong>See also</strong>: <a href="../user-guide.md">User Guide</a> · <a href="../20-faq/">FAQ</a></p>
+<p><strong>See also</strong>: <a href="../user-guide.md">User Guide</a> · <a href="../23-faq/">FAQ</a></p>
 
 
 

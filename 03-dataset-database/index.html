@@ -464,10 +464,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#when-there-is-no-metadatajson" class="md-nav__link">
+  <a href="#when-there-is-no-manifest" class="md-nav__link">
     <span class="md-ellipsis">
       
-        When there is no metadata.json
+        When there is no manifest
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mixed-bundles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mixed bundles
       
     </span>
   </a>
@@ -495,6 +506,28 @@
     <span class="md-ellipsis">
       
         3.9 merge_db.py — CLI Tool for Batch Merging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#311-data-folder-location" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.11 Data Folder Location
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#312-deleting-datasets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.12 Deleting Datasets
       
     </span>
   </a>
@@ -921,14 +954,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../19-tips-shortcuts/" class="md-nav__link">
+      <a href="../19-command-line-interface/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    19. Tips &amp; Shortcuts
+    19. Command Line Interface
   
 
     
@@ -948,14 +981,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../20-faq/" class="md-nav__link">
+      <a href="../20-cell-type-composition/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    20. FAQ
+    20. Cell-Type Composition
   
 
     
@@ -975,14 +1008,68 @@
   
   
     <li class="md-nav__item">
-      <a href="../21-command-line-interface/" class="md-nav__link">
+      <a href="../21-expression-summary/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    21. Command Line Interface
+    21. Expression Summary (Gene × Cell Type)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../22-tips-shortcuts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    22. Tips &amp; Shortcuts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../23-faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    23. FAQ
   
 
     
@@ -1030,7 +1117,7 @@
 <p><strong>Alias</strong> – friendly name you assigned</p>
 </li>
 <li>
-<p><strong>Type</strong> – DE or GO</p>
+<p><strong>Type</strong> – DE, GO/KEGG, Multi-Group, ATAC, Composition, or Expression Summary</p>
 </li>
 <li>
 <p><strong>Rows / Genes / Sig. Genes</strong> – quick statistics</p>
@@ -1156,7 +1243,8 @@
 <p>No manual editing of <code>metadata.json</code> is needed.</p>
 <h2 id="38-import-folder-merging-pipeline-output">3.8 📥 Import Folder — Merging Pipeline Output<a class="headerlink" href="#38-import-folder-merging-pipeline-output" title="Permanent link">&para;</a></h2>
 <p>When your analysis pipeline produces a separate output folder
- (containing <code>metadata.json</code> + <code>datasets/*.parquet</code>)
+ (containing <code>metadata.json</code>, <code>seqviewer_manifest.json</code>, or a pipeline
+ <code>manifest.json</code>, plus a <code>datasets/</code> folder)
  for each run, use <strong>Import Folder</strong> to merge everything in one step.</p>
 <h3 id="how-to-use">How to use<a class="headerlink" href="#how-to-use" title="Permanent link">&para;</a></h3>
 <ol>
@@ -1169,14 +1257,13 @@
 </li>
 <li>
 <p>Select the pipeline output folder
- (the folder that contains <code>metadata.json</code>
- and a <code>datasets/</code> sub-folder)</p>
+ (the folder that contains the manifest and a <code>datasets/</code> sub-folder)</p>
 </li>
 <li>
-<p>The app reads every dataset entry from
- <code>metadata.json</code>, copies the matching
- <code>.parquet</code> files into the app database,
- and registers them — <strong>duplicate datasets are automatically
+<p>The app reads every dataset entry from the manifest
+ (<code>seqviewer_manifest.json</code> / <code>metadata.json</code>, or the pipeline's
+ <code>manifest.json</code>), copies the matching <code>.parquet</code> files into the app
+ database, and registers them — <strong>duplicate datasets are automatically
  skipped</strong></p>
 </li>
 <li>
@@ -1184,11 +1271,18 @@
  imported / skipped</p>
 </li>
 </ol>
-<h3 id="when-there-is-no-metadatajson">When there is no metadata.json<a class="headerlink" href="#when-there-is-no-metadatajson" title="Permanent link">&para;</a></h3>
-<p>If the selected folder has no <code>metadata.json</code>, the app
+<h3 id="when-there-is-no-manifest">When there is no manifest<a class="headerlink" href="#when-there-is-no-manifest" title="Permanent link">&para;</a></h3>
+<p>If the selected folder has no manifest, the app
  falls back to auto-detection: it scans all <code>.parquet</code> files,
- determines DE vs GO type from columns, and registers them
- exactly like the <strong>Refresh</strong> button does.</p>
+ determines the type from columns (DE / GO / Multi-Group / Composition /
+ ATAC), and registers them exactly like the <strong>Refresh</strong> button does.
+ <strong>Expression Summary</strong> normally needs a manifest for full metadata, but a
+ recognized companion set (<code>*_wide_mean</code> + <code>*_wide_pct</code> + <code>*_gene_index</code> +
+ <code>*_cell_type_summary</code>) is also auto-detected on Refresh.</p>
+<h3 id="mixed-bundles">Mixed bundles<a class="headerlink" href="#mixed-bundles" title="Permanent link">&para;</a></h3>
+<p>A manifest may contain several dataset types. Supported types are imported;
+unsupported types are skipped without rejecting the whole bundle. Composition
+and Expression Summary are supported in the current version.</p>
 <h3 id="duplicate-handling">Duplicate handling<a class="headerlink" href="#duplicate-handling" title="Permanent link">&para;</a></h3>
 <ol>
 <li>
@@ -1216,59 +1310,57 @@ python merge_db.py run1/ --target D:/my_db/
 # Preview without writing any files
 python merge_db.py run1/ --dry-run
 
-        Pipeline Output Convention
+## 3.10 Pipeline Output Convention
 
-        For the smoothest workflow, have your R/Python pipeline
-        write output in this layout:
+For the smoothest workflow, have your R/Python pipeline write output in this
+layout:
 
-        ```
-
-pipeline_run_2026-03-12/
-├── metadata.json ← dataset registry
+</code></pre>
+<p>pipeline_run_2026-03-12/
+├── seqviewer_manifest.json
 └── datasets/
- ├── CtrlvsKO_de_xxxx.parquet
- └── CtrlvsKO_go_xxxx.parquet
+    ├── CtrlvsKO_de_xxxx.parquet
+    └── CtrlvsKO_go_xxxx.parquet</p>
+<pre><code>
+`seqviewer_manifest.json` uses the same `datasets[]` shape as `metadata.json`
+and adds support for Composition and Expression Summary. Expression Summary
+companions (`pct`, `gene_index`, `cell_type_summary`) are referenced from
+`expression_schema.companion_files` — see sections **20** and **21**.
 
 The `metadata.json` format:
 
-</code></pre>
-<p>{
-  "version": "1.0",
-  "datasets": [
+```json
+{
+  &quot;version&quot;: &quot;1.0&quot;,
+  &quot;datasets&quot;: [
     {
-      "dataset_id": "...",
-      "alias": "Ctrl vs KO — DE",
-      "dataset_type": "DE",
-      "file_path": "CtrlvsKO_de_xxxx.parquet",
-      "organism": "Mus musculus",
-      "cell_type": "MEF"
+      &quot;dataset_id&quot;: &quot;...&quot;,
+      &quot;alias&quot;: &quot;Ctrl vs KO — DE&quot;,
+      &quot;dataset_type&quot;: &quot;DE&quot;,
+      &quot;file_path&quot;: &quot;CtrlvsKO_de_xxxx.parquet&quot;,
+      &quot;organism&quot;: &quot;Mus musculus&quot;,
+      &quot;cell_type&quot;: &quot;MEF&quot;
     }
   ]
-}</p>
-<pre><code>    Data Folder Location
-
-    Click 📂 Open Data Folder** in the Database Browser to open
-    the external data directory in your file explorer.
-    The default path is:
-
-        Windows:** %USERPROFILE%/CMG-SeqViewer/data/`
-
-        macOS / Linux:** ~/CMG-SeqViewer/data/`
-
-    Parquet files placed in the datasets/` subfolder
-    are picked up on the next Refresh**.
-
-    Deleting Datasets
-
-        Select one or more dataset rows → click 🗑️ Delete Selected**
-            (confirmation required) to remove them from the registry
-            (the .parquet` file is also deleted)
-
-    See the Right-Click Context Menu and Editing Metadata sections above for
-    loading, editing (single/bulk), and exporting.*
+}
 </code></pre>
+<h2 id="311-data-folder-location">3.11 Data Folder Location<a class="headerlink" href="#311-data-folder-location" title="Permanent link">&para;</a></h2>
+<p>Click <strong>📂 Open Data Folder</strong> in the Database Browser to open the external
+data directory in your file explorer. The default path is:</p>
+<ul>
+<li><strong>Windows:</strong> <code>%USERPROFILE%/CMG-SeqViewer/data/</code></li>
+<li><strong>macOS / Linux:</strong> <code>~/CMG-SeqViewer/data/</code></li>
+</ul>
+<p>Parquet files placed in the <code>datasets/</code> subfolder are picked up on the next
+<strong>Refresh</strong>.</p>
+<h2 id="312-deleting-datasets">3.12 Deleting Datasets<a class="headerlink" href="#312-deleting-datasets" title="Permanent link">&para;</a></h2>
+<p>Select one or more dataset rows → click <strong>🗑️ Delete Selected</strong> (confirmation
+required) to remove them from the registry (the <code>.parquet</code> file is also
+deleted).</p>
+<p>See the Right-Click Context Menu and Editing Metadata sections above for
+loading, editing (single/bulk), and exporting.</p>
 <hr />
-<p><strong>See also</strong>: <a href="../user-guide.md">User Guide</a> · <a href="../20-faq/">FAQ</a></p>
+<p><strong>See also</strong>: <a href="../user-guide.md">User Guide</a> · <a href="../23-faq/">FAQ</a> · <a href="../20-cell-type-composition/">Cell-Type Composition</a> · <a href="../21-expression-summary/">Expression Summary</a></p>
 
 
 

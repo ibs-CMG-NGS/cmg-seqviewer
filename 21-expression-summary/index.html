@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://ibs-cmg-ngs.github.io/cmg-seqviewer/20-faq/">
+        <link rel="canonical" href="https://ibs-cmg-ngs.github.io/cmg-seqviewer/21-expression-summary/">
       
       
-        <link rel="prev" href="../19-tips-shortcuts/">
+        <link rel="prev" href="../20-cell-type-composition/">
       
       
-        <link rel="next" href="../21-command-line-interface/">
+        <link rel="next" href="../22-tips-shortcuts/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>20. FAQ - CMG-SeqViewer Help</title>
+        <title>21. Expression Summary (Gene × Cell Type) - CMG-SeqViewer Help</title>
       
     
     
@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#20-faq" class="md-skip">
+        <a href="#21-expression-summary-gene-cell-type" class="md-skip">
           Skip to content
         </a>
       
@@ -114,7 +114,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              20. FAQ
+              21. Expression Summary (Gene × Cell Type)
             
           </span>
         </div>
@@ -736,14 +736,41 @@
   
   
     <li class="md-nav__item">
-      <a href="../19-tips-shortcuts/" class="md-nav__link">
+      <a href="../19-command-line-interface/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    19. Tips &amp; Shortcuts
+    19. Command Line Interface
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../20-cell-type-composition/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    20. Cell-Type Composition
   
 
     
@@ -779,7 +806,7 @@
   <span class="md-ellipsis">
     
   
-    20. FAQ
+    21. Expression Summary (Gene × Cell Type)
   
 
     
@@ -797,7 +824,7 @@
   <span class="md-ellipsis">
     
   
-    20. FAQ
+    21. Expression Summary (Gene × Cell Type)
   
 
     
@@ -823,10 +850,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#201-which-engine-should-i-use-online-local-offline-or-auto" class="md-nav__link">
+  <a href="#211-overview" class="md-nav__link">
     <span class="md-ellipsis">
       
-        20.1 Which engine should I use — online, local, offline, or auto?
+        21.1 Overview
       
     </span>
   </a>
@@ -834,10 +861,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#202-enrichment-ran-but-the-dataset-has-no-kegg-rows-is-something-wrong" class="md-nav__link">
+  <a href="#212-input-format-wide-layout" class="md-nav__link">
     <span class="md-ellipsis">
       
-        20.2 Enrichment ran, but the dataset has no KEGG rows — is something wrong?
+        21.2 Input format (wide layout)
       
     </span>
   </a>
@@ -845,10 +872,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#203-why-are-mouse-go-results-coming-from-the-local-engine-even-in-auto-mode" class="md-nav__link">
+  <a href="#213-importing" class="md-nav__link">
     <span class="md-ellipsis">
       
-        20.3 Why are mouse GO results coming from the local engine even in Auto mode?
+        21.3 Importing
       
     </span>
   </a>
@@ -856,10 +883,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#204-can-i-use-my-own-background-gene-list" class="md-nav__link">
+  <a href="#214-opening-the-view" class="md-nav__link">
     <span class="md-ellipsis">
       
-        20.4 Can I use my own background gene list?
+        21.4 Opening the view
       
     </span>
   </a>
@@ -867,10 +894,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#205-what-does-done-n-terms-mean-and-where-do-the-results-go" class="md-nav__link">
+  <a href="#215-gene-search-and-views" class="md-nav__link">
     <span class="md-ellipsis">
       
-        20.5 What does "Done: N terms" mean, and where do the results go?
+        21.5 Gene search and views
       
     </span>
   </a>
@@ -878,10 +905,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#206-the-first-run-needs-a-download-can-i-work-offline-at-all" class="md-nav__link">
+  <a href="#216-export-and-cli" class="md-nav__link">
     <span class="md-ellipsis">
       
-        20.6 The first run needs a download — can I work offline at all?
+        21.6 Export and CLI
       
     </span>
   </a>
@@ -889,65 +916,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#207-my-gokegg-terms-arent-clustering-everything-is-a-singleton" class="md-nav__link">
+  <a href="#217-limitations" class="md-nav__link">
     <span class="md-ellipsis">
       
-        20.7 My GO/KEGG terms aren't clustering — everything is a singleton?
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#208-what-is-the-difference-between-gsea-lite-and-gsea-prerank" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        20.8 What is the difference between GSEA Lite and GSEA prerank?
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#209-can-i-compare-pipeline-imported-go-results-with-in-app-enrichment-results" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        20.9 Can I compare pipeline-imported GO results with in-app enrichment results?
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#2010-will-my-enrichment-results-survive-a-project-saveload" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        20.10 Will my enrichment results survive a project save/load?
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#2011-the-in-app-help-how-is-it-maintained" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        20.11 The in-app help — how is it maintained?
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#2012-can-i-run-cmg-seqviewer-without-opening-the-gui-eg-on-a-server" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        20.12 Can I run CMG-SeqViewer without opening the GUI — e.g. on a server?
+        21.7 Limitations
       
     </span>
   </a>
@@ -969,14 +941,41 @@
   
   
     <li class="md-nav__item">
-      <a href="../21-command-line-interface/" class="md-nav__link">
+      <a href="../22-tips-shortcuts/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    21. Command Line Interface
+    22. Tips &amp; Shortcuts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../23-faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    23. FAQ
   
 
     
@@ -1009,78 +1008,169 @@
   
 
 
-<h1 id="20-faq">20. FAQ<a class="headerlink" href="#20-faq" title="Permanent link">&para;</a></h1>
-<p>Scenario-based answers to the most common questions. Each answer links to the
-section that explains the feature in depth.</p>
-<h2 id="201-which-engine-should-i-use-online-local-offline-or-auto">20.1 Which engine should I use — online, local, offline, or auto?<a class="headerlink" href="#201-which-engine-should-i-use-online-local-offline-or-auto" title="Permanent link">&para;</a></h2>
-<p><strong>Auto</strong> is the safe default: it uses Enrichr online when the network is
-available and no custom background is set, and falls back to GOATOOLS local.
-Choose <strong>Online</strong> for the widest database coverage (GO + KEGG), <strong>Local /
-Offline</strong> when you want reproducible local statistics (or are behind a proxy /
-no network), and <strong>Offline</strong> strictly when no network may be touched.
-See <strong>6. GO/KEGG Enrichment Analysis — Engine modes</strong>.</p>
-<h2 id="202-enrichment-ran-but-the-dataset-has-no-kegg-rows-is-something-wrong">20.2 Enrichment ran, but the dataset has no KEGG rows — is something wrong?<a class="headerlink" href="#202-enrichment-ran-but-the-dataset-has-no-kegg-rows-is-something-wrong" title="Permanent link">&para;</a></h2>
-<p>KEGG is analyzed <strong>online only</strong> in v1 (ADR-1 Option 1). In <code>Local</code>/<code>Offline</code>
-mode the dialog shows "KEGG is inactive" and skips KEGG; run <strong>Online</strong> to
-include KEGG. See <strong>6. GO/KEGG Enrichment Analysis — Engine modes</strong>.</p>
-<h2 id="203-why-are-mouse-go-results-coming-from-the-local-engine-even-in-auto-mode">20.3 Why are mouse GO results coming from the local engine even in Auto mode?<a class="headerlink" href="#203-why-are-mouse-go-results-coming-from-the-local-engine-even-in-auto-mode" title="Permanent link">&para;</a></h2>
-<p>There is no mouse GO library on Enrichr (P0-7 finding), so mouse GO always runs
-locally via GOATOOLS (taxid 10090). Mouse KEGG (<code>KEGG_2019_Mouse</code>) is available
-online. See <strong>6. GO/KEGG Enrichment Analysis — Mouse</strong>.</p>
-<h2 id="204-can-i-use-my-own-background-gene-list">20.4 Can I use my own background gene list?<a class="headerlink" href="#204-can-i-use-my-own-background-gene-list" title="Permanent link">&para;</a></h2>
-<p>Yes — load a background file in the analysis dialog. A custom background forces
-the <strong>local</strong> engine (Enrichr does not support custom backgrounds;
-ADR-2 2A). See <strong>6. GO/KEGG Enrichment Analysis — Engine modes</strong>.</p>
-<h2 id="205-what-does-done-n-terms-mean-and-where-do-the-results-go">20.5 What does "Done: N terms" mean, and where do the results go?<a class="headerlink" href="#205-what-does-done-n-terms-mean-and-where-do-the-results-go" title="Permanent link">&para;</a></h2>
-<p>The dialog summarises the standardised result rows; the result is registered as
-an <code>Enrichment: …</code> <strong>GO_ANALYSIS dataset</strong> and appears in the Dataset Tree with
-the same standard columns (and order) as imported pipeline results. Open it with
-the existing GO visualizations. See <strong>6. GO/KEGG Enrichment Analysis</strong> and
-<strong>5. GO/KEGG Analysis — Filtering GO/KEGG Results</strong>.</p>
-<h2 id="206-the-first-run-needs-a-download-can-i-work-offline-at-all">20.6 The first run needs a download — can I work offline at all?<a class="headerlink" href="#206-the-first-run-needs-a-download-can-i-work-offline-at-all" title="Permanent link">&para;</a></h2>
-<p>The first run downloads <code>go-basic.obo</code>, <code>gene2go</code>, <code>gene_info</code>, and GMT
-snapshots into the AppData cache. Offline/uncached first run fails with a
-"cache download" message; after any successful run the cache is reused
-(sha256-verified, TTL auto-refresh, <code>HTTPS_PROXY</code> respected). See
-<strong>6. GO/KEGG Enrichment Analysis — Cache &amp; reproducibility</strong>.</p>
-<h2 id="207-my-gokegg-terms-arent-clustering-everything-is-a-singleton">20.7 My GO/KEGG terms aren't clustering — everything is a singleton?<a class="headerlink" href="#207-my-gokegg-terms-arent-clustering-everything-is-a-singleton" title="Permanent link">&para;</a></h2>
-<p>Clustering uses the <code>_gene_set</code> column. If every row has an empty <code>_gene_set</code>
-(the warning "all rows have empty _gene_set" in the log), the gene-list column
-was not recognised. Imported/analyzed results normally carry <code>gene_symbols</code>, so
-re-import or re-run through the standard path. See <strong>5. GO/KEGG Analysis — GO
-Term Clustering</strong> and the <strong>algorithm summary</strong> there.</p>
-<h2 id="208-what-is-the-difference-between-gsea-lite-and-gsea-prerank">20.8 What is the difference between GSEA Lite and GSEA prerank?<a class="headerlink" href="#208-what-is-the-difference-between-gsea-lite-and-gsea-prerank" title="Permanent link">&para;</a></h2>
-<p><strong>GSEA Lite (Wilcoxon)</strong> is the built-in rank-based GSEA on predefined in-app
-gene sets (Analysis menu). <strong>GSEA prerank (gseapy)</strong> is part of the GO/KEGG
-enrichment pipeline — it runs <code>gseapy.prerank</code> with international gene sets
-(GO/KEGG cached GMT) on a meta ranking. They are different features (A7
-naming). See <strong>8. Statistical Analysis — GSEA Lite</strong> and <strong>6. GO/KEGG
-Enrichment Analysis — Meta-signature enrichment</strong>.</p>
-<h2 id="209-can-i-compare-pipeline-imported-go-results-with-in-app-enrichment-results">20.9 Can I compare pipeline-imported GO results with in-app enrichment results?<a class="headerlink" href="#209-can-i-compare-pipeline-imported-go-results-with-in-app-enrichment-results" title="Permanent link">&para;</a></h2>
-<p>Yes. Both go through the same standardisation (<code>term_id</code>, <code>description</code>,
-<code>gene_set</code>, <code>fold_enrichment</code>, <code>_gene_set</code> with identical column order), so GO
-Term Comparison and the visualization menus treat them identically. See
-<strong>7. GO Term Comparison</strong>.</p>
-<h2 id="2010-will-my-enrichment-results-survive-a-project-saveload">20.10 Will my enrichment results survive a project save/load?<a class="headerlink" href="#2010-will-my-enrichment-results-survive-a-project-saveload" title="Permanent link">&para;</a></h2>
-<p>Result rows are saved like other GO_ANALYSIS datasets; the request itself is
-preserved in the dataset metadata as <code>enrichment_recipe</code>. <strong>Auto re-run on
-load is a v1 non-goal</strong> — export the table for long-term storage. See
-<strong>6. GO/KEGG Enrichment Analysis — Cache &amp; reproducibility</strong> and
-<strong>17. Project Save/Load</strong>.</p>
-<h2 id="2011-the-in-app-help-how-is-it-maintained">20.11 The in-app help — how is it maintained?<a class="headerlink" href="#2011-the-in-app-help-how-is-it-maintained" title="Permanent link">&para;</a></h2>
-<p>F1 opens the viewer that renders <code>docs/user/help/*.md</code> (one file per section,
-English). Edit the markdown files directly; images live in
-<code>docs/user/help/assets/</code>. The long-form documentation is
-<code>docs/user/user-guide.md</code>. See the <strong>README/planning</strong> docs for the overhaul
-design (<code>docs/planning/HELP_SYSTEM_OVERHAUL_PLAN.md</code>).</p>
-<h2 id="2012-can-i-run-cmg-seqviewer-without-opening-the-gui-eg-on-a-server">20.12 Can I run CMG-SeqViewer without opening the GUI — e.g. on a server?<a class="headerlink" href="#2012-can-i-run-cmg-seqviewer-without-opening-the-gui-eg-on-a-server" title="Permanent link">&para;</a></h2>
-<p>Yes — the <code>cmg-seqviewer-cli</code> command loads, filters, and exports files
-without ever creating a GUI/<code>QApplication</code>, so it runs headless on a server
-or HPC node. It reuses the same loading/filtering logic as the desktop app,
-and a YAML <strong>recipe</strong> file lets you replay a confirmed filtering procedure
-across many files at once (<code>batch</code>). See <strong>21. Command Line Interface</strong>.</p>
+<h1 id="21-expression-summary-gene-cell-type">21. Expression Summary (Gene × Cell Type)<a class="headerlink" href="#21-expression-summary-gene-cell-type" title="Permanent link">&para;</a></h1>
+<h2 id="211-overview">21.1 Overview<a class="headerlink" href="#211-overview" title="Permanent link">&para;</a></h2>
+<p>The <strong>Expression Summary</strong> view explores a gene × cell-type expression table —
+typically a HypoMap-style atlas summary with:</p>
+<ul>
+<li><code>mean_expression</code> (normalised mean expression)</li>
+<li><code>pct_expressing</code> (percentage of cells with count &gt; 0)</li>
+<li><code>n_cells</code> (cell-type size)</li>
+</ul>
+<p>It is <strong>not</strong> a differential-expression result. It is a reference atlas view:
+search a gene, then see which cell types express it and how strongly.</p>
+<h2 id="212-input-format-wide-layout">21.2 Input format (wide layout)<a class="headerlink" href="#212-input-format-wide-layout" title="Permanent link">&para;</a></h2>
+<p>The primary table is a <strong>wide matrix</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>gene_id</th>
+<th>gene_name</th>
+<th>C185-113: Nkx2-4.GABA-3</th>
+<th>C185-042: Astro-1</th>
+<th>...</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>G1</td>
+<td>Nkx2-4</td>
+<td>0.12</td>
+<td>3.40</td>
+<td>...</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><code>gene_id</code> — required (symbol or Ensembl ID)</li>
+<li><code>gene_name</code> / <code>symbol</code> — display name (falls back to <code>gene_id</code>)</li>
+<li>all remaining numeric columns — cell types</li>
+</ul>
+<p>Optional companion files (declared in the manifest):</p>
+<table>
+<thead>
+<tr>
+<th>Companion</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pct</code></td>
+<td>same shape as the mean matrix, <code>pct_expressing</code></td>
+</tr>
+<tr>
+<td><code>gene_index</code></td>
+<td>per-gene <code>max_mean_expression</code>/<code>max_pct_expressing</code> (or <code>max_mean</code>/<code>max_pct</code>), <code>n_cell_types_detected</code></td>
+</tr>
+<tr>
+<td><code>cell_type_summary</code></td>
+<td>per-cell-type <code>n_cells</code> and dataset composition</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Wide</strong> layout is recommended. Per-dataset <strong>long</strong> layout is also accepted
+up to 5,000,000 rows (it is pivoted to wide on load). Larger long tables
+(e.g. the full 10.6M-row atlas) are rejected — export the wide matrices
+instead.</p>
+</blockquote>
+<h2 id="213-importing">21.3 Importing<a class="headerlink" href="#213-importing" title="Permanent link">&para;</a></h2>
+<p>Expression summaries are <strong>manifest/DB-first</strong> for full metadata. <strong>Import Folder</strong>
+recognizes <code>seqviewer_manifest.json</code> and a pipeline's own <code>manifest.json</code>
+(<code>"table": "expression"</code>, <code>"files": {...}</code>). Use
+<strong>File → Database → Import Folder</strong> with:</p>
+<pre><code>hypomap_C66/
+├── seqviewer_manifest.json
+└── datasets/
+    ├── hypomap_C66_wide_mean.parquet
+    ├── hypomap_C66_wide_pct.parquet
+    ├── hypomap_gene_index.parquet
+    └── hypomap_cell_type_summary.parquet
+</code></pre>
+<pre><code class="language-json">{
+  &quot;datasets&quot;: [{
+    &quot;alias&quot;: &quot;HypoMap C66 mean expression&quot;,
+    &quot;file_path&quot;: &quot;hypomap_C66_wide_mean.parquet&quot;,
+    &quot;dataset_type&quot;: &quot;expression_summary&quot;,
+    &quot;organism&quot;: &quot;Mus musculus&quot;,
+    &quot;cell_type_count&quot;: 65,
+    &quot;expression_schema&quot;: {
+      &quot;layout&quot;: &quot;wide&quot;,
+      &quot;value_type&quot;: &quot;mean_expression&quot;,
+      &quot;pct_scale&quot;: &quot;0-100&quot;,
+      &quot;cell_type_level&quot;: &quot;C66&quot;,
+      &quot;companion_files&quot;: {
+        &quot;pct&quot;: &quot;hypomap_C66_wide_pct.parquet&quot;,
+        &quot;gene_index&quot;: &quot;hypomap_gene_index.parquet&quot;,
+        &quot;cell_type_summary&quot;: &quot;hypomap_cell_type_summary.parquet&quot;
+      }
+    }
+  }]
+}
+</code></pre>
+<p><code>file_path</code> and companion names may be bare filenames or <code>datasets/&lt;filename&gt;</code>
+(the importer normalizes to the basename).</p>
+<p>If you copy a recognized companion set directly into <code>data/datasets/</code>
+(<code>*_wide_mean.parquet</code> + <code>*_wide_pct.parquet</code> + <code>*_gene_index.parquet</code> +
+<code>*_cell_type_summary.parquet</code>, or a <code>*_long.parquet</code> + gene_index/summary set),
+<strong>Refresh auto-detects</strong> the bundle even without a manifest. The manifest is
+still recommended because it carries <code>cell_type_level</code>, <code>pct_scale</code>, organism,
+and provenance.</p>
+<p>The CLI can validate the primary matrix directly:</p>
+<pre><code class="language-bash">cmg-seqviewer-cli load hypomap_C66_wide_mean.parquet \
+  --type expression_summary --json
+</code></pre>
+<h2 id="214-opening-the-view">21.4 Opening the view<a class="headerlink" href="#214-opening-the-view" title="Permanent link">&para;</a></h2>
+<p>Open the dataset in the Database Browser, then choose
+<strong>Visualization → 🧬 Single-cell RNA-seq → 🧬 Gene × Cell-Type Expression</strong>.</p>
+<h2 id="215-gene-search-and-views">21.5 Gene search and views<a class="headerlink" href="#215-gene-search-and-views" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Gene search</strong>: type a <code>gene_id</code> or <code>gene_name</code> (case-insensitive
+  substring) and press Enter. Add multiple genes to compare them side by side.</li>
+<li><strong>Filtered Gene List sheets</strong>: when opened from a <code>Filtered: Gene List</code>
+  sheet, the view uses the <strong>root dataset's full matrix</strong> but the gene list is
+  seeded from that sheet. <strong>Add gene is limited to the filtered list</strong>, so the
+  main Gene List filter remains the single source of truth.</li>
+<li><strong>Cell types</strong>: initially the <strong>top 10 by mean expression</strong> for the selected
+  gene(s) are selected (list is ranked by mean). Your selection and display
+  settings are restored the next time you open the dialog in the same session.
+  Use <strong>Top 10 by mean</strong>, <strong>Select all</strong>, or <strong>Clear</strong> to change it.</li>
+<li><strong>Dot plot</strong> (default): <strong>cell types on the y-axis, genes on the x-axis</strong>
+  (recommended for long labels). Dot size = % expressing, dot color = mean
+  expression. Cell types below <strong>Min n_cells</strong> or <strong>Min % expressing</strong> are
+  shown in grey. <strong>Refresh Plot</strong> fits the figure to the current window.</li>
+<li><strong>Top-N heatmap</strong>: the selected genes × selected cell types as a heatmap
+  (Z-score or raw). <strong>Transpose, Colormap, and Max shown are shared with the
+  dot plot</strong>, so switching views keeps the same orientation and palette.
+  Long cell-type labels are truncated to <strong>Label length</strong>; hover a dot to see
+  the full gene/cell-type name, mean, pct, and n_cells.</li>
+</ul>
+<h2 id="216-export-and-cli">21.6 Export and CLI<a class="headerlink" href="#216-export-and-cli" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Export Data</strong> saves the currently displayed long table (dot plot) or
+  matrix (heatmap) as CSV/TSV/Excel.</li>
+<li><strong>Export Bundle</strong> creates a reproducible figure bundle; <strong>Pin to Tab</strong> keeps
+  the plot as a persistent tab.</li>
+<li>CLI statistical filtering does not apply to this type. Use gene list /
+  keyword filtering, or the dialog's own filters.</li>
+</ul>
+<h2 id="217-limitations">21.7 Limitations<a class="headerlink" href="#217-limitations" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Per-dataset long layout is supported up to 5,000,000 rows (pivoted to wide
+  on load); the full 10.6M-row atlas requires the wide matrices or the future
+  DuckDB-backed loader.</li>
+<li>Synonym/alias gene search is not automatic (case-insensitive substring only).</li>
+<li>A per-dataset facet filter is not available; <code>cell_type_summary</code> is shown as
+  metadata for now.</li>
+<li>Expression summaries must come through the manifest/DB (or CLI with
+  <code>--type expression_summary</code>), not plain File → Open.</li>
+<li>Violin/box plots of expression distributions are <strong>not available from the
+  aggregated export</strong> (mean/pct/n_cells). They require per-sample pseudobulk or
+  cell-level expression data.</li>
+</ul>
 <hr />
-<p><strong>See also</strong>: <a href="../user-guide.md">User Guide</a></p>
+<p><strong>See also</strong>: <a href="../user-guide.md">User Guide</a> · <a href="../23-faq/">FAQ</a> · <a href="../03-dataset-database/">Dataset Database</a></p>
 
 
 
