@@ -113,111 +113,36 @@ class TFFootprintDialog(BasePlotDialog):
 
     # ── Plot ──────────────────────────────────────────────────────────────
 
+    def get_plot_params(self) -> dict:
+        return {
+            'pval_cutoff': self._pval_cutoff.value(),
+            'min_change': self._min_change.value(),
+            'dot_size': self._dot_size.value(),
+            'show_diag': self._show_diag.isChecked(),
+            'top_n_label': self._top_n_label.value(),
+            'cond1': self.cond1,
+            'cond2': self.cond2,
+        }
+
     def _do_plot(self):
+        from plots.tf_footprint import render_tf_footprint
         self.figure.clear()
         ax = self.figure.add_subplot(111)
-
-        df = self.dataset.dataframe.copy()
-
-        # 필수 컬럼 확인
-        for col in [SC.COND1_SCORE, SC.COND2_SCORE]:
-            if col not in df.columns:
-                ax.text(0.5, 0.5,
-                        f"Required column not found:\n{col}\n\n"
-                        "Expected TOBIAS BINDetect bindetect_results.txt",
-                        ha="center", va="center", fontsize=11)
-                return
-
-        # 숫자 변환
-        df[SC.COND1_SCORE] = pd.to_numeric(df[SC.COND1_SCORE], errors="coerce")
-        df[SC.COND2_SCORE] = pd.to_numeric(df[SC.COND2_SCORE], errors="coerce")
-        df = df.dropna(subset=[SC.COND1_SCORE, SC.COND2_SCORE])
-
-        if df.empty:
-            ax.text(0.5, 0.5, "No valid data", ha="center", va="center")
-            return
-
-        pval_col = SC.FOOTPRINT_PVALUE
-        change_col = SC.FOOTPRINT_CHANGE
-
-        pval_cut = self._pval_cutoff.value()
-        min_change = self._min_change.value()
-
-        # 유의성 분류
-        has_pval = pval_col in df.columns
-        has_change = change_col in df.columns
-
-        if has_pval:
-            df[pval_col] = pd.to_numeric(df[pval_col], errors="coerce")
-        if has_change:
-            df[change_col] = pd.to_numeric(df[change_col], errors="coerce")
-
-        def classify(row):
-            sig = has_pval and pd.notna(row.get(pval_col)) and row[pval_col] <= pval_cut
-            if not sig:
-                return "ns"
-            if has_change and pd.notna(row.get(change_col)):
-                if row[change_col] >= min_change:
-                    return "gain"   # cond1에서 더 활성 (위로 이동)
-                elif row[change_col] <= -min_change:
-                    return "loss"   # cond2에서 더 활성 (아래로 이동)
-            return "ns"
-
-        df["_cls"] = df.apply(classify, axis=1)
-
-        colors = {"ns": "#cccccc", "gain": "#e15759", "loss": "#4e79a7"}
-        alphas = {"ns": 0.3, "gain": 0.85, "loss": 0.85}
-        labels_map = {"ns": "Not significant", "gain": f"{self.cond1} activated", "loss": f"{self.cond2} activated"}
-        dot_size = self._dot_size.value()
-
-        for cls in ("ns", "gain", "loss"):
-            sub = df[df["_cls"] == cls]
-            if sub.empty:
-                continue
-            ax.scatter(
-                sub[SC.COND1_SCORE], sub[SC.COND2_SCORE],
-                c=colors[cls], alpha=alphas[cls], s=dot_size,
-                label=f"{labels_map[cls]} (n={len(sub)})",
-                zorder=2 if cls != "ns" else 1,
-                edgecolors="none",
-            )
-
-        # 대각선 y=x
-        if self._show_diag.isChecked():
-            lim_min = min(ax.get_xlim()[0], ax.get_ylim()[0])
-            lim_max = max(ax.get_xlim()[1], ax.get_ylim()[1])
-            ax.plot([lim_min, lim_max], [lim_min, lim_max],
-                    color="gray", linestyle="--", linewidth=0.8, alpha=0.6, zorder=0)
-
-        # 라벨링: |change| 기준 상위 N개 (유의미한 것만)
-        n_label = self._top_n_label.value()
-        if n_label > 0 and has_change:
-            sig_df = df[df["_cls"] != "ns"].copy()
-            if not sig_df.empty:
-                sig_df = sig_df.dropna(subset=[change_col])
-                sig_df = sig_df.reindex(
-                    sig_df[change_col].abs().sort_values(ascending=False).index
-                ).head(n_label)
-
-                name_col = SC.FOOTPRINT_MOTIF_NAME if SC.FOOTPRINT_MOTIF_NAME in df.columns else None
-                if name_col:
-                    for _, row in sig_df.iterrows():
-                        ax.annotate(
-                            str(row[name_col]),
-                            (row[SC.COND1_SCORE], row[SC.COND2_SCORE]),
-                            fontsize=7,
-                            xytext=(4, 4), textcoords="offset points",
-                            color=colors.get(row["_cls"], "black"),
-                        )
-
-        ax.set_xlabel(f"{self.cond1} mean footprint score")
-        ax.set_ylabel(f"{self.cond2} mean footprint score")
-        ax.set_title(
-            f"TF Activity  —  {self.cond1} vs {self.cond2}\n"
-            f"(p ≤ {pval_cut}, |Δ| ≥ {min_change})"
-        )
-        ax.legend(fontsize=8, framealpha=0.7)
+        render_tf_footprint(ax, self.dataset.dataframe, self.get_plot_params())
         self.figure.tight_layout()
+
+    def get_bundle_context(self) -> dict:
+        return {
+            'figure': self.figure,
+            'dataframe': self.dataset.dataframe,
+            'plot_params': self.get_plot_params(),
+            'dataset_name': self.dataset.name,
+            'plot_type': 'tf_footprint',
+            'figure_title': f'TF Activity — {self.dataset.name}',
+            'figure_slug': 'tf_footprint',
+            'source_stem': 'tf_footprint',
+            'notes': 'Generated from cmg-seqviewer TF footprint activity',
+        }
 
     # ── Export ────────────────────────────────────────────────────────────
 

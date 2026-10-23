@@ -61,81 +61,47 @@ class TSSDistanceDialog(BasePlotDialog):
         self.summary_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.summary_label.setStyleSheet("color: #555; font-size: 9pt;")
         layout.addWidget(self.summary_label)
+        self.range_spin.valueChanged.connect(self._update_plot)
+        self.bins_spin.valueChanged.connect(self._update_plot)
 
     # ── Plot ──────────────────────────────────────────────────────────────
 
+    def get_plot_params(self) -> dict:
+        return {
+            'dist_range': self.range_spin.value(),
+            'bins': self.bins_spin.value(),
+            'title': f"TSS Distance Distribution\n{self.dataset.name}",
+        }
+
     def _do_plot(self):
+        from plots.tss_distance import render_tss_distance
         self.figure.clear()
         ax = self.figure.add_subplot(111)
-
-        if not self._has_tss_column():
-            ax.text(
-                0.5, 0.5,
-                "Distance-to-TSS data not available.\n"
-                "This dataset does not contain a 'distance_to_tss' column.\n"
-                "Load a full-format ATAC-seq Excel file to enable this plot.",
-                ha='center', va='center', transform=ax.transAxes,
-                fontsize=10, color='#888888',
-                bbox=dict(boxstyle='round', fc='#f8f8f8', ec='#cccccc', alpha=0.8),
-            )
-            self.canvas.draw()
-            return
-
-        dist_range = self.range_spin.value() if hasattr(self, 'range_spin') else self._DEFAULT_RANGE
-        bins = self.bins_spin.value() if hasattr(self, 'bins_spin') else self._DEFAULT_BINS
-
-        df = self.dataset.dataframe
-        series = df['distance_to_tss'].dropna().astype(float)
-        clipped = series.clip(-dist_range, dist_range)
-
-        n, bin_edges, patches = ax.hist(
-            clipped,
-            bins=bins,
-            range=(-dist_range, dist_range),
-            color='#4e79a7',
-            edgecolor='white',
-            linewidth=0.3,
-        )
-
-        for pos, label, ls, color in [
-            (0,       'TSS',  '-',  '#e15759'),
-            (-2_000,  '−2kb', '--', '#888888'),
-            ( 2_000,  '+2kb', '--', '#888888'),
-            (-5_000,  '−5kb', ':',  '#aaaaaa'),
-            ( 5_000,  '+5kb', ':',  '#aaaaaa'),
-        ]:
-            if abs(pos) <= dist_range:
-                ax.axvline(pos, linestyle=ls, color=color, linewidth=1.2, alpha=0.85)
-                if pos == 0:
-                    ax.text(pos + dist_range * 0.01, ax.get_ylim()[1] * 0.95,
-                            label, color=color, fontsize=8, va='top')
-
-        ax.set_xlabel("Distance to TSS (bp)", fontsize=10)
-        ax.set_ylabel("Number of Peaks", fontsize=10)
-        ax.set_title(
-            f"TSS Distance Distribution\n{self.dataset.name}",
-            fontsize=11,
-        )
-
-        def bp_to_kb(x, _):
-            return f"{int(x / 1000)}kb" if x != 0 else "0"
-        from matplotlib.ticker import FuncFormatter
-        ax.xaxis.set_major_formatter(FuncFormatter(bp_to_kb))
-
-        self.canvas.draw()
-
-        # Update summary label if it exists
+        info = render_tss_distance(ax, self.dataset.dataframe, self.get_plot_params())
+        total = info.get('total', 0)
         if hasattr(self, 'summary_label'):
-            within_2kb = (series.abs() <= 2_000).sum()
-            within_5kb = (series.abs() <= 5_000).sum()
-            total = len(series)
-            pct_2kb = within_2kb / total * 100 if total > 0 else 0
-            pct_5kb = within_5kb / total * 100 if total > 0 else 0
-            self.summary_label.setText(
-                f"Total: {total:,} peaks  |  "
-                f"≤2kb from TSS: {within_2kb:,} ({pct_2kb:.1f}%)  |  "
-                f"≤5kb from TSS: {within_5kb:,} ({pct_5kb:.1f}%)"
-            )
+            if total:
+                pct_2kb = info['within_2kb'] / total * 100
+                pct_5kb = info['within_5kb'] / total * 100
+                self.summary_label.setText(
+                    f"Total: {total:,} peaks  |  "
+                    f"≤2kb from TSS: {info['within_2kb']:,} ({pct_2kb:.1f}%)  |  "
+                    f"≤5kb from TSS: {info['within_5kb']:,} ({pct_5kb:.1f}%)")
+            else:
+                self.summary_label.setText("")
+
+    def get_bundle_context(self) -> dict:
+        return {
+            'figure': self.figure,
+            'dataframe': self.dataset.dataframe,
+            'plot_params': self.get_plot_params(),
+            'dataset_name': self.dataset.name,
+            'plot_type': 'tss_distance',
+            'figure_title': f"TSS Distance Distribution — {self.dataset.name}",
+            'figure_slug': 'tss_distance',
+            'source_stem': 'tss_distance',
+            'notes': 'Generated from cmg-seqviewer TSS distance distribution',
+        }
 
     # ── Helpers ───────────────────────────────────────────────────────────
 

@@ -57,19 +57,11 @@ the external pipeline focused on **figure assembly and publication layout**.
 **Goal:** every figure reachable from the GUI can be exported as a bundle that
 the external pipeline can ingest without manual repair.
 
-### 3.1 Coverage gaps
+### 3.1 Coverage status
 
-Six user-facing figures currently have no bundle context or dedicated builder:
-
-1. P-value histogram (`PadjHistogramDialog`)
-2. Comparison dot plot (`DotPlotDialog`)
-3. chromVAR TF activity (`ChromVARDialog`)
-4. TF motif enrichment (`MotifEnrichmentDialog`)
-5. TF footprint (`TFFootprintDialog`)
-6. TSS distance (`TSSDistanceDialog`)
-
-Details and file locations are in
-[FIGURE_BUNDLE_COVERAGE.md](FIGURE_BUNDLE_COVERAGE.md#5-missing-bundle-coverage).
+All user-facing figure dialogs now have a bundle context and a dedicated script
+builder. The audit covers 29 plot types; details are in
+[FIGURE_BUNDLE_COVERAGE.md](FIGURE_BUNDLE_COVERAGE.md).
 
 ### 3.2 Work items
 
@@ -113,12 +105,11 @@ Multi-panel assembly remains delegated to the external pipeline.
 
 ## 6. Next actions
 
-1. Implement bundle coverage for the six missing figures.
-2. Harden metadata/manifest output.
-3. Add the coverage regression test.
-4. Validate all generated scripts in a headless environment.
-5. Hand a sample bundle to the external figure-atlas pipeline for contract
-   review.
+1. Validate all generated scripts and the metadata contract.
+2. Hand a sample bundle to the external pipeline for contract review.
+3. Keep the coverage regression test green for new figures.
+4. Run a release-time headless bundle validation.
+
 
 ## 7. Related documents
 

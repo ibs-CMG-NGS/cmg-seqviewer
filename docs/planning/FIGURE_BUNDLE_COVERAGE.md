@@ -46,8 +46,8 @@ The external contract is documented in
 
 | Status | Count | Notes |
 |---|---:|---|
-| Bundle-ready with dedicated script builder | 23 plot types | See §4 |
-| Missing bundle context / builder | 6 figures | See §5 |
+| Bundle-ready with dedicated script builder | 29 plot types | See §4 |
+| Missing bundle context / builder | 0 figures | See §5 |
 | Ambiguous / legacy | 2 | See §6 |
 | Metadata contract gaps | 4 items | See §7 |
 
@@ -62,6 +62,12 @@ branch (no generic fallback):
 | `heatmap` | Heatmap / expression summary heatmap |
 | `ma` | MA plot |
 | `pca` | PCA |
+| `padj_histogram` | P-value histogram |
+| `comparison_dot` | Comparison dot plot |
+| `tss_distance` | TSS distance |
+| `motif_enrichment` | TF motif enrichment |
+| `tf_footprint` | TF footprint activity |
+| `chromvar` | chromVAR TF activity |
 | `go_dot` | GO/KEGG dot plot |
 | `go_bar` | GO/KEGG bar chart |
 | `go_comparison_dot` | GO/KEGG comparison dot plot |
@@ -84,17 +90,9 @@ branch (no generic fallback):
 
 ## 5. Missing bundle coverage
 
-| Figure | File | Current state | Needed |
-|---|---|---|---|
-| P-value histogram | `src/gui/visualization_dialog.py::PadjHistogramDialog` | No bundle button/context | Pure renderer + `padj_histogram` builder |
-| Comparison dot plot | `src/gui/visualization_dialog.py::DotPlotDialog` | No bundle button/context | Pure renderer + `comparison_dot` builder |
-| chromVAR TF activity | `src/gui/chromvar_dialog.py::ChromVARDialog` | No bundle button/context | Renderer for volcano/scatter/heatmap modes + builder |
-| TF motif enrichment | `src/gui/motif_enrichment_dialog.py::MotifEnrichmentDialog` | No bundle button/context | Single/comparison renderer + builder |
-| TF footprint | `src/gui/tf_footprint_dialog.py::TFFootprintDialog` | No bundle button/context | Scatter renderer + builder |
-| TSS distance | `src/gui/tss_distance_dialog.py::TSSDistanceDialog` | No bundle button/context | Histogram renderer + builder |
-
-These six are reachable from the GUI (`main_window.py`), so a user can create
-the figure but cannot hand it off as a bundle.
+None. All user-facing `BasePlotDialog` subclasses now have a bundle context and
+a dedicated script builder. The coverage regression test enforces this for
+future dialogs.
 
 ## 6. Ambiguous / legacy
 
@@ -122,11 +120,10 @@ the figure but cannot hand it off as a bundle.
 
 ## 8. Recommended order
 
-1. Add bundle contexts and pure renderers for the six missing figures.
-2. Harden `metadata.yaml` to match the external contract.
-3. Add a coverage regression test that fails when a new `BasePlotDialog`
-   subclass lacks `get_bundle_context()` and is not explicitly allowlisted.
-4. Run every generated `scripts/figure.py` headlessly to verify reproduction.
+1. Keep the coverage regression test green for new dialogs.
+2. Validate `metadata.yaml` against the external contract.
+3. Run every generated `scripts/figure.py` headlessly in CI or a release check.
+4. Hand a sample bundle to the external figure-atlas pipeline for review.
 
 ## 9. Related documents
 

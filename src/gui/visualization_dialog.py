@@ -958,46 +958,31 @@ class PadjHistogramDialog(BasePlotDialog):
 
     # ── Plot ──────────────────────────────────────────────────────────────
 
+    def get_plot_params(self) -> dict:
+        return {
+            'pvalue_type': self.pvalue_type,
+            'bin_count': self.bin_count,
+        }
+
     def _do_plot(self):
-        """Histogram 그리기"""
+        from plots.padj_histogram import render_padj_histogram
         self.figure.clear()
         ax = self.figure.add_subplot(111)
-
-        df = self.dataframe.copy()
-
-        # 컬럼 확인
-        if self.pvalue_type not in df.columns:
-            ax.text(0.5, 0.5, f'Required column not found: {self.pvalue_type}',
-                   ha='center', va='center', fontsize=14)
-            self.canvas.draw()
-            return
-
-        # Histogram
-        data = df[self.pvalue_type].dropna()
-        ax.hist(data, bins=self.bin_count, color='steelblue', edgecolor='black', alpha=0.7)
-
-        # 축 레이블
-        if self.pvalue_type == 'padj':
-            xlabel = 'Adjusted P-value'
-            title = 'Distribution of Adjusted P-values'
-        else:
-            xlabel = 'Original P-value'
-            title = 'Distribution of Original P-values'
-
-        ax.set_xlabel(xlabel, fontsize=12)
-        ax.set_ylabel('Frequency', fontsize=12)
-        ax.set_title(title, fontsize=14, fontweight='bold')
-        ax.grid(True, alpha=0.3)
-
-        # 통계 정보 추가
-        stats_text = f'Total: {len(data)}\nMean: {data.mean():.4f}\nMedian: {data.median():.4f}'
-        ax.text(0.98, 0.98, stats_text, transform=ax.transAxes,
-               verticalalignment='top', horizontalalignment='right',
-               bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5),
-               fontsize=10)
-
+        render_padj_histogram(ax, self.dataframe, self.get_plot_params())
         self.figure.tight_layout()
-        self.canvas.draw()
+
+    def get_bundle_context(self) -> dict:
+        return {
+            'figure': self.figure,
+            'dataframe': self.dataframe,
+            'plot_params': self.get_plot_params(),
+            'dataset_name': 'pvalue_histogram',
+            'plot_type': 'padj_histogram',
+            'figure_title': 'P-value Histogram',
+            'figure_slug': 'pvalue_histogram',
+            'source_stem': 'pvalue_histogram',
+            'notes': 'Generated from cmg-seqviewer P-value histogram',
+        }
 
 
 class HeatmapWidget(QWidget):
@@ -1810,183 +1795,36 @@ class DotPlotDialog(BasePlotDialog):
 
     # ── Plot ──────────────────────────────────────────────────────────────
 
+    def get_plot_params(self) -> dict:
+        return {
+            'dataset_names': list(self.dataset_names),
+            'colormap': self.colormap,
+            'colorbar_min': self.colorbar_min,
+            'colorbar_max': self.colorbar_max,
+            'transpose': self.transpose,
+            'cluster_genes': self.cluster_genes_check.isChecked(),
+            'title': self.plot_title,
+            'xlabel': self.plot_xlabel,
+            'ylabel': self.plot_ylabel,
+            'show_legend': self.show_legend,
+        }
+
     def _do_plot(self):
-        """Dot Plot 그리기"""
+        from plots.comparison_dot import render_comparison_dot
         self.figure.clear()
         ax = self.figure.add_subplot(111)
-
-        if not self.dataset_names:
-            ax.text(0.5, 0.5, 'No valid dataset columns found in comparison sheet.',
-                    ha='center', va='center', fontsize=14)
-            self.canvas.draw()
-            return
-
-        # 데이터 준비
-        genes = []
-        dataset_data = {name: {'log2fc': [], 'padj': []} for name in self.dataset_names}
-
-        # 각 유전자에 대해 데이터 수집
-        for idx, row in self.comparison_df.iterrows():
-            gene_symbol = row.get('symbol', row.get('gene_id', f'Gene_{idx}'))
-            genes.append(gene_symbol)
-
-            for dataset_name in self.dataset_names:
-                log2fc_col = f"{dataset_name}_log2FC"
-                padj_col = f"{dataset_name}_padj"
-
-                # 대소문자 변형 확인
-                if log2fc_col not in self.comparison_df.columns:
-                    log2fc_col = f"{dataset_name}_log2fc"
-                if padj_col not in self.comparison_df.columns:
-                    padj_col = f"{dataset_name}_Padj"
-
-                log2fc = row.get(log2fc_col, np.nan)
-                padj = row.get(padj_col, np.nan)
-
-                dataset_data[dataset_name]['log2fc'].append(log2fc)
-                dataset_data[dataset_name]['padj'].append(padj)
-
-        # Gene Clustering (선택 시)
-        gene_order = list(range(len(genes)))
-        if self.cluster_genes_check.isChecked() and len(genes) > 1:
-            try:
-                # log2fc 데이터를 행렬로 변환
-                log2fc_matrix = np.array([dataset_data[name]['log2fc'] for name in self.dataset_names]).T
-
-                # NaN 값을 0으로 대체 (클러스터링을 위해)
-                log2fc_matrix_clean = np.nan_to_num(log2fc_matrix, nan=0.0)
-
-                # 최소 2개 이상의 유전자와 유효한 데이터가 있을 때만 클러스터링
-                if log2fc_matrix_clean.shape[0] >= 2 and not np.all(log2fc_matrix_clean == 0):
-                    from scipy.cluster.hierarchy import linkage, dendrogram
-                    from scipy.spatial.distance import pdist
-
-                    # 계층적 클러스터링
-                    linkage_matrix = linkage(log2fc_matrix_clean, method='average', metric='euclidean')
-                    dendro = dendrogram(linkage_matrix, no_plot=True)
-                    gene_order = dendro['leaves']
-            except Exception:
-                # 클러스터링 실패 시 원래 순서 유지 (사용자에게 알리지 않음)
-                gene_order = list(range(len(genes)))
-
-        # 순서에 따라 genes 재정렬
-        genes_ordered = [genes[i] for i in gene_order]
-
-        # 전체 dot 개수를 고려하여 크기 조정
-        total_dots = len(genes) * len(self.dataset_names)
-        base_size = 200 if total_dots < 100 else 100 if total_dots < 500 else 50
-
-        # Padj threshold별 크기 정의
-        def get_dot_size(padj):
-            """Padj 값에 따라 dot 크기 반환"""
-            if pd.isna(padj):
-                return base_size * 0.1
-            elif padj < 0.001:
-                return base_size * 1.5
-            elif padj < 0.01:
-                return base_size * 1.2
-            elif padj < 0.05:
-                return base_size * 0.8
-            else:
-                return base_size * 0.4
-
-        scatter = None
-
-        # Plot 데이터 생성
-        if not self.transpose:
-            # Genes on Y-axis, Datasets on X-axis
-            for dataset_idx, dataset_name in enumerate(self.dataset_names):
-                log2fcs = dataset_data[dataset_name]['log2fc']
-                padjs = dataset_data[dataset_name]['padj']
-
-                for display_idx, original_gene_idx in enumerate(gene_order):
-                    log2fc = log2fcs[original_gene_idx]
-                    padj = padjs[original_gene_idx]
-
-                    if not pd.isna(log2fc):
-                        size = get_dot_size(padj)
-                        scatter = ax.scatter(dataset_idx, display_idx,
-                                           s=size, c=[log2fc],
-                                           cmap=self.colormap,
-                                           vmin=self.colorbar_min,
-                                           vmax=self.colorbar_max,
-                                           alpha=0.7, edgecolors='black', linewidths=0.5)
-
-            # 축 설정
-            ax.set_xticks(range(len(self.dataset_names)))
-            ax.set_xticklabels(self.dataset_names, rotation=45, ha='right')
-
-            if len(genes) <= 50:
-                ax.set_yticks(range(len(genes)))
-                ax.set_yticklabels(genes_ordered, fontsize=8)
-
-            ax.set_xlabel(self.plot_xlabel, fontsize=12)
-            ax.set_ylabel(self.plot_ylabel, fontsize=12)
-
-        else:
-            # Datasets on Y-axis, Genes on X-axis (Transposed)
-            for display_idx, original_gene_idx in enumerate(gene_order):
-                for dataset_idx, dataset_name in enumerate(self.dataset_names):
-                    log2fc = dataset_data[dataset_name]['log2fc'][original_gene_idx]
-                    padj = dataset_data[dataset_name]['padj'][original_gene_idx]
-
-                    if not pd.isna(log2fc):
-                        size = get_dot_size(padj)
-                        scatter = ax.scatter(display_idx, dataset_idx,
-                                           s=size, c=[log2fc],
-                                           cmap=self.colormap,
-                                           vmin=self.colorbar_min,
-                                           vmax=self.colorbar_max,
-                                           alpha=0.7, edgecolors='black', linewidths=0.5)
-
-            # 축 설정
-            if len(genes) <= 50:
-                ax.set_xticks(range(len(genes)))
-                ax.set_xticklabels(genes_ordered, rotation=90, ha='right', fontsize=8)
-
-            ax.set_yticks(range(len(self.dataset_names)))
-            ax.set_yticklabels(self.dataset_names, fontsize=10)
-
-            ax.set_xlabel(self.plot_ylabel, fontsize=12)  # Swapped
-            ax.set_ylabel(self.plot_xlabel, fontsize=12)  # Swapped
-
-        # 축 범위 조정 (간격 좁히기)
-        if not self.transpose:
-            num_datasets = len(self.dataset_names)
-            margin = 0.3
-            ax.set_xlim(-margin, num_datasets - 1 + margin)
-            num_genes = len(genes)
-            ax.set_ylim(-0.5, num_genes - 0.5)
-        else:
-            num_genes = len(genes)
-            margin = 0.3
-            ax.set_xlim(-margin, num_genes - 1 + margin)
-            num_datasets = len(self.dataset_names)
-            ax.set_ylim(-0.5, num_datasets - 0.5)
-
-        # Title
-        ax.set_title(self.plot_title, fontsize=14, fontweight='bold')
-
-        # Colorbar
-        if scatter is not None:
-            cbar = self.figure.colorbar(scatter, ax=ax)
-            cbar.set_label('Log2 Fold Change', fontsize=10)
-
-        # Legend for dot sizes
-        if self.show_legend:
-            from matplotlib.lines import Line2D
-            legend_elements = [
-                Line2D([0], [0], marker='o', color='w', label='Padj < 0.001',
-                      markerfacecolor='gray', markersize=12, markeredgecolor='black'),
-                Line2D([0], [0], marker='o', color='w', label='0.001 ≤ Padj < 0.01',
-                      markerfacecolor='gray', markersize=10, markeredgecolor='black'),
-                Line2D([0], [0], marker='o', color='w', label='0.01 ≤ Padj < 0.05',
-                      markerfacecolor='gray', markersize=8, markeredgecolor='black'),
-                Line2D([0], [0], marker='o', color='w', label='Padj ≥ 0.05',
-                      markerfacecolor='gray', markersize=5, markeredgecolor='black')
-            ]
-            ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(1.15, 1),
-                     fontsize=9, title='Significance')
-
+        render_comparison_dot(ax, self.comparison_df, self.get_plot_params())
         self.figure.tight_layout()
-        self.canvas.draw()
+
+    def get_bundle_context(self) -> dict:
+        return {
+            'figure': self.figure,
+            'dataframe': self.comparison_df,
+            'plot_params': self.get_plot_params(),
+            'dataset_name': 'comparison',
+            'plot_type': 'comparison_dot',
+            'figure_title': 'Comparison Dot Plot',
+            'figure_slug': 'comparison_dot',
+            'source_stem': 'comparison_dot',
+            'notes': 'Generated from cmg-seqviewer comparison dot plot',
+        }

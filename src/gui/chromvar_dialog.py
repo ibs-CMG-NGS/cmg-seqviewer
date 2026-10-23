@@ -138,185 +138,58 @@ class ChromVARDialog(BasePlotDialog):
 
     # ── Plot dispatcher ───────────────────────────────────────────────────
 
-    def _do_plot(self):
-        self.figure.clear()
-        # hover 상태 초기화 (이전 axes 참조 무효화)
-        self._annot = None
-        self._hover_pairs = []
-
+    def get_plot_params(self) -> dict:
         mode = self._mode.currentText()
-        if "Heatmap" in mode:
-            self._plot_heatmap()
-        elif "Scatter" in mode:
-            self._plot_scatter()
+        if 'Heatmap' in mode:
+            mode_key = 'heatmap'
+        elif 'Scatter' in mode:
+            mode_key = 'scatter'
         else:
-            self._plot_volcano()
+            mode_key = 'volcano'
+        return {
+            'mode': mode_key,
+            'padj_cutoff': self._padj_cut.value(),
+            'delta_cutoff': self._delta_cut.value(),
+            'top_n': self._top_n.value(),
+            'dot_size': self._dot_size.value(),
+            'heatmap_top_n': self._heatmap_top_n.value(),
+            'title': f'TF Activity — {self.dataset.name}',
+        }
 
-    # ── Volcano ───────────────────────────────────────────────────────────
+    def _bundle_df(self) -> pd.DataFrame:
+        if 'Heatmap' in self._mode.currentText() and len(self.all_datasets) > 1:
+            frames = []
+            for ds in self.all_datasets:
+                df = ds.dataframe.copy()
+                df['dataset'] = ds.name
+                frames.append(df)
+            return pd.concat(frames, ignore_index=True)
+        return self.dataset.dataframe.copy()
 
-    def _plot_volcano(self):
-        df = self._prepare(self.dataset.dataframe)
-        ax = self.figure.add_subplot(111)
-
-        if df is None or df.empty:
-            ax.text(0.5, 0.5, "No data available", ha="center", va="center")
-            return
-
-        padj_cut = self._padj_cut.value()
-        delta_cut = self._delta_cut.value()
-        neg_log = df["chromvar_neg_log_padj"]
-        delta = df[SC.CHROMVAR_DELTA]
-
-        sig_up   = (df[SC.CHROMVAR_PADJ] <= padj_cut) & (delta >= delta_cut)
-        sig_down = (df[SC.CHROMVAR_PADJ] <= padj_cut) & (delta <= -delta_cut)
-        ns = ~(sig_up | sig_down)
-
-        sc_ns = ax.scatter(
-            delta[ns], neg_log[ns],
-            c="#cccccc", s=self._dot_size.value(), alpha=0.5,
-            label=f"NS (n={ns.sum()})", zorder=1, edgecolors="none",
-        )
-        sc_up = ax.scatter(
-            delta[sig_up], neg_log[sig_up],
-            c="#e15759", s=self._dot_size.value(), alpha=0.85,
-            label=f"Increased (n={sig_up.sum()})", zorder=2, edgecolors="none",
-        )
-        sc_dn = ax.scatter(
-            delta[sig_down], neg_log[sig_down],
-            c="#4e79a7", s=self._dot_size.value(), alpha=0.85,
-            label=f"Decreased (n={sig_down.sum()})", zorder=2, edgecolors="none",
-        )
-
-        ax.axhline(-np.log10(padj_cut), color="gray", linestyle="--",
-                   linewidth=0.8, alpha=0.7)
-        ax.axvline(delta_cut, color="gray", linestyle="--",
-                   linewidth=0.8, alpha=0.7)
-        ax.axvline(-delta_cut, color="gray", linestyle="--",
-                   linewidth=0.8, alpha=0.7)
-
-        self._label_top(ax, df, sig_up | sig_down, delta, neg_log)
-
-        ax.set_xlabel("delta z-score  (compare − base)")
-        ax.set_ylabel("-log₁₀(padj)")
-        ax.set_title(f"TF Activity Volcano — {self.dataset.name}")
-        ax.legend(fontsize=8, framealpha=0.7)
-        self.figure.tight_layout()
-
-        # hover 설정
-        self._annot = self._make_annot(ax)
-        self._hover_pairs = [
-            (sc_ns,  df[ns].reset_index(drop=True)),
-            (sc_up,  df[sig_up].reset_index(drop=True)),
-            (sc_dn,  df[sig_down].reset_index(drop=True)),
-        ]
-        self._hover_x_col = SC.CHROMVAR_DELTA
-        self._hover_y_col = "chromvar_neg_log_padj"
-
-    # ── Scatter ───────────────────────────────────────────────────────────
-
-    def _plot_scatter(self):
-        df = self._prepare(self.dataset.dataframe)
-        ax = self.figure.add_subplot(111)
-
-        if df is None or df.empty:
-            ax.text(0.5, 0.5, "No data available", ha="center", va="center")
-            return
-
-        for col in [SC.CHROMVAR_MEAN_BASE, SC.CHROMVAR_MEAN_COMPARE]:
-            if col not in df.columns:
-                ax.text(0.5, 0.5, f"Column not found:\n{col}", ha="center", va="center")
-                return
-
-        padj_cut = self._padj_cut.value()
-        delta_cut = self._delta_cut.value()
-        delta = df[SC.CHROMVAR_DELTA]
-        x = df[SC.CHROMVAR_MEAN_BASE]
-        y = df[SC.CHROMVAR_MEAN_COMPARE]
-
-        sig_up   = (df[SC.CHROMVAR_PADJ] <= padj_cut) & (delta >= delta_cut)
-        sig_down = (df[SC.CHROMVAR_PADJ] <= padj_cut) & (delta <= -delta_cut)
-        ns = ~(sig_up | sig_down)
-
-        sc_ns = ax.scatter(
-            x[ns], y[ns], c="#cccccc", s=self._dot_size.value(),
-            alpha=0.4, label=f"NS (n={ns.sum()})", zorder=1, edgecolors="none",
-        )
-        sc_up = ax.scatter(
-            x[sig_up], y[sig_up], c="#e15759", s=self._dot_size.value(),
-            alpha=0.85, label=f"Increased (n={sig_up.sum()})", zorder=2, edgecolors="none",
-        )
-        sc_dn = ax.scatter(
-            x[sig_down], y[sig_down], c="#4e79a7", s=self._dot_size.value(),
-            alpha=0.85, label=f"Decreased (n={sig_down.sum()})", zorder=2, edgecolors="none",
-        )
-
-        lim = [min(x.min(), y.min()) - 0.2, max(x.max(), y.max()) + 0.2]
-        ax.plot(lim, lim, color="gray", linestyle="--", linewidth=0.8, alpha=0.6, zorder=0)
-        ax.set_xlim(lim)
-        ax.set_ylim(lim)
-
-        self._label_top(ax, df, sig_up | sig_down, delta, y, x_vals=x)
-
-        ax.set_xlabel("base (Control) mean z-score")
-        ax.set_ylabel("compare mean z-score")
-        ax.set_title(f"TF Activity Scatter — {self.dataset.name}")
-        ax.legend(fontsize=8, framealpha=0.7)
-        self.figure.tight_layout()
-
-        # hover 설정
-        self._annot = self._make_annot(ax)
-        self._hover_pairs = [
-            (sc_ns,  df[ns].reset_index(drop=True)),
-            (sc_up,  df[sig_up].reset_index(drop=True)),
-            (sc_dn,  df[sig_down].reset_index(drop=True)),
-        ]
-        self._hover_x_col = SC.CHROMVAR_MEAN_BASE
-        self._hover_y_col = SC.CHROMVAR_MEAN_COMPARE
-
-    # ── Multi-condition Heatmap ───────────────────────────────────────────
-
-    def _plot_heatmap(self):
-        from matplotlib.colors import TwoSlopeNorm
-
-        ax = self.figure.add_subplot(111)
-
-        frames = {}
-        for ds in self.all_datasets:
-            df = self._prepare(ds.dataframe)
-            if df is None or df.empty:
-                continue
-            key_col = SC.CHROMVAR_TF_NAME if SC.CHROMVAR_TF_NAME in df.columns else SC.CHROMVAR_MOTIF_ID
-            frames[ds.name] = df.set_index(key_col)[SC.CHROMVAR_DELTA]
-
-        if not frames:
-            ax.text(0.5, 0.5, "No data available", ha="center", va="center")
-            return
-
-        mat = pd.DataFrame(frames).dropna(how="all")
-        top_n = self._heatmap_top_n.value()
-        mat["_max_abs"] = mat.abs().max(axis=1)
-        mat = mat.nlargest(top_n, "_max_abs").drop(columns="_max_abs")
-        mat = mat.sort_values(mat.columns[0], ascending=False)
-
-        if mat.empty:
-            ax.text(0.5, 0.5, "No significant TFs", ha="center", va="center")
-            return
-
-        vmax = max(mat.abs().max().max(), 0.01)
-        norm = TwoSlopeNorm(vmin=-vmax, vcenter=0, vmax=vmax)
-        im = ax.imshow(mat.values, aspect="auto", cmap="RdBu_r", norm=norm)
-        self.figure.colorbar(im, ax=ax, label="delta z-score", shrink=0.8)
-
-        ax.set_xticks(range(len(mat.columns)))
-        ax.set_xticklabels(mat.columns, rotation=30, ha="right", fontsize=8)
-        ax.set_yticks(range(len(mat.index)))
-        ax.set_yticklabels(mat.index, fontsize=7)
-        ax.set_title(f"TF Activity Heatmap  (top {top_n} by |delta|)", fontsize=10)
-        self.figure.tight_layout()
-
-        # hover 없음 (heatmap 모드)
+    def _do_plot(self):
+        from plots.chromvar import render_chromvar
+        self.figure.clear()
         self._annot = None
         self._hover_pairs = []
+        info = render_chromvar(self.figure, self._bundle_df(), self.get_plot_params())
+        self.figure.tight_layout()
+        self._hover_pairs = info.get('hover_pairs') or []
+        self._hover_x_col = info.get('hover_x') or ''
+        self._hover_y_col = info.get('hover_y') or ''
+        self._annot = self._make_annot(self.figure.axes[0]) if self._hover_pairs else None
+
+    def get_bundle_context(self) -> dict:
+        return {
+            'figure': self.figure,
+            'dataframe': self._bundle_df(),
+            'plot_params': self.get_plot_params(),
+            'dataset_name': self.dataset.name,
+            'plot_type': 'chromvar',
+            'figure_title': f'chromVAR TF Activity — {self.dataset.name}',
+            'figure_slug': 'chromvar',
+            'source_stem': 'chromvar',
+            'notes': 'Generated from cmg-seqviewer chromVAR differential TF activity',
+        }
 
     # ── Hover ─────────────────────────────────────────────────────────────
 

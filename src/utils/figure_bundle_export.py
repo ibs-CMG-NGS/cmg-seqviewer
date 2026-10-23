@@ -213,24 +213,36 @@ def _build_regeneration_script(source_stem: str, plot_type: str, plot_params: Ma
     
     if plot_type.lower() == "volcano":
         return _build_volcano_plot_script(source_stem, params_repr)
+    elif plot_type.lower() == "padj_histogram":
+        return _build_padj_histogram_plot_script(source_stem, params_repr)
     elif plot_type.lower() == "heatmap":
         return _build_heatmap_plot_script(source_stem, params_repr)
     elif plot_type.lower() == "go_dot":
         return _build_go_dot_plot_script(source_stem, params_repr)
+    elif plot_type.lower() == "motif_enrichment":
+        return _build_motif_enrichment_plot_script(source_stem, params_repr)
     elif plot_type.lower() == "go_bar":
         return _build_go_bar_plot_script(source_stem, params_repr)
     elif plot_type.lower() == "ma":
         return _build_ma_plot_script(source_stem, params_repr)
+    elif plot_type.lower() == "tf_footprint":
+        return _build_tf_footprint_plot_script(source_stem, params_repr)
+    elif plot_type.lower() == "chromvar":
+        return _build_chromvar_plot_script(source_stem, params_repr)
     elif plot_type.lower() == "pca":
         return _build_pca_plot_script(source_stem, params_repr)
     elif plot_type.lower() == "genomic_distribution":
         return _build_genomic_distribution_plot_script(source_stem, params_repr)
+    elif plot_type.lower() == "tss_distance":
+        return _build_tss_distance_plot_script(source_stem, params_repr)
     elif plot_type.lower() == "gene_expression_bar":
         return _build_gene_expression_bar_plot_script(source_stem, params_repr)
     elif plot_type.lower() == "composition":
         return _build_composition_plot_script(source_stem, params_repr)
     elif plot_type.lower() == "expression_dot":
         return _build_expression_dot_plot_script(source_stem, params_repr)
+    elif plot_type.lower() == "comparison_dot":
+        return _build_comparison_dot_plot_script(source_stem, params_repr)
     elif plot_type.lower() == "expression_distribution":
         return _build_expression_distribution_plot_script(source_stem, params_repr)
     elif plot_type.lower() == "go_comparison_dot":
@@ -342,6 +354,41 @@ fig.savefig(root / "outputs" / "{source_stem}.svg", bbox_inches="tight")
 '''
 
 
+def _build_padj_histogram_plot_script(source_stem: str, params_repr: str) -> str:
+    render_src = _render_source("padj_histogram", "render_padj_histogram")
+    if render_src is None:
+        return _build_generic_plot_script(source_stem, "padj_histogram", params_repr)
+
+    return f'''"""Recreate the P-value histogram from this bundle.
+
+render_padj_histogram 은 cmg-seqviewer 화면 렌더링과 동일한 함수를 inline 한 것이다.
+inputs/data.csv 는 padj 또는 pvalue 컬럼을 포함한다.
+"""
+from pathlib import Path
+from typing import Any, Mapping
+import pandas as pd
+import matplotlib
+matplotlib.use("Agg")
+from matplotlib.figure import Figure
+
+# ── inlined from src/plots/padj_histogram.py ───────────────────────────
+{render_src}
+# ───────────────────────────────────────────────────────────────────────
+
+root = Path(__file__).resolve().parents[1]
+plot_params = {params_repr}
+
+df = pd.read_csv(root / "inputs" / "data.csv")
+fig = Figure(figsize=(10, 6))
+ax = fig.add_subplot(111)
+render_padj_histogram(ax, df, plot_params)
+fig.tight_layout()
+fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.pdf", bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.svg", bbox_inches="tight")
+'''
+
+
 def _build_heatmap_plot_script(source_stem: str, params_repr: str) -> str:
     # 화면 다이얼로그와 동일한 render_heatmap 을 그대로 inline (단일 진실 공급원)
     render_src = _render_source("heatmap", "render_heatmap")
@@ -407,6 +454,97 @@ df = pd.read_csv(root / "inputs" / "data.csv")
 fig = Figure(figsize=(float(plot_params.get("fig_width", 12)), float(plot_params.get("fig_height", 8))))
 render_go_dot(fig, df, plot_params)
 
+fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.pdf", bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.svg", bbox_inches="tight")
+'''
+
+
+def _build_motif_enrichment_plot_script(source_stem: str, params_repr: str) -> str:
+    render_src = _render_source(
+        "motif_enrichment", "prepare_motif_df", "_plot_single",
+        "render_motif_enrichment")
+    if render_src is None:
+        return _build_generic_plot_script(source_stem, "motif_enrichment", params_repr)
+
+    return f'''"""Recreate the TF motif enrichment plot from this bundle.
+
+render_motif_enrichment 은 cmg-seqviewer 화면 렌더링과 동일한 함수를 inline 한 것이다.
+inputs/data.csv 는 motif_name/log_pvalue/motif_qvalue 컬럼을 포함하며,
+comparison 모드에서는 direction(UP/DOWN) 컬럼을 사용한다.
+"""
+from pathlib import Path
+from typing import Any, Mapping, Optional
+import numpy as np
+import pandas as pd
+import matplotlib
+matplotlib.use("Agg")
+from matplotlib.figure import Figure
+
+_MOTIF_QVALUE = "motif_qvalue"
+_MOTIF_LOG_PVALUE = "log_pvalue"
+_MOTIF_PVALUE = "motif_pvalue"
+_MOTIF_NAME = "motif_name"
+_MOTIF_ID = "motif_id"
+_TARGET_PCT = "target_pct"
+
+# ── inlined from src/plots/motif_enrichment.py ─────────────────────────
+{render_src}
+# ───────────────────────────────────────────────────────────────────────
+
+root = Path(__file__).resolve().parents[1]
+plot_params = {params_repr}
+
+df = pd.read_csv(root / "inputs" / "data.csv")
+fig = Figure(figsize=(10, 7))
+render_motif_enrichment(fig, df, plot_params)
+fig.tight_layout()
+fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.pdf", bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.svg", bbox_inches="tight")
+'''
+
+
+def _build_chromvar_plot_script(source_stem: str, params_repr: str) -> str:
+    render_src = _render_source(
+        "chromvar", "prepare_chromvar_df", "_name_col", "_label_top",
+        "_plot_volcano", "_plot_scatter", "_plot_heatmap", "render_chromvar")
+    if render_src is None:
+        return _build_generic_plot_script(source_stem, "chromvar", params_repr)
+
+    return f'''"""Recreate the chromVAR TF activity plot from this bundle.
+
+render_chromvar 은 cmg-seqviewer 화면 렌더링과 동일한 함수를 inline 한 것이다.
+inputs/data.csv 는 chromvar_delta/chromvar_padj 등 컬럼을 포함하며,
+heatmap 모드에서는 dataset 컬럼으로 조건을 구분한다.
+"""
+from pathlib import Path
+from typing import Any, Mapping
+import numpy as np
+import pandas as pd
+import matplotlib
+matplotlib.use("Agg")
+from matplotlib.figure import Figure
+
+_DELTA = "chromvar_delta"
+_PADJ = "chromvar_padj"
+_PVALUE = "chromvar_pvalue"
+_MEAN_BASE = "chromvar_mean_base"
+_MEAN_COMPARE = "chromvar_mean_compare"
+_TF_NAME = "chromvar_tf_name"
+_MOTIF_ID = "chromvar_motif_id"
+
+# ── inlined from src/plots/chromvar.py ─────────────────────────────────
+{render_src}
+# ───────────────────────────────────────────────────────────────────────
+
+root = Path(__file__).resolve().parents[1]
+plot_params = {params_repr}
+
+df = pd.read_csv(root / "inputs" / "data.csv")
+fig = Figure(figsize=(9, 7))
+render_chromvar(fig, df, plot_params)
+fig.tight_layout()
 fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")
 fig.savefig(root / "outputs" / "{source_stem}.pdf", bbox_inches="tight")
 fig.savefig(root / "outputs" / "{source_stem}.svg", bbox_inches="tight")
@@ -483,6 +621,47 @@ fig.savefig(root / "outputs" / "{source_stem}.svg", bbox_inches="tight")
 '''
 
 
+def _build_tf_footprint_plot_script(source_stem: str, params_repr: str) -> str:
+    render_src = _render_source("tf_footprint", "render_tf_footprint")
+    if render_src is None:
+        return _build_generic_plot_script(source_stem, "tf_footprint", params_repr)
+
+    return f'''"""Recreate the TF footprint activity scatter from this bundle.
+
+render_tf_footprint 은 cmg-seqviewer 화면 렌더링과 동일한 함수를 inline 한 것이다.
+inputs/data.csv 는 cond1_score/cond2_score/footprint_change/footprint_pvalue 컬럼을 포함한다.
+"""
+from pathlib import Path
+from typing import Any, Mapping
+import pandas as pd
+import matplotlib
+matplotlib.use("Agg")
+from matplotlib.figure import Figure
+
+_COND1_SCORE = "cond1_score"
+_COND2_SCORE = "cond2_score"
+_FOOTPRINT_CHANGE = "footprint_change"
+_FOOTPRINT_PVALUE = "footprint_pvalue"
+_FOOTPRINT_MOTIF_NAME = "fp_motif_name"
+
+# ── inlined from src/plots/tf_footprint.py ─────────────────────────────
+{render_src}
+# ───────────────────────────────────────────────────────────────────────
+
+root = Path(__file__).resolve().parents[1]
+plot_params = {params_repr}
+
+df = pd.read_csv(root / "inputs" / "data.csv")
+fig = Figure(figsize=(8, 7))
+ax = fig.add_subplot(111)
+render_tf_footprint(ax, df, plot_params)
+fig.tight_layout()
+fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.pdf", bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.svg", bbox_inches="tight")
+'''
+
+
 def _build_pca_plot_script(source_stem: str, params_repr: str) -> str:
     render_src = _render_source("pca", "render_pca")
     if render_src is None:
@@ -544,6 +723,42 @@ fig = Figure(figsize=(7, 5))
 render_genomic_distribution(fig, df, plot_params)
 fig.tight_layout()
 
+fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.pdf", bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.svg", bbox_inches="tight")
+'''
+
+
+def _build_tss_distance_plot_script(source_stem: str, params_repr: str) -> str:
+    render_src = _render_source("tss_distance", "render_tss_distance")
+    if render_src is None:
+        return _build_generic_plot_script(source_stem, "tss_distance", params_repr)
+
+    return f'''"""Recreate the TSS-distance histogram from this bundle.
+
+render_tss_distance 은 cmg-seqviewer 화면 렌더링과 동일한 함수를 inline 한 것이다.
+inputs/data.csv 는 distance_to_tss 컬럼을 포함한다.
+"""
+from pathlib import Path
+from typing import Any, Mapping
+import pandas as pd
+import matplotlib
+matplotlib.use("Agg")
+from matplotlib.figure import Figure
+from matplotlib.ticker import FuncFormatter
+
+# ── inlined from src/plots/tss_distance.py ─────────────────────────────
+{render_src}
+# ───────────────────────────────────────────────────────────────────────
+
+root = Path(__file__).resolve().parents[1]
+plot_params = {params_repr}
+
+df = pd.read_csv(root / "inputs" / "data.csv")
+fig = Figure(figsize=(7.5, 4.8))
+ax = fig.add_subplot(111)
+render_tss_distance(ax, df, plot_params)
+fig.tight_layout()
 fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")
 fig.savefig(root / "outputs" / "{source_stem}.pdf", bbox_inches="tight")
 fig.savefig(root / "outputs" / "{source_stem}.svg", bbox_inches="tight")
@@ -1074,6 +1289,43 @@ df = pd.read_csv(root / "inputs" / "data.csv")
 fig = Figure(figsize=(12, 7))
 ax = fig.add_subplot(111)
 render_expression_dot(ax, df, plot_params)
+fig.tight_layout()
+fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.pdf", bbox_inches="tight")
+fig.savefig(root / "outputs" / "{source_stem}.svg", bbox_inches="tight")
+'''
+
+
+def _build_comparison_dot_plot_script(source_stem: str, params_repr: str) -> str:
+    render_src = _render_source("comparison_dot", "render_comparison_dot")
+    if render_src is None:
+        return _build_generic_plot_script(source_stem, "comparison_dot", params_repr)
+
+    return f'''"""Recreate the comparison dot plot from this bundle.
+
+render_comparison_dot 은 cmg-seqviewer 화면 렌더링과 동일한 함수를 inline 한 것이다.
+inputs/data.csv 는 gene/symbol + <dataset>_log2FC + <dataset>_padj 컬럼을 포함한다.
+Gene clustering을 켠 경우 scipy가 필요하다.
+"""
+from pathlib import Path
+from typing import Any, Mapping
+import numpy as np
+import pandas as pd
+import matplotlib
+matplotlib.use("Agg")
+from matplotlib.figure import Figure
+
+# ── inlined from src/plots/comparison_dot.py ───────────────────────────
+{render_src}
+# ───────────────────────────────────────────────────────────────────────
+
+root = Path(__file__).resolve().parents[1]
+plot_params = {params_repr}
+
+df = pd.read_csv(root / "inputs" / "data.csv")
+fig = Figure(figsize=(12, 10))
+ax = fig.add_subplot(111)
+render_comparison_dot(ax, df, plot_params)
 fig.tight_layout()
 fig.savefig(root / "outputs" / "{source_stem}.png", dpi=300, bbox_inches="tight")
 fig.savefig(root / "outputs" / "{source_stem}.pdf", bbox_inches="tight")

@@ -12,14 +12,7 @@ GUI = Path(__file__).resolve().parents[1] / "src" / "gui"
 BUNDLE_EXPORT = Path(__file__).resolve().parents[1] / "src" / "utils" / "figure_bundle_export.py"
 
 # Remove entries as bundle support is added.
-KNOWN_GAPS = {
-    "PadjHistogramDialog",
-    "DotPlotDialog",
-    "ChromVARDialog",
-    "MotifEnrichmentDialog",
-    "TFFootprintDialog",
-    "TSSDistanceDialog",
-}
+KNOWN_GAPS = set()
 
 
 def _base_plot_dialogs():

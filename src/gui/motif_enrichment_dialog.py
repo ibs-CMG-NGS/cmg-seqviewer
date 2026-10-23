@@ -96,72 +96,46 @@ class MotifEnrichmentDialog(BasePlotDialog):
 
     # ── Plot ──────────────────────────────────────────────────────────────
 
-    def _do_plot(self):
-        self.figure.clear()
-
+    def get_plot_params(self) -> dict:
+        labels = {'single': self.dataset.name}
         if self.dataset_down is not None:
-            self._plot_comparison()
-        else:
-            self._plot_single()
+            labels = {'UP': self.dataset.name, 'DOWN': self.dataset_down.name}
+        return {
+            'top_n': self._top_n.value(),
+            'qval_cutoff': self._qval_cutoff.value(),
+            'show_pct': self._show_pct.isChecked(),
+            'comparison': self.dataset_down is not None,
+            'labels': labels,
+            'dataset_name': self.dataset.name,
+        }
 
-    def _plot_single(self):
-        """단일 결과 — 가로 막대 그래프."""
-        df = self._prepare(self.dataset.dataframe)
-        if df is None or df.empty:
-            ax = self.figure.add_subplot(111)
-            ax.text(0.5, 0.5, "No significant motifs found\n(check q-value cutoff)",
-                    ha="center", va="center", fontsize=12)
-            return
+    def _bundle_df(self) -> pd.DataFrame:
+        df = self.dataset.dataframe.copy()
+        if self.dataset_down is None:
+            return df
+        up = df.assign(direction='UP')
+        down = self.dataset_down.dataframe.copy().assign(direction='DOWN')
+        return pd.concat([up, down], ignore_index=True)
 
-        ax = self.figure.add_subplot(111)
-        y = np.arange(len(df))
-        bars = ax.barh(y, df[SC.MOTIF_LOG_PVALUE], color="#4e79a7", alpha=0.85, height=0.7)
-
-        ax.set_yticks(y)
-        ax.set_yticklabels(df[SC.MOTIF_NAME], fontsize=8)
-        ax.invert_yaxis()
-        ax.set_xlabel("-log₁₀(p-value)")
-        ax.set_title(self.dataset.name)
-
-        # % 오버레이
-        if self._show_pct.isChecked() and SC.TARGET_PCT in df.columns:
-            ax2 = ax.twiny()
-            ax2.barh(y, df[SC.TARGET_PCT], color="#e15759", alpha=0.3, height=0.7)
-            ax2.set_xlabel("% of target peaks", color="#e15759")
-            ax2.tick_params(axis="x", colors="#e15759")
-
-        # 유의성 표시 (q-value 컷오프 통과 개수)
-        n_sig = (df[SC.MOTIF_QVALUE] <= self._qval_cutoff.value()).sum() if SC.MOTIF_QVALUE in df.columns else len(df)
-        ax.set_title(f"{self.dataset.name}  (n={len(df)}, q≤{self._qval_cutoff.value():.3f}: {n_sig})")
-
+    def _do_plot(self):
+        from plots.motif_enrichment import render_motif_enrichment
+        self.figure.clear()
+        render_motif_enrichment(self.figure, self._bundle_df(), self.get_plot_params())
         self.figure.tight_layout()
 
-    def _plot_comparison(self):
-        """UP / DOWN 나란히 비교."""
-        df_up = self._prepare(self.dataset.dataframe)
-        df_dn = self._prepare(self.dataset_down.dataframe)
-
-        axes = self.figure.subplots(1, 2, sharey=False)
-
-        for ax, df, label, color in [
-            (axes[0], df_up, self.dataset.name, "#e15759"),
-            (axes[1], df_dn, self.dataset_down.name, "#4e79a7"),
-        ]:
-            if df is None or df.empty:
-                ax.text(0.5, 0.5, "No significant motifs",
-                        ha="center", va="center", fontsize=10)
-                ax.set_title(label)
-                continue
-
-            y = np.arange(len(df))
-            ax.barh(y, df[SC.MOTIF_LOG_PVALUE], color=color, alpha=0.85, height=0.7)
-            ax.set_yticks(y)
-            ax.set_yticklabels(df[SC.MOTIF_NAME], fontsize=7)
-            ax.invert_yaxis()
-            ax.set_xlabel("-log₁₀(p-value)")
-            ax.set_title(label)
-
-        self.figure.tight_layout()
+    def get_bundle_context(self) -> dict:
+        params = self.get_plot_params()
+        return {
+            'figure': self.figure,
+            'dataframe': self._bundle_df(),
+            'plot_params': params,
+            'dataset_name': self.dataset.name,
+            'plot_type': 'motif_enrichment',
+            'figure_title': 'TF Motif Enrichment',
+            'figure_slug': 'motif_enrichment',
+            'source_stem': 'motif_enrichment',
+            'notes': 'Generated from cmg-seqviewer TF motif enrichment',
+        }
 
     # ── Helpers ───────────────────────────────────────────────────────────
 

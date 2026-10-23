@@ -162,7 +162,7 @@ docs/
 |------|------|------|
 | [planning/README.md](planning/README.md) | 현재 계획/아카이브 인덱스 | ✅ |
 | [MCP_AGENT_INTEGRATION_PLAN.md](planning/MCP_AGENT_INTEGRATION_PLAN.md) | MCP / AI Agent 연동 | 📝 Phase 0 전 |
-| [FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md](planning/FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md) | Figure bundle handoff (external layout) | 🚧 P2 coverage |
+| [FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md](planning/FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md) | Figure bundle handoff (external layout) | 🚧 P2 validation |
 | [FIGURE_BUNDLE_COVERAGE.md](planning/FIGURE_BUNDLE_COVERAGE.md) | Figure별 bundle export 커버리지 감사 | 📋 감사 |
 | [EXPRESSION_DISTRIBUTION_PLAN.md](planning/EXPRESSION_DISTRIBUTION_PLAN.md) | Expression Distribution | 🚧 Phase 3/v2 |
 | [ATAC_PIPELINE_SEQVIEWER_PACKAGING.md](planning/ATAC_PIPELINE_SEQVIEWER_PACKAGING.md) | ATAC 파이프라인 요구사항 | 🔄 외부 협의 |
