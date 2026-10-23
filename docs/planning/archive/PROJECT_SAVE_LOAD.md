@@ -1,5 +1,8 @@
 # Project Save / Load (`.seqproj`)
 
+> **Archived 2026-10-23** — Implemented (2026-07).<br>
+> This document is kept for historical reference. See [Planning Documentation](../README.md) for current plans.
+
 **Status**: Re-generation model — comparison & integration replay implemented (2026-07).
 
 ## Model: recipe, not data
@@ -9,10 +12,10 @@ source of each dataset (file path or DB id) plus the **parameters** used to deri
 every sheet. On open, the app reloads the sources and **re-runs** those steps to
 rebuild the session.
 
-- **Save** module: [`src/utils/project_io.py`](../../src/utils/project_io.py)
+- **Save** module: [`src/utils/project_io.py`](../../../src/utils/project_io.py)
   (`ProjectIO.build_spec` / `save` / `load`).
 - **Restore** driver: `MainWindow._open_project_path` in
-  [`src/gui/main_window.py`](../../src/gui/main_window.py).
+  [`src/gui/main_window.py`](../../../src/gui/main_window.py).
 
 ### Why re-generation (vs. embedding the data)
 

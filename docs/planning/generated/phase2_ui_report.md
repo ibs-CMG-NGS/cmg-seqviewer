@@ -1,7 +1,7 @@
 # Phase 2 — UI: EnrichmentAnalysisDialog + Worker 재설계 보고서 (G003)
 
 - Date: 2026-09-03 (UTC+09:00) · Repo: `/home/ygkim/cmg-seqviewer`
-- Authority: `docs/planning/ON_GO_ENRICHMENT_IMPLEMENTATION_PLAN.md` v1.1 (§10-2 Phase 2, §8 파일 맵)
+- Authority: `docs/planning/archive/ON_GO_ENRICHMENT_IMPLEMENTATION_PLAN.md` v1.1 (§10-2 Phase 2, §8 파일 맵)
 
 ---
 

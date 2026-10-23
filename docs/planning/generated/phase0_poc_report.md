@@ -1,7 +1,7 @@
 # Phase 0 PoC — GO/KEGG Enrichment Engine Feasibility Verification Report
 
 - Date: 2026-09-02 (UTC+09:00) · Repo: `/home/ygkim/cmg-seqviewer` (no product source modified)
-- Authority: `docs/planning/ON_GO_ENRICHMENT_IMPLEMENTATION_PLAN.md` v1.1 (§10-0 Phase 0, §5 options, §15 verification)
+- Authority: `docs/planning/archive/ON_GO_ENRICHMENT_IMPLEMENTATION_PLAN.md` v1.1 (§10-0 Phase 0, §5 options, §15 verification)
 - All scripts/artifacts: `docs/planning/generated/phase0_poc/` (report: `docs/planning/generated/phase0_poc_report.md`)
 - Env: headless Qt (`QT_QPA_PLATFORM=offscreen`), matplotlib backend Agg; no git/gjc/formatter commands run; `src/`, `test/`, `requirements.txt`, `setup.py`, `*.spec` untouched.
 

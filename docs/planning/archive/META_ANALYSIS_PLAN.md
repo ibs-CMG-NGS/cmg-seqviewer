@@ -1,5 +1,8 @@
 # 전사체 메타 분석 — CMG-SeqViewer 기능 확장 계획
 
+> **Archived 2026-10-23** — Completed (2026-07).<br>
+> This document is kept for historical reference. See [Planning Documentation](../README.md) for current plans.
+
 > 이 문서는 세션 중 plan 파일에 작성했다가 이후 다른 계획으로 덮어써진 메타 분석 계획을
 > 영구 보존용으로 복원한 것이다. (plan 파일은 계획마다 덮어써지므로 durable 위치에 저장)
 

@@ -62,7 +62,7 @@
 - New planning documents:
   - `docs/planning/MCP_AGENT_INTEGRATION_PLAN.md`
   - `docs/planning/EXPRESSION_DISTRIBUTION_PLAN.md`
-  - `docs/planning/EXPRESSION_DISTRIBUTION_ANALYSIS_TEAM_REQUEST.md`
+  - `docs/planning/archive/EXPRESSION_DISTRIBUTION_ANALYSIS_TEAM_REQUEST.md`
 
 ## Upgrade notes
 

@@ -1,9 +1,12 @@
 # CMG-SeqViewer — Figure Bundle Export System (Reproducible Export)
 
+> **Archived 2026-10-23** — Implemented (2026-07-09).<br>
+> This document is kept for historical reference. See [Planning Documentation](../README.md) for current plans.
+
 **Status**: ✅ **Implemented** (2026-07-09)
 **Author**: Implementation Log
 **Scope**: Bundle export architecture + Volcano plot pilot + Regeneration scripts
-**Reference**: [FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md](FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md) (Phase 4 - export-to-script + provenance)
+**Reference**: [FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md](../FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md) (Phase 4 - export-to-script + provenance)
 
 ---
 
@@ -570,7 +573,7 @@ $ figure-atlas ingest --bundle volcano_plot_bundle
 
 | 문서 | 링크 |
 |---|---|
-| 상위 계획 | [FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md](FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md) |
+| 상위 계획 | [FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md](../FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md) |
 | P1 구현 | [FIGURE_QUALITY_P1_IMPLEMENTATION.md](FIGURE_QUALITY_P1_IMPLEMENTATION.md) |
 | 테스트 코드 | `test/test_figure_bundle_export.py` |
 | 모듈 코드 | `src/utils/figure_bundle_export.py` |

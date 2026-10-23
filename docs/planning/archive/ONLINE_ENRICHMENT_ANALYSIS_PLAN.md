@@ -1,5 +1,8 @@
 # On-line Enrichment Analysis Integration Plan
 
+> **Archived 2026-10-23** — Implemented (v1.3.x).<br>
+> This document is kept for historical reference. See [Planning Documentation](../README.md) for current plans.
+
 ## Executive Summary
 
 현재 CMG-SeqViewer는 DESeq2/limma/EdgeR 등 외부 분석 결과(`final_go_result.xlsx`)를 불러와 검색·필터·시각화에 활용하고, clustering 정도만 on-line 분석으로 제공한다. DEG 리스트와 GO/KEGG 결과가 모두 사전 확정된 상황이라 활용 유연성이 제한적이다.

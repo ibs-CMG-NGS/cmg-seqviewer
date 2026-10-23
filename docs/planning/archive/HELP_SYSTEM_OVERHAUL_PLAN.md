@@ -1,5 +1,8 @@
 # F1 도움말 시스템 전면 개편 — 검토 및 실행 계획
 
+> **Archived 2026-10-23** — Completed (2026-09).<br>
+> This document is kept for historical reference. See [Planning Documentation](../README.md) for current plans.
+
 - Date: 2026-09-03 (UTC+09:00) · Repo: `/home/ygkim/cmg-seqviewer`
 - 상태: 검토 완료 → 도입 실행 (본 문서는 계획 + 이행 로그)
 
@@ -32,7 +35,7 @@
 
 ## 3. 이행 단계
 
-1. `docs/planning/HELP_SYSTEM_OVERHAUL_PLAN.md` (본 문서) — 검토/설계/수용기준.
+1. `docs/planning/archive/HELP_SYSTEM_OVERHAUL_PLAN.md` (본 문서) — 검토/설계/수용기준.
 2. 뷰어 재작성: `src/gui/help_dialog.py` (TOC+검색+setMarkdown, 기존 `HelpDialog(parent)` 시그니처 유지).
 3. HTML→MD 이관 스크립트로 `docs/user/help/NN-slug.md` 18개 생성 (내용 보존 우선).
 4. spec 3종 datas 추가.

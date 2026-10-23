@@ -42,11 +42,13 @@ docs/
 │   └── README.md
 │
 ├── planning/          # 기획 문서
-│   ├── ATAC_SEQ_INTEGRATION_PLAN.md
-│   ├── ONLINE_ENRICHMENT_ANALYSIS_PLAN.md
-│   ├── dataset-tree-panel.md
-│   ├── multi-group-heatmap.md
-│   ├── header-standardization.md
+│   ├── MCP_AGENT_INTEGRATION_PLAN.md
+│   ├── FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md
+│   ├── EXPRESSION_DISTRIBUTION_PLAN.md
+│   ├── ATAC_PIPELINE_SEQVIEWER_PACKAGING.md
+│   ├── RNA_PIPELINE_SEQVIEWER_PACKAGING.md
+│   ├── external_pipeline_requirements.md
+│   ├── archive/              # 완료/대체된 계획
 │   └── README.md
 │
 └── archive/           # 보관 문서
@@ -107,11 +109,13 @@ docs/
 ### 📋 기획자
 
 **미래 계획**
-- [ATAC-seq 통합 계획](planning/ATAC_SEQ_INTEGRATION_PLAN.md) - 멀티오믹스 로드맵
-- [온라인 GO/KEGG 분석](planning/ONLINE_ENRICHMENT_ANALYSIS_PLAN.md) - 온디맨드 농축 분석
-- [Dataset Tree Panel](planning/dataset-tree-panel.md) - UI 개선 계획
-- [Multi-Group Heatmap](planning/multi-group-heatmap.md) - 다중 그룹 분석 계획
-- [헤더 표준화 제안](planning/header-standardization.md) - 컬럼 매핑 개선 방향
+- [기획 문서 인덱스](planning/README.md) - 현재 계획/아카이브 상태
+- [MCP / AI Agent 연동](planning/MCP_AGENT_INTEGRATION_PLAN.md) - headless MCP 계획
+- [Figure 품질·재현성](planning/FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md) - P2–P3 계획
+- [Expression Distribution](planning/EXPRESSION_DISTRIBUTION_PLAN.md) - Phase 3/v2 계획
+- [ATAC 파이프라인 패키징](planning/ATAC_PIPELINE_SEQVIEWER_PACKAGING.md) - 외부 파이프라인 요구사항
+- [RNA 파이프라인 패키징](planning/RNA_PIPELINE_SEQVIEWER_PACKAGING.md) - 외부 파이프라인 요구사항
+- [완료된 계획 아카이브](planning/archive/README.md)
 
 ---
 
@@ -155,11 +159,14 @@ docs/
 ### 기획 문서
 | 문서 | 설명 | 상태 |
 |------|------|------|
-| [ATAC_SEQ_INTEGRATION_PLAN.md](planning/ATAC_SEQ_INTEGRATION_PLAN.md) | ATAC-seq 통합 계획 | ✅ 완료 |
-| [ONLINE_ENRICHMENT_ANALYSIS_PLAN.md](planning/ONLINE_ENRICHMENT_ANALYSIS_PLAN.md) | 온라인 GO/KEGG 농축 분석 계획 | 📝 계획 |
-| [dataset-tree-panel.md](planning/dataset-tree-panel.md) | Dataset Tree Panel 구현 계획 | 📝 계획 |
-| [multi-group-heatmap.md](planning/multi-group-heatmap.md) | Multi-Group Heatmap 계획 | 📝 계획 |
-| [header-standardization.md](planning/header-standardization.md) | 헤더 표준화 제안 | 📝 계획 |
+| [planning/README.md](planning/README.md) | 현재 계획/아카이브 인덱스 | ✅ |
+| [MCP_AGENT_INTEGRATION_PLAN.md](planning/MCP_AGENT_INTEGRATION_PLAN.md) | MCP / AI Agent 연동 | 📝 Phase 0 전 |
+| [FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md](planning/FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md) | Figure 품질·재현성 | 🚧 P2–P3 |
+| [EXPRESSION_DISTRIBUTION_PLAN.md](planning/EXPRESSION_DISTRIBUTION_PLAN.md) | Expression Distribution | 🚧 Phase 3/v2 |
+| [ATAC_PIPELINE_SEQVIEWER_PACKAGING.md](planning/ATAC_PIPELINE_SEQVIEWER_PACKAGING.md) | ATAC 파이프라인 요구사항 | 🔄 외부 협의 |
+| [RNA_PIPELINE_SEQVIEWER_PACKAGING.md](planning/RNA_PIPELINE_SEQVIEWER_PACKAGING.md) | RNA 파이프라인 요구사항 | 🔄 외부 협의 |
+| [external_pipeline_requirements.md](planning/external_pipeline_requirements.md) | Figure-atlas 외부 파이프라인 계약 | 📋 참고 |
+| [archive/README.md](planning/archive/README.md) | 완료/대체된 계획 아카이브 | ✅ |
 
 ### 보관 문서
 | 문서 | 설명 | 상태 |
@@ -276,5 +283,5 @@ docs/
 
 ---
 
-**마지막 업데이트**: 2026-03-01  
-**버전**: v1.2.0 (feature/external-data-folder)
+**마지막 업데이트**: 2026-10-23
+**버전**: v1.4.1

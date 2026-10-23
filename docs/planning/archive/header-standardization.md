@@ -1,5 +1,8 @@
 # 헤더 표준화 제안서
 
+> **Archived 2026-10-23** — Completed (v1.2.0).<br>
+> This document is kept for historical reference. See [Planning Documentation](../README.md) for current plans.
+
 ## 🎯 목표
 복잡한 column mapping 대신, **데이터 로딩 시점에 컬럼명을 표준화**하여 전체 프로그램에서 일관된 컬럼명 사용
 

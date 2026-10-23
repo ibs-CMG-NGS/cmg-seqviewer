@@ -1,7 +1,7 @@
 # Phase 3 — 검증·오프라인·재현성·패키징 보고서 (G004)
 
 - Date: 2026-09-03 (UTC+09:00) · Repo: `/home/ygkim/cmg-seqviewer`
-- Authority: `docs/planning/ON_GO_ENRICHMENT_IMPLEMENTATION_PLAN.md` v1.1 (§10-3)
+- Authority: `docs/planning/archive/ON_GO_ENRICHMENT_IMPLEMENTATION_PLAN.md` v1.1 (§10-3)
 
 ---
 

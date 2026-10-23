@@ -3,7 +3,7 @@
 """
 P0-4: GO/KEGG enrichment converter contract asserts (standalone, no src/ imports).
 
-Implements plan ON_GO_ENRICHMENT_IMPLEMENTATION_PLAN.md v1.1 sections 6.3-6.6:
+Implements plan docs/planning/archive/ON_GO_ENRICHMENT_IMPLEMENTATION_PLAN.md v1.1 sections 6.3-6.6:
   - labels '{direction}_{ontology}'                  (G5)
   - _gene_set from Genes strings via re.split(r'[;/,]') rejoin '/'  (G4/A5)
   - gene_ratio 'k/n', bg_ratio 'M/N'                 (G6)

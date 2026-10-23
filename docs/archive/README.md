@@ -262,3 +262,11 @@ docs: move legacy files to archive/legacy/
 
 **마지막 업데이트**: 2026-03-01  
 **상태**: 문서 재구성 진행 중
+
+---
+
+## 기획 문서 아카이브 (2026-10-23)
+
+완료되었거나 새 계획으로 대체된 기획 문서는
+[planning/archive](../planning/archive/README.md)로 이동했습니다.
+현재 진행 중인 계획은 [planning/README.md](../planning/README.md)에서 확인하세요.

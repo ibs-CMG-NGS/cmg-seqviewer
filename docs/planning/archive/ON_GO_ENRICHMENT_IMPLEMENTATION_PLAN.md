@@ -1,9 +1,12 @@
 # CMG-SeqViewer On-the-Fly GO/KEGG Enrichment Engine — 실행 계획 (RALPLAN-DR, deliberate mode)
 
+> **Archived 2026-10-23** — Implemented (v1.3.x).<br>
+> This document is kept for historical reference. See [Planning Documentation](../README.md) for current plans.
+
 **버전: v1.1 (rev 1)** — Architect/WATCH·Critic(ITERATE) pass 1 리뷰 반영(2026-09-02)
 
 - 대상 repo: `/mnt/c/Users/KimYG/github/cmg-seqviewer` (Python 3.9+, PyQt6, PyInstaller 배포)
-- 참조 문서: `docs/planning/ONLINE_ENRICHMENT_ANALYSIS_PLAN.md` (G1~G16 갭 분석)
+- 참조 문서: `docs/planning/archive/ONLINE_ENRICHMENT_ANALYSIS_PLAN.md` (G1~G16 갭 분석)
 - 상태: **승인됨 (2026-09-02)** — ralplan 합의 완료 (Architect CLEAR/APPROVE · Critic OKAY). 실행은 ultragoal(Phase 0 PoC)부터.
 
 ---

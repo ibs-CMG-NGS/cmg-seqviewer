@@ -1,5 +1,8 @@
 # ATAC-seq 3차 파이프라인 — SeqViewer 패키징 개선 요구사항
 
+> **Status (2026-10-23)**: Open external-pipeline coordination.
+> Viewer-side defensive handling is implemented; the remaining items require pipeline-side packaging changes.
+
 ## 배경
 
 `2026-ljh-hiy-human-atac`(human) 결과를 CMG-SeqViewer Database Browser로 들여오는 과정에서

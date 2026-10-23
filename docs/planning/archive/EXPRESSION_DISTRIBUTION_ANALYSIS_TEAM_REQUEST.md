@@ -1,8 +1,11 @@
 # [요청] cmg-seqviewer expression_distribution (violin/box) 번들 export 및 pilot 데이터
 
+> **Archived 2026-10-23** — Completed (pilot 2026-10-22; implemented in v1.4.1).<br>
+> This document is kept for historical reference. See [Planning Documentation](../README.md) for current plans.
+
 - **수신**: scRNA-seq 3차 분석 파이프라인 담당
 - **발신**: cmg-seqviewer 개발팀
-- **관련 계획**: [Expression Distribution Plan](EXPRESSION_DISTRIBUTION_PLAN.md)
+- **관련 계획**: [Expression Distribution Plan](../EXPRESSION_DISTRIBUTION_PLAN.md)
 - **목적**: mean/pct 집계만으로는 알 수 없는 cell type별 발현 분포(violin/box)를
   viewer에서 보여주기 위한 `expression_distribution` 번들 export 요청 및 스키마 확인
 
@@ -123,7 +126,7 @@ gene_id, cell_id, cell_type, dataset, sample, expression, counts
 - cell-level은 `CellLevelStore`로 등록하고 전체 pandas 로드 금지
 - UI: `Visualization → 🧬 Single-cell RNA-seq → 🎻 Gene Expression Distribution`
 - 구현 후 `cmg-seqviewer-cli load <file> --type expression_distribution --json`으로
-  bundle 검증을 제공할 예정입니다. (현재는 미구현)
+  bundle 검증을 제공합니다. (v1.4.1에서 구현됨)
 
 ## 7. 다음 단계
 

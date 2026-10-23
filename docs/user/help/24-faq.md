@@ -84,7 +84,7 @@ F1 opens the viewer that renders `docs/user/help/*.md` (one file per section,
 English). Edit the markdown files directly; images live in
 `docs/user/help/assets/`. The long-form documentation is
 `docs/user/user-guide.md`. See the **README/planning** docs for the overhaul
-design (`docs/planning/HELP_SYSTEM_OVERHAUL_PLAN.md`).
+design (`docs/planning/archive/HELP_SYSTEM_OVERHAUL_PLAN.md`).
 
 ## 24.12 Can I run CMG-SeqViewer without opening the GUI — e.g. on a server?
 

@@ -1,7 +1,11 @@
 # Phase 1 — Code-Level Implementation Plan
+
+> **Archived 2026-10-23** — Implemented (2026-06-05).<br>
+> This document is kept for historical reference. See [Planning Documentation](../README.md) for current plans.
+
 ### 중앙 테마 + 정확한 Export + 팔레트
 
-**Parent**: [FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md](FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md)
+**Parent**: [FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md](../FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md)
 **Status**: ✅ Implemented (2026-06-05)
 **Scope**: P1만. P2(FigureSpec/프리셋/round-trip)는 별도.
 
@@ -238,7 +242,7 @@ class FigureStylePanel(QWidget):
 
 ## 5. 설정 영속화 (QSettings)
 
-앱은 이미 `QSettings("RNASeqDataView", "MainWindow")`([main_window.py:68](../../src/gui/main_window.py#L68)) 사용. P1 기본값을 같은 store에 저장:
+앱은 이미 `QSettings("RNASeqDataView", "MainWindow")`([main_window.py:68](../../../src/gui/main_window.py#L68)) 사용. P1 기본값을 같은 store에 저장:
 
 | 키 | 값 | 기본 |
 |---|---|---|

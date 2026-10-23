@@ -1,5 +1,8 @@
 # PLAN: Multi-Group Heatmap & Clustering Feature
 
+> **Archived 2026-10-23** — Completed (v1.2.1).<br>
+> This document is kept for historical reference. See [Planning Documentation](../README.md) for current plans.
+
 **Created**: 2026-04-10  
 **Status**: Implemented (v1.2.1)  
 **Branch**: `feat/atac-seq-support` → merged via v1.2.1 release
@@ -212,5 +215,5 @@ gene_id, gene_symbol, baseMean, stat, pvalue, padj, log2FC, lfcSE
 
 ## 8. 관련 문서
 
-- [PLAN_DATASET_TREE_PANEL.md](PLAN_DATASET_TREE_PANEL.md) — Dataset Tree Panel 구현 계획
-- [RECENT_UPDATES.md](RECENT_UPDATES.md) — 릴리즈 노트
+- [PLAN_DATASET_TREE_PANEL.md](dataset-tree-panel.md) — Dataset Tree Panel 구현 계획
+- [RECENT_UPDATES.md](../../archive/recent-updates.md) — 릴리즈 노트

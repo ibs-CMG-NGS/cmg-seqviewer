@@ -1,8 +1,8 @@
 # Phase 4 — M4b 메타 연동 (GSEA prerank) 보고서 (G005)
 
 - Date: 2026-09-03 (UTC+09:00) · Repo: `/home/ygkim/cmg-seqviewer`
-- Authority: `docs/planning/ON_GO_ENRICHMENT_IMPLEMENTATION_PLAN.md` v1.1 (§10-4) +
-  `docs/planning/META_ANALYSIS_PLAN.md` M4b (meta-signature → enrichment, early aggregation)
+- Authority: `docs/planning/archive/ON_GO_ENRICHMENT_IMPLEMENTATION_PLAN.md` v1.1 (§10-4) +
+  `docs/planning/archive/META_ANALYSIS_PLAN.md` M4b (meta-signature → enrichment, early aggregation)
 
 ---
 

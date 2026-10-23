@@ -1,5 +1,8 @@
 # Plan: Dataset Tree Panel
 
+> **Archived 2026-10-23** — Completed (v1.2.1).<br>
+> This document is kept for historical reference. See [Planning Documentation](../README.md) for current plans.
+
 **목적**: 상단 가로형 콤보박스 방식의 Dataset 선택 UI를 좌측 세로 트리 패널로 교체.  
 각 Dataset을 루트 노드로, 파생된 Filtered/Comparison/Clustered sheet를 child 노드로 표시.  
 트리에서 노드를 클릭하면 해당 탭이 활성화되고, 탭을 전환하면 트리 선택도 동기화된다.  

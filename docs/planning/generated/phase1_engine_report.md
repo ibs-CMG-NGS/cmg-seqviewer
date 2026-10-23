@@ -1,7 +1,7 @@
 # Phase 1 — Enrichment Engine: 모듈 구현 보고서 (G002)
 
 - Date: 2026-09-03 (UTC+09:00) · Repo: `/home/ygkim/cmg-seqviewer`
-- Authority: `docs/planning/ON_GO_ENRICHMENT_IMPLEMENTATION_PLAN.md` v1.1 (§10-1 Phase 1, §8 파일 맵, §11 G 해소, §12 테스트)
+- Authority: `docs/planning/archive/ON_GO_ENRICHMENT_IMPLEMENTATION_PLAN.md` v1.1 (§10-1 Phase 1, §8 파일 맵, §11 G 해소, §12 테스트)
 - 기준: Phase 0 PoC 게이트 통과 (P0-1..P0-7, ADR-1..5 확정)
 
 ---

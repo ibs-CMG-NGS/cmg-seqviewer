@@ -1,5 +1,8 @@
 # ATAC-seq Integration Plan
 
+> **Archived 2026-10-23** — Completed (Phases 1–3D; v1.2.x).<br>
+> This document is kept for historical reference. See [Planning Documentation](../README.md) for current plans.
+
 ## Status Overview
 
 | Phase | 내용 | 상태 | 버전 |

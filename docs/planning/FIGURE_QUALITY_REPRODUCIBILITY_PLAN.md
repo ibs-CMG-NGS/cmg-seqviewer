@@ -1,9 +1,9 @@
 # CMG-SeqViewer — Publication-Quality Figure & Reproducibility Plan
 
-**Status**: � **Partially Implemented** (P4 bundle export ✅, P1–P3 in progress)
+**Status**: **Partially implemented** — P1 + P4 done; P2–P3 planned
 **Author**: design note + implementation log
 **Scope**: figure 품질(논문/발표용) 세밀 제어 + 그리는 과정의 재현성·재사용성
-**목적**: 포괄적 설계도 + 구현 추적. 최근 업데이트: [BUNDLE_EXPORT_IMPLEMENTATION.md](BUNDLE_EXPORT_IMPLEMENTATION.md) (P4 완료)
+**목적**: 포괄적 설계도 + 구현 추적. 최근 업데이트: [BUNDLE_EXPORT_IMPLEMENTATION.md](archive/BUNDLE_EXPORT_IMPLEMENTATION.md) (P4 완료)
 
 ---
 
@@ -36,7 +36,7 @@ Prism/Origin 내부도 "프로젝트 = 데이터 + 스타일 상태"다. spec을
 
 | Phase | 주제 | 난이도 | 효과 | 상태 |
 |---|---|---|---|---|
-| **P1** | 중앙 테마 + 정확한 export(단위/DPI/편집가능 벡터) + 팔레트 | 낮음 | 매우 큼 | 📋 계획 중 |
+| **P1** | 중앙 테마 + 정확한 export(단위/DPI/편집가능 벡터) + 팔레트 | 낮음 | 매우 큼 | ✅ 완료 (2026-06-05) |
 | **P2** | `FigureSpec` 직렬화 + 스타일 프리셋(저장/적용/전체적용) + export에 spec 임베드(round-trip) | 중간 | 큼 | 📋 계획 중 |
 | **P3** | 유의성/주석 레이어 일반화 + 멀티패널 합성(A/B/C) + 배치 export | 중간 | 큼 | 📋 계획 중 |
 | **P4** | export-to-script + provenance 메타데이터 + 템플릿 갤러리 | 중상 | 중(신뢰·재현 가치) | ✅ **구현 완료** |
@@ -127,7 +127,7 @@ Prism/Origin 내부도 "프로젝트 = 데이터 + 스타일 상태"다. spec을
 **목표:** 재현성의 최상위(앱 밖 재현, 감사 추적), 신규 사용자 온보딩.
 
 **상태**: ✅ **Export-to-Script + Provenance 구현 완료** (2026-07-09)
-- 참고: [BUNDLE_EXPORT_IMPLEMENTATION.md](BUNDLE_EXPORT_IMPLEMENTATION.md)
+- 참고: [BUNDLE_EXPORT_IMPLEMENTATION.md](archive/BUNDLE_EXPORT_IMPLEMENTATION.md)
 
 ### 구현 완료 항목
 
@@ -188,8 +188,8 @@ P4는 P2(렌더러 순수화) 위에서 가장 매끄럽다.
 - ✅ 수정: `src/gui/visualization_dialog.py` (VolcanoPlotWidget에 `get_bundle_context()` + `_export_figure_bundle()`)
 - ✅ 수정: `src/gui/main_window.py` (메뉴 File → Export Figure Bundle + `_on_export_figure_bundle()`)
 - ✅ 신규: `test/test_figure_bundle_export.py` (3개 테스트 케이스)
-- 📄 신규: `docs/planning/BUNDLE_EXPORT_IMPLEMENTATION.md` (상세 구현 문서)
+- 📄 신규: `docs/planning/archive/BUNDLE_EXPORT_IMPLEMENTATION.md` (상세 구현 문서)
 
-### P1–P3 계획 (미구현)
+### P2–P3 계획 (미구현)
 - 신규: `utils/figure_theme.py`, `utils/figure_export.py`, `models/figure_spec.py`, `utils/style_presets.py`, `utils/figure_annotations.py`, `gui/figure_layout_dialog.py`, `utils/figure_batch.py`, `gui/widgets/figure_style_panel.py`
 - 수정(점진): `src/gui/*_dialog.py` 13종(공용 패널·export·렌더러 적용), `src/utils/project_io.py`(style 블록), `src/gui/main_window.py`(메뉴: Figure Layout, Batch Export, Open Figure; Plot Settings Dock 연계)

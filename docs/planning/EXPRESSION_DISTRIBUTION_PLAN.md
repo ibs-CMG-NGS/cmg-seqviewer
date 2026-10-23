@@ -1,9 +1,9 @@
 # Expression Distribution (Violin/Box) Plan
 
-- **상태**: pilot 회신 완료, `feat/expression-distribution`에서 v1 구현 중
-- **목표 버전**: v1.4.1 (별도 `expression_distribution` 타입)
+- **상태**: **v1.4.1 릴리스 완료** (pseudobulk/quantile v1); Phase 3 cell-level / v2 lazy query는 미착수
+- **목표 버전**: v1.4.1 (released); Phase 3/v2는 이후
 - **작성일**: 2026-10-22
-- **관련 문서**: [Expression Distribution 도움말](../user/help/21-expression-distribution.md) · [Expression Summary](../user/help/22-expression-summary.md) · [파이프라인 연동](../developer/pipeline-integration.md) · [분석팀 요청 초안](EXPRESSION_DISTRIBUTION_ANALYSIS_TEAM_REQUEST.md)
+- **관련 문서**: [Expression Distribution 도움말](../user/help/21-expression-distribution.md) · [Expression Summary](../user/help/22-expression-summary.md) · [파이프라인 연동](../developer/pipeline-integration.md) · [분석팀 요청 초안](archive/EXPRESSION_DISTRIBUTION_ANALYSIS_TEAM_REQUEST.md)
 
 ---
 
@@ -30,7 +30,7 @@
 - 조건 간 통계 검정은 pseudobulk DE 결과를 별도로 사용한다 (이 뷰는 descriptive).
 - 전체 57k gene은 lazy query/전달 크기 협의 후 결정한다.
 
-### 0.1 Implementation status (`feat/expression-distribution`)
+### 0.1 Implementation status (v1.4.1 released)
 
 - ✅ `DatasetType.EXPRESSION_DISTRIBUTION` + alias
 - ✅ pseudobulk/quantile loader (`expression_distribution_loader.py`)
@@ -41,6 +41,7 @@
 - ✅ violin/box/strip + condition/dataset/sample grouping dialog
 - ✅ Export Data / Export Bundle / Pin to Tab
 - ✅ F1 help section 21 + pipeline integration §9.9
+- ✅ v1.4.1 release (2026-10-23)
 - ⏳ cell-level on-demand store (Phase 3)
 - ⏳ full-atlas lazy DuckDB query (v2)
 
@@ -235,7 +236,7 @@ Dialog:
 
 ## 10. Analysis Team Confirmation
 
-상세 요청은 [분석팀 요청 초안](EXPRESSION_DISTRIBUTION_ANALYSIS_TEAM_REQUEST.md)에 정리했다.
+상세 요청은 [분석팀 요청 초안](archive/EXPRESSION_DISTRIBUTION_ANALYSIS_TEAM_REQUEST.md)에 정리했다.
 핵심 확인 항목:
 
 1. HypoMap의 **sample/replicate 정의** (donor/replicate vs 18 datasets)
@@ -251,34 +252,33 @@ Dialog:
 
 ## 11. Phases & Estimates
 
-| Phase | 내용 | 선행 조건 | 예상 |
-|---|---|---|---|
-| 0 | 분석팀 회신 + pilot bundle + schema 확정 | 분석팀 확인 | 1주 |
-| 1 | `expression_distribution` 타입 + pseudobulk/quantile loader + DuckDB service | pilot | 1–2주 |
-| 2 | Violin/box/strip renderer + dialog + gene/cell type/group UI | Phase 1 | 1–2주 |
-| 3 | cell-level store + on-demand query + downsampling | cell-level pilot | 2–3주 |
-| 4 | Export/Bundle/Pin, F1 help, pipeline docs, tests | Phase 2 | 1주 |
+| Phase | 내용 | 상태 |
+|---|---|---|
+| 0 | 분석팀 회신 + pilot bundle + schema 확정 | ✅ 완료 (2026-10-22) |
+| 1 | `expression_distribution` 타입 + pseudobulk/quantile loader + manifest/DB/CLI | ✅ v1.4.1 |
+| 2 | Violin/box/strip renderer + dialog + gene/cell type/group UI | ✅ v1.4.1 |
+| 3 | cell-level store + on-demand query + downsampling | ⏳ 미착수 |
+| 4 | Export/Bundle/Pin, F1 help, pipeline docs, tests | ✅ v1.4.1 |
 
-Phase 1–2만으로 pseudobulk/quantile 분포 뷰를 먼저 출시하고,
-cell-level true violin은 Phase 3로 분리한다.
+Phase 1–2 + 4는 v1.4.1에 출시되었다. cell-level true violin은 Phase 3,
+full-atlas lazy query는 v2로 분리한다.
 
 ## 12. Testing & Docs
 
-- `test_distribution_service.py`: pseudobulk/quantile/cell-level query, 필터, downsample
-- `test_expression_distribution_dialog.py`: violin/box 모드, gene/cell type 선택, 상태 복원
-- `test_plots_expression_violin.py`: Agg 렌더 smoke
-- manifest/DB import 테스트
-- F1 도움말 신규 섹션 (Tips/FAQ 앞), `pipeline-integration.md`에 `distribution_schema` 규격 추가
-- 성능 테스트: 1M-row synthetic store에서 선택 gene query 시간 측정
+- `test_expression_distribution_loader.py`: pseudobulk/quantile loader, manifest/DB import, companion
+- `test_expression_distribution_dialog.py`: violin/box 모드, gene/cell type 선택, 필터, bundle
+- `test_expression_distribution_plot.py`: Agg 렌더 smoke
+- CLI/help 테스트
+- F1 도움말 21번 섹션, `pipeline-integration.md` §9.9
+- ⏳ 성능 테스트: 1M-row synthetic store에서 선택 gene query 시간 측정
 
 ## 13. Decisions / Next Actions
 
-- 확정 필요:
+- 확정됨:
   - `expression_distribution` 타입명
   - `distribution_schema` 필드명
-  - DuckDB optional extra 여부
-- 분석팀 회신 1·2·5·9번이 확정되면 pilot bundle 스펙 고정
+  - pseudobulk/quantile v1 범위
 - 다음 액션:
-  1. 분석팀에 [요청 초안](EXPRESSION_DISTRIBUTION_ANALYSIS_TEAM_REQUEST.md) 전달
-  2. pilot bundle 수령 후 Phase 1 schema 확정
-  3. viewer 구현 착수
+  1. 분석팀과 full-atlas export 범위(전체 gene vs panel) 협의
+  2. Phase 3 cell-level pilot bundle 협의
+  3. full-atlas lazy DuckDB query(v2) 설계
