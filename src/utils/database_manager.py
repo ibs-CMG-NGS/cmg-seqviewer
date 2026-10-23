@@ -236,6 +236,8 @@ def _detect_expression_distribution_bundle(datasets_dir: Path, filename: str, df
     """manifest 없이 `*_pseudobulk.parquet` + companion 세트를 자동 감지한다."""
     if not filename.endswith('_pseudobulk.parquet'):
         return None, []
+    if not {'gene_id', 'cell_type', 'sample', 'mean_expression'}.issubset(df.columns):
+        return None, []
     prefix = filename[:-len('_pseudobulk.parquet')]
     companions = {
         'gene_index': f'{prefix}_gene_index.parquet',
