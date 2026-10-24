@@ -53,6 +53,7 @@ def test_export_figure_bundle_creates_required_files(tmp_path):
     assert "output_formats:" in metadata
     assert "outputs/demo_figure.png" in metadata
     assert "statistics_tables: []" in metadata
+    assert "app_version: unknown" not in metadata
 
     manifest = json.loads((bundle_dir / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["status"] == "ok"

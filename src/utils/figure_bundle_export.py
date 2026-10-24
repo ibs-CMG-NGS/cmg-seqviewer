@@ -146,6 +146,22 @@ def export_figure_bundle(
     return bundle_dir
 
 
+def _app_version() -> str:
+    try:
+        from importlib.metadata import version
+        return version("rna-seq-data-analyzer")
+    except Exception:
+        pass
+    try:
+        init = Path(__file__).resolve().parents[1] / "__init__.py"
+        for line in init.read_text(encoding="utf-8").splitlines():
+            if line.startswith("__version__"):
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return "unknown"
+
+
 def _build_metadata_yaml(
     *,
     figure_slug: str,
@@ -162,10 +178,7 @@ def _build_metadata_yaml(
     has_statistics: bool,
 ) -> str:
     now = datetime.now(timezone.utc).isoformat()
-    try:
-        from src import __version__ as app_version
-    except Exception:
-        app_version = "unknown"
+    app_version = _app_version()
     lines = [
         "figure_id: " + figure_slug,
         "figure_number: " + _yaml_quote(figure_number or ""),
