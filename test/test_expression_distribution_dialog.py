@@ -1,6 +1,8 @@
 """ExpressionDistributionDialog smoke tests (pytest-qt)."""
 
 import json
+import subprocess
+import sys
 
 import pandas as pd
 
@@ -114,6 +116,10 @@ def test_bundle_script_is_generated(qtbot, tmp_path):
     script = (out / "scripts" / "figure.py").read_text(encoding="utf-8")
     assert "render_expression_distribution" in script
     assert "_GROUP_COLORS" in script
+    result = subprocess.run(
+        [sys.executable, str(out / "scripts" / "figure.py")],
+        capture_output=True, text=True, cwd=str(out))
+    assert result.returncode == 0, result.stderr
 
 
 def test_empty_gene_or_cell_type_selection_shows_placeholder(qtbot):
