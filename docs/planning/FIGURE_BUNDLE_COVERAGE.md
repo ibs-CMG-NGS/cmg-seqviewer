@@ -119,8 +119,7 @@ handed off.
 
 ## 7. fig-atlas contract notes / open items
 
-Resolved by the 2026-10-23 fig-atlas reply and the `export_fig_atlas_bundle()`
-path:
+Resolved by the fig-atlas replies and the `export_fig_atlas_bundle()` path:
 
 - `plot_type` uses registered fig-atlas names (see §5).
 - `plot_params` carries the column roles and thresholds.
@@ -129,6 +128,11 @@ path:
 - `statistics_tables: []` is accepted when only design cut-off lines are drawn.
 - The fig-atlas bundle writes one `outputs/<source_stem>.*` set and no script.
 - `claim_boundary` is a sentence about what the panel does and does not support.
+- Histogram bundles send the viewer's bin count (`bins: 50`).
+- chromVAR `volcano` sends only thresholds (no threshold-scatter roles).
+- Expression Distribution uses `hue_col: condition` for grouped violins.
+- Motif colour is significance (`-log10(p)`), with an explicit colourbar label.
+- `fa bundle check` 7/7; `fa lint` reports 0 unread keys after build.
 
 Still open:
 

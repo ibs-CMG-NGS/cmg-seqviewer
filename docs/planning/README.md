@@ -14,6 +14,8 @@
 | [RNA pipeline packaging](RNA_PIPELINE_SEQVIEWER_PACKAGING.md) | Requirements for the external RNA-seq 3rd-party pipeline | External coordination | Pipeline-side metadata/manifest fields |
 | [External pipeline requirements](external_pipeline_requirements.md) | Figure-atlas external pipeline contract | Reference | Maintained with pipeline teams |
 | [Figure-atlas handoff checklist](FIGURE_ATLAS_HANDOFF_CHECKLIST.md) | Bundle ingest/metadata/FigureSpec confirmation items | Review | Send with the sample ZIP |
+| [fig-atlas reply 2026-10-24](FIGURE_ATLAS_REPLY_2026-10-24.md) | Second contract review: four exporter changes + remaining mappings | Review | Applied; 7/7 check |
+| [cmg response 2026-10-24](FIGURE_ATLAS_RESPONSE_2026-10-24.md) | Changes applied + validation + 22-type mapping request | Draft | Send to fig-atlas |
 
 ## Recently retired
 

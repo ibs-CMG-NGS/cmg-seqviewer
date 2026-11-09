@@ -77,8 +77,9 @@ fig-atlas contract mapping is implemented for the 7 sample shapes:
 `histogram` (2), `motif_dotplot`, `threshold_scatter`,
 `cross_condition_dotplot`, `volcano`, and `violin`. The updated samples pass
 `fa bundle check` **7/7**, ingest into a temporary project **7/7**, and pass
-`fa build --preflight` / `fa verify`. The other 22 plot types still need a
-fig-atlas `plot_type` mapping.
+`fa build --preflight` / `fa verify`; `fa lint` reports 0 unread keys. The second
+review's four changes (bins, chromVAR roles, grouped violin, motif colour label)
+are applied. The other 22 plot types still need a fig-atlas `plot_type` mapping.
 
 ### 3.2 Work items
 

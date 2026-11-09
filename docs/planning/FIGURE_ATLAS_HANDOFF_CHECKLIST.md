@@ -70,8 +70,11 @@ Verification after the exporter update:
 
 Resolved in the 2026-10-24 reply:
 
-- Switch `expression_distribution` to grouped violins (`x_col: cell_type`,
-  `hue_col: condition`, `hue_order`).
+- `01_padj_histogram` sends `bins: 50`.
+- `06_chromvar` sends only `log2fc_threshold` / `padj_threshold` (unread
+  threshold-scatter role keys removed).
+- `07_expression_distribution` uses grouped violins:
+  `x_col: cell_type`, `hue_col: condition`, `hue_order`.
 - `threshold_scatter` identity line is available; the TF footprint sample sets
   `show_identity_line: true`.
 - `motif_enrichment` colour is **significance** (`-log10(p)`), not log2 fold
@@ -111,9 +114,8 @@ Each bundle contains:
 
 fig-atlas reads only `inputs/data.csv` and `metadata/metadata.yaml`. The ZIP
 root also contains `README.md`, `index.json`, `SHA256SUMS`,
-`FIGURE_ATLAS_HANDOFF_CHECKLIST.md`, `FIGURE_ATLAS_REPLY_2026-10-23.md`,
-`FIGURE_ATLAS_REPLY_2026-10-24.md`, `FA_BUNDLE_CHECK.txt`, and
-`FA_ACCEPTANCE.md`.
+`FIGURE_ATLAS_HANDOFF_CHECKLIST.md`, `FIGURE_ATLAS_REPLY_2026-10-24.md`,
+`FA_BUNDLE_CHECK.txt`, and `FA_ACCEPTANCE.md`.
 
 ## 2. cmg-seqviewer side (already verified)
 
