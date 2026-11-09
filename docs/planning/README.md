@@ -16,6 +16,9 @@
 | [Figure-atlas handoff checklist](FIGURE_ATLAS_HANDOFF_CHECKLIST.md) | Bundle ingest/metadata/FigureSpec confirmation items | Review | Send with the sample ZIP |
 | [fig-atlas reply 2026-10-24](FIGURE_ATLAS_REPLY_2026-10-24.md) | Second contract review: four exporter changes + remaining mappings | Review | Applied; 7/7 check |
 | [cmg response 2026-10-24](FIGURE_ATLAS_RESPONSE_2026-10-24.md) | Changes applied + validation + 22-type mapping request | Draft | Send to fig-atlas |
+| [fig-atlas reply 2026-11-09](FIGURE_ATLAS_REPLY_2026-11-09.md) | Four changes confirmed; 22-type mapping request | Review | Mapping table pending |
+| [cmg response 2026-11-09](FIGURE_ATLAS_RESPONSE_2026-11-09.md) | Column-role table + 8 sample tables | Draft | Send to fig-atlas |
+| [Column-role table](FIG_ATLAS_COLUMN_ROLES.md) | 22 remaining types; direct/reshape/new-contract split | Draft | Await mapping |
 
 ## Recently retired
 
