@@ -3,7 +3,7 @@
 - **Date**: 2026-11-09
 - **About**: `FIGURE_ATLAS_REPLY_2026-11-09-2.md`
 - **From**: cmg-seqviewer
-- **Scope**: all 22 mappings implemented, 22 sample bundles, validation, and two open questions
+- **Scope**: all 22 mappings implemented, 22 sample bundles, validation, and one lint note
 
 ## 1. Implementation
 
@@ -14,10 +14,17 @@ All 22 mappings are now in `export_fig_atlas_bundle()`:
   `meta_volcano`
 - **Reshape**: `gene_expression_bar`, `concordance_summary`, `composition`,
   `annotation_comparison`
-- **New contract/renderer**: `expression_dot` (`dot_matrix`), 
-  `genomic_distribution` (`bar_scatter`), `concordance_heatmap` (`heatmap`),
+- **New contract/renderer**: `expression_dot` (`dot_matrix`),
+  `genomic_distribution` (`stacked_bar`), `concordance_heatmap` (`heatmap`),
   `quadrant` (`group_scatter`), `integrated_volcano` (`threshold_scatter`),
   `upset`, `go_comparison_dot` (`dot_matrix`)
+
+Also applied from the updated reply:
+
+- `pca` keeps one row per gene; `sample_columns` is passed when needed.
+- `concordance_summary` adds a constant `group` series.
+- `genomic_distribution` uses `stacked_bar` (`category="all"`,
+  `part=annotation`, `count`, `percent: true`).
 
 The exact column roles are recorded in `COLUMN_ROLES.md`.
 
@@ -34,6 +41,7 @@ of the 22 new types (synthetic data only, no scripts/outputs).
 - `fa verify`: **PASS**
 - `fa lint`: 0 likely typos; **3 unread keys**:
   `plots.go_cluster_dot.direction_colors` (3 keys)
+- Reference fig-atlas: **v0.4.0** (`fa 0.4.0`)
 
 The preflight warnings are from the deliberately dense 22-panel test layout
 (panel intrusion / small print), not from the bundle contracts.
@@ -42,13 +50,11 @@ The 3 unread `go_cluster_dot.direction_colors` keys are added by `fa ingest`
 from the renderer defaults; our `go_cluster_dot` metadata has no such key. Please
 confirm whether that is a known fig-atlas default.
 
-## 4. Open questions
+## 4. Open item
 
-1. **PCA orientation**: our table is gene × sample (the orientation
-   `fig_atlas/renderers/pca.py` expects before its internal transpose). The
-   mapping reply said "transpose to one row per sample". We kept gene × sample
-   and the build passes; please confirm the intended orientation.
-2. **`go_cluster_dot.direction_colors`**: see above.
+- **`go_cluster_dot.direction_colors`**: the 3 unread keys are added by
+  `fa ingest` from the renderer defaults; our `go_cluster_dot` metadata has no
+  such key. Please confirm whether that is a known fig-atlas default.
 
 ## 5. Delivery
 

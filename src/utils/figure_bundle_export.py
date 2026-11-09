@@ -330,7 +330,8 @@ def _fig_atlas_payload(context: Mapping[str, Any]):
     if internal == "pca":
         p = {}
         for key in ("n_genes", "transform", "scaling", "x_pc", "y_pc",
-                    "point_size", "show_labels", "sample_groups", "group_colors"):
+                    "point_size", "show_labels", "sample_columns",
+                    "sample_groups", "group_colors"):
             if key in params:
                 p[key] = params[key]
         return df, "pca", p
@@ -364,8 +365,9 @@ def _fig_atlas_payload(context: Mapping[str, Any]):
             return df, "bar_scatter", {}
         counts = df["concordance"].value_counts()
         out = pd.DataFrame({"symbol": counts.index, "value": counts.values})
+        out["group"] = "count"
         return out, "bar_scatter", {
-            "category_col": "symbol", "value_col": "value",
+            "category_col": "symbol", "group_col": "group", "value_col": "value",
         }
 
     if internal == "composition":
@@ -391,9 +393,11 @@ def _fig_atlas_payload(context: Mapping[str, Any]):
         if "annotation" not in df.columns:
             return df, "bar_scatter", {}
         counts = df["annotation"].value_counts()
-        out = pd.DataFrame({"symbol": counts.index, "value": counts.values})
-        return out, "bar_scatter", {
-            "category_col": "symbol", "value_col": "value",
+        out = pd.DataFrame({"category": "all", "part": counts.index,
+                            "count": counts.values})
+        return out, "stacked_bar", {
+            "x_col": "category", "stack_col": "part", "value_col": "count",
+            "percent": True,
         }
 
     if internal == "concordance_heatmap":
