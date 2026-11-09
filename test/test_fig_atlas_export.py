@@ -29,6 +29,7 @@ def test_padj_histogram_fig_atlas(qtbot, tmp_path):
     out, meta, data = _export(d, tmp_path, "hist")
     assert "plot_type: histogram" in meta
     assert "x_col: padj" in meta
+    assert "bins: 50" in meta
     assert "padj" in data.columns
     assert not (out / "scripts").exists()
     assert len(list((out / "outputs").glob("figure.*"))) == 0
@@ -58,6 +59,8 @@ def test_motif_enrichment_fig_atlas(qtbot, tmp_path):
     assert "term_col: motif_name" in meta
     assert "class_col: direction" in meta
     assert "neg_log10_p" in data.columns
+    assert "fc_min: 0.0" in meta
+    assert "colorbar_label: -log10(p)" in meta
     assert set(data["direction"]) == {"UP", "DOWN"}
 
 
@@ -93,6 +96,7 @@ def test_chromvar_fig_atlas(qtbot, tmp_path):
     qtbot.addWidget(d)
     out, meta, data = _export(d, tmp_path, "chromvar")
     assert "plot_type: volcano" in meta
+    assert "x_col:" not in meta
     assert "log2FC" in data.columns
     assert "padj" in data.columns
 
@@ -111,6 +115,8 @@ def test_expression_distribution_fig_atlas(qtbot, tmp_path):
     qtbot.addWidget(d)
     out, meta, data = _export(d, tmp_path, "dist")
     assert "plot_type: violin" in meta
-    assert "x_col: category" in meta
-    assert "x_order:" in meta
-    assert {"category", "mean_expression"}.issubset(data.columns)
+    assert "x_col: cell_type" in meta
+    assert "hue_col: condition" in meta
+    assert "hue_order:" in meta
+    assert {"cell_type", "condition", "mean_expression"}.issubset(data.columns)
+    assert "category" not in data.columns

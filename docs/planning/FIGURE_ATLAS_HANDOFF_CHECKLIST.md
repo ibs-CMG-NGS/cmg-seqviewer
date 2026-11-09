@@ -68,13 +68,20 @@ Verification after the exporter update:
 - `fa verify`: **PASS** (warnings only from a deliberately dense 7-panel test
   layout)
 
+Resolved in the 2026-10-24 reply:
+
+- Switch `expression_distribution` to grouped violins (`x_col: cell_type`,
+  `hue_col: condition`, `hue_order`).
+- `threshold_scatter` identity line is available; the TF footprint sample sets
+  `show_identity_line: true`.
+- `motif_enrichment` colour is **significance** (`-log10(p)`), not log2 fold
+  enrichment; the colourbar label says so.
+
 Still open:
 
-- fig-atlas `violin` supports `hue_col`; we currently send a combined
-  `category` column. Confirm whether to switch to grouped violins.
-- `threshold_scatter` already has `show_identity_line`; we set it to `true`
-  for the TF footprint sample.
-- The other 22 internal plot types still need fig-atlas `plot_type` mappings.
+- The other 22 internal plot types need fig-atlas `plot_type` mappings.
+- fig-atlas requested a list of names and column roles (or one sample table per
+  type) for those 22.
 
 ---
 
@@ -96,21 +103,23 @@ Each bundle contains:
 
 ```text
 <bundle>/
-├── scripts/figure.py
 ├── inputs/data.csv
-├── outputs/figure.png/.pdf/.svg
-├── outputs/<source_stem>.png/.pdf/.svg
+├── outputs/<source_stem>.png/.pdf/.svg   # human reference only
 ├── metadata/metadata.yaml
 └── manifest.json
 ```
 
-The ZIP root also contains `README.md`, `index.json`, and `SHA256SUMS`.
+fig-atlas reads only `inputs/data.csv` and `metadata/metadata.yaml`. The ZIP
+root also contains `README.md`, `index.json`, `SHA256SUMS`,
+`FIGURE_ATLAS_HANDOFF_CHECKLIST.md`, `FIGURE_ATLAS_REPLY_2026-10-23.md`,
+`FIGURE_ATLAS_REPLY_2026-10-24.md`, `FA_BUNDLE_CHECK.txt`, and
+`FA_ACCEPTANCE.md`.
 
 ## 2. cmg-seqviewer side (already verified)
 
 - [x] All 29 user-facing plot types are bundle-ready.
 - [x] Seven representative sample bundles generated.
-- [x] All seven `scripts/figure.py` files run headlessly.
+- [x] All seven bundles pass `fa bundle check` (7/7 ok, 0 warnings, 0 errors).
 - [x] `metadata.yaml` reports `app_version: 1.4.1`.
 - [x] `SHA256SUMS` verified.
 - [x] Synthetic data only; no sensitive or identifiable data.

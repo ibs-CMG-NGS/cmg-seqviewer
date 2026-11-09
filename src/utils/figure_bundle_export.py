@@ -184,7 +184,10 @@ def _fig_atlas_payload(context: Mapping[str, Any]):
 
     if internal == "padj_histogram":
         x_col = "padj" if "padj" in df.columns else "pvalue"
-        return df, "histogram", {"x_col": x_col}
+        return df, "histogram", {
+            "x_col": x_col,
+            "bins": int(params.get("bin_count") or 50),
+        }
 
     if internal == "tss_distance":
         dist_range = float(params.get("dist_range") or 50_000)
@@ -204,11 +207,16 @@ def _fig_atlas_payload(context: Mapping[str, Any]):
         out["neg_log10_p"] = -np.log10(qv)
         if "motif_name" not in out.columns:
             out["motif_name"] = out.get("motif_id", "unknown")
+        lp = pd.to_numeric(out["log_pvalue"], errors="coerce")
+        fc_max = float(lp.max()) if lp.notna().any() else 8.0
         return out, "motif_dotplot", {
             "term_col": "motif_name",
             "class_col": "direction",
             "value_col": "log_pvalue",
             "p_col": "neg_log10_p",
+            "fc_min": 0.0,
+            "fc_max": fc_max,
+            "colorbar_label": "-log10(p)",
         }
 
     if internal == "tf_footprint":
@@ -270,24 +278,22 @@ def _fig_atlas_payload(context: Mapping[str, Any]):
         if "pvalue" not in out.columns:
             out["pvalue"] = out.get("chromvar_pvalue", out["padj"])
         return out, "volcano", {
-            "x_col": "log2FC",
-            "y_col": "padj",
-            "effect_col": "log2FC",
-            "sig_col": "padj",
             "log2fc_threshold": float(params.get("delta_cutoff") or 0.5),
             "padj_threshold": float(params.get("padj_cutoff") or 0.05),
         }
 
     if internal == "expression_distribution":
         out = df.copy()
-        condition = out["condition"].astype(str) if "condition" in out.columns else ""
-        out["category"] = out["cell_type"].astype(str) + " || " + condition
-        order = list(dict.fromkeys(out["category"]))
-        return out, "violin", {
-            "x_col": "category",
+        cell_order = list(dict.fromkeys(out["cell_type"].astype(str)))
+        params_out = {
+            "x_col": "cell_type",
             "y_col": "mean_expression",
-            "x_order": order,
+            "x_order": cell_order,
         }
+        if "condition" in out.columns:
+            params_out["hue_col"] = "condition"
+            params_out["hue_order"] = list(dict.fromkeys(out["condition"].astype(str)))
+        return out, "violin", params_out
 
     raise ValueError(
         f"No fig-atlas contract mapping for plot_type {internal!r}. "
