@@ -45,6 +45,19 @@ The bundle folder contains:
 6. `metadata/metadata.yaml` and `manifest.json` —
  provenance information
 
+For the external **fig-atlas** publication pipeline, use
+**Export fig-atlas Bundle** instead. It writes the handoff shape that fig-atlas
+reads:
+
+- `inputs/data.csv` — the data table with the contract column names
+- `metadata/metadata.yaml` — `plot_type` and the `plot_params` column roles
+- one reference output set under `outputs/<source_stem>.png/pdf/svg`
+- `manifest.json`
+
+fig-atlas draws the panel itself at its final printed size; it does not run a
+script. Use the regular **Export Bundle** when you need the standalone
+`scripts/figure.py` for local reproduction.
+
 Useful for archiving a figure alongside exactly the data and parameters that
  produced it, or handing it off for a downstream figure-atlas / publication workflow.
  If the current tab doesn't support this, a message says so.

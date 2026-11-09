@@ -10,6 +10,7 @@ from typing import Any, Mapping
 
 import matplotlib
 matplotlib.use("Agg")
+import numpy as np
 import pandas as pd
 
 import logging
@@ -160,6 +161,252 @@ def _app_version() -> str:
     except Exception:
         pass
     return "unknown"
+
+
+FIG_ATLAS_PLOT_TYPES = {
+    "padj_histogram": "histogram",
+    "tss_distance": "histogram",
+    "motif_enrichment": "motif_dotplot",
+    "tf_footprint": "threshold_scatter",
+    "comparison_dot": "cross_condition_dotplot",
+    "chromvar": "volcano",
+    "expression_distribution": "violin",
+}
+
+
+def _fig_atlas_payload(context: Mapping[str, Any]):
+    """Return (dataframe, fig-atlas plot_type, plot_params) for a bundle context."""
+    internal = str(context.get("plot_type") or "").lower()
+    df = context.get("dataframe")
+    if not isinstance(df, pd.DataFrame):
+        df = pd.DataFrame(df)
+    params = dict(context.get("plot_params") or {})
+
+    if internal == "padj_histogram":
+        x_col = "padj" if "padj" in df.columns else "pvalue"
+        return df, "histogram", {"x_col": x_col}
+
+    if internal == "tss_distance":
+        dist_range = float(params.get("dist_range") or 50_000)
+        out = {"x_col": "distance_to_tss", "bin_min": -dist_range, "bin_max": dist_range}
+        if params.get("bins"):
+            out["bins"] = int(params["bins"])
+        return df, "histogram", out
+
+    if internal == "motif_enrichment":
+        out = df.copy()
+        if "direction" not in out.columns:
+            out["direction"] = "Motifs"
+        if "log_pvalue" not in out.columns:
+            pv = pd.to_numeric(out.get("motif_pvalue"), errors="coerce").clip(lower=1e-300)
+            out["log_pvalue"] = -np.log10(pv)
+        qv = pd.to_numeric(out.get("motif_qvalue"), errors="coerce").clip(lower=1e-300)
+        out["neg_log10_p"] = -np.log10(qv)
+        if "motif_name" not in out.columns:
+            out["motif_name"] = out.get("motif_id", "unknown")
+        return out, "motif_dotplot", {
+            "term_col": "motif_name",
+            "class_col": "direction",
+            "value_col": "log_pvalue",
+            "p_col": "neg_log10_p",
+        }
+
+    if internal == "tf_footprint":
+        return df, "threshold_scatter", {
+            "x_col": "cond1_score",
+            "y_col": "cond2_score",
+            "effect_col": "footprint_change",
+            "sig_col": "footprint_pvalue",
+            "effect_threshold": float(params.get("min_change") or 0.0),
+            "sig_threshold": float(params.get("pval_cutoff") or 0.05),
+            "show_identity_line": True,
+        }
+
+    if internal == "comparison_dot":
+        names = list(params.get("dataset_names") or [])
+        if not names:
+            names = sorted({c[:-len("_log2FC")] for c in df.columns if c.endswith("_log2FC")} |
+                           {c[:-len("_log2fc")] for c in df.columns if c.endswith("_log2fc")})
+        rows = []
+        for _, row in df.iterrows():
+            term = row.get("symbol", row.get("gene_id", "unknown"))
+            for name in names:
+                log = row.get(f"{name}_log2FC", row.get(f"{name}_log2fc", np.nan))
+                padj = row.get(f"{name}_padj", row.get(f"{name}_Padj", np.nan))
+                if pd.isna(log) or pd.isna(padj):
+                    continue
+                value = float(np.sign(log) * -np.log10(max(float(padj), 1e-300)))
+                ratio = min(1.0, abs(value) / 10.0)
+                rows.append({
+                    "GO ID": "",
+                    "GO Term": term,
+                    "Condition": name,
+                    "Direction": "UP" if log >= 0 else "DOWN",
+                    "Gene Ratio": ratio,
+                    "Adjusted P-value": float(padj),
+                    "Signed -log10(FDR)": value,
+                })
+        out = pd.DataFrame(rows)
+        order = list(dict.fromkeys(out["Condition"])) if not out.empty else []
+        return out, "cross_condition_dotplot", {
+            "term_col": "GO Term",
+            "condition_col": "Condition",
+            "value_col": "Signed -log10(FDR)",
+            "size_col": "Gene Ratio",
+            "condition_order": order,
+        }
+
+    if internal == "chromvar":
+        out = df.rename(columns={
+            "chromvar_delta": "log2FC",
+            "chromvar_padj": "padj",
+        })
+        if "gene_id" not in out.columns:
+            out["gene_id"] = out.get("chromvar_motif_id", out.get("chromvar_tf_name", "unknown"))
+        if "symbol" not in out.columns:
+            out["symbol"] = out.get("chromvar_tf_name", out["gene_id"])
+        if "base_mean" not in out.columns:
+            out["base_mean"] = out.get("chromvar_mean_base", 0.0)
+        if "pvalue" not in out.columns:
+            out["pvalue"] = out.get("chromvar_pvalue", out["padj"])
+        return out, "volcano", {
+            "x_col": "log2FC",
+            "y_col": "padj",
+            "effect_col": "log2FC",
+            "sig_col": "padj",
+            "log2fc_threshold": float(params.get("delta_cutoff") or 0.5),
+            "padj_threshold": float(params.get("padj_cutoff") or 0.05),
+        }
+
+    if internal == "expression_distribution":
+        out = df.copy()
+        condition = out["condition"].astype(str) if "condition" in out.columns else ""
+        out["category"] = out["cell_type"].astype(str) + " || " + condition
+        order = list(dict.fromkeys(out["category"]))
+        return out, "violin", {
+            "x_col": "category",
+            "y_col": "mean_expression",
+            "x_order": order,
+        }
+
+    raise ValueError(
+        f"No fig-atlas contract mapping for plot_type {internal!r}. "
+        "Add a mapping before exporting this figure."
+    )
+
+
+def _yaml_scalar(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return "null"
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    if isinstance(value, list):
+        return "[" + ", ".join(_yaml_scalar(v) for v in value) + "]"
+    if isinstance(value, dict):
+        return "{" + ", ".join(f"{k}: {_yaml_scalar(v)}" for k, v in value.items()) + "}"
+    return _yaml_quote(str(value))
+
+
+def export_fig_atlas_bundle(
+    context: Mapping[str, Any],
+    output_dir: str | Path,
+    figure_slug: str | None = None,
+    figure_title: str | None = None,
+) -> Path:
+    """Export the fig-atlas handoff shape: inputs/data.csv + metadata/metadata.yaml.
+
+    fig-atlas reads only these two files and draws the panel itself. A
+    reference PNG/PDF/SVG set is written under outputs/<source_stem>.* for
+    human inspection; scripts/ and duplicate figure.* outputs are omitted.
+    """
+    bundle_dir = Path(output_dir)
+    bundle_dir.mkdir(parents=True, exist_ok=True)
+    (bundle_dir / "inputs").mkdir(exist_ok=True)
+    (bundle_dir / "outputs").mkdir(exist_ok=True)
+    (bundle_dir / "metadata").mkdir(exist_ok=True)
+
+    df, plot_type, plot_params = _fig_atlas_payload(context)
+    slug = figure_slug or context.get("figure_slug") or "figure"
+    title = figure_title or context.get("figure_title") or slug
+    source_stem = context.get("source_stem") or slug
+    dataset_name = context.get("dataset_name") or "unknown"
+    panel_notes = context.get("panel_notes") or context.get("notes") or ""
+    claim_boundary = context.get("claim_boundary") or (
+        "Panel generated by cmg-seqviewer from the loaded data. "
+        "It describes the plotted measurements and does not establish causality "
+        "or statistical significance unless a test table is supplied."
+    )
+
+    data_path = bundle_dir / "inputs" / "data.csv"
+    df.to_csv(data_path, index=False)
+
+    stats_path = bundle_dir / "inputs" / "statistics.csv"
+    has_statistics = False
+    if context.get("statistics") is not None:
+        stats = context["statistics"]
+        if not isinstance(stats, pd.DataFrame):
+            stats = pd.DataFrame(stats)
+        stats.to_csv(stats_path, index=False)
+        has_statistics = True
+
+    fig = context.get("figure")
+    saved_formats = []
+    if fig is not None:
+        saved_formats = _save_figure_formats(fig, bundle_dir / "outputs" / source_stem)
+
+    metadata_path = bundle_dir / "metadata" / "metadata.yaml"
+    lines = [
+        "figure_id: " + _yaml_quote(slug),
+        "figure_number: \"\"",
+        "figure_title: " + _yaml_quote(title),
+        "figure_slug: " + _yaml_quote(slug),
+        "plot_type: " + _yaml_quote(plot_type),
+        "plot_params:",
+    ]
+    for key, value in plot_params.items():
+        lines.append(f"  {key}: {_yaml_scalar(value)}")
+    lines += [
+        "panel_notes: " + _yaml_quote(panel_notes),
+        "claim_boundary: " + _yaml_quote(claim_boundary),
+        "source_stem: " + _yaml_quote(source_stem),
+        "dataset_name: " + _yaml_quote(dataset_name),
+        "created_at: " + _yaml_quote(datetime.now(timezone.utc).isoformat()),
+        "app_version: " + _yaml_quote(_app_version()),
+        "environment:",
+        "  python: " + _yaml_quote(platform.python_version()),
+        "  matplotlib: " + _yaml_quote(matplotlib.__version__),
+        "  platform: " + _yaml_quote(platform.platform()),
+        "input_files:",
+        "  - inputs/data.csv",
+    ]
+    if has_statistics:
+        lines.append("  - inputs/statistics.csv")
+    lines.append("output_files:")
+    for fmt in saved_formats:
+        lines.append(f"  - outputs/{source_stem}.{fmt}")
+    lines.append("output_formats: " + _yaml_scalar(saved_formats))
+    lines.append("statistics_tables:" + ("" if has_statistics else " []"))
+    if has_statistics:
+        lines.append("  - inputs/statistics.csv")
+    metadata_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    manifest = {
+        "status": "ok",
+        "figure_slug": slug,
+        "figure_title": title,
+        "plot_type": plot_type,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "files": [
+            str(data_path.relative_to(bundle_dir)),
+            *([str(stats_path.relative_to(bundle_dir))] if has_statistics else []),
+            str(metadata_path.relative_to(bundle_dir)),
+            *[f"outputs/{source_stem}.{fmt}" for fmt in saved_formats],
+        ],
+    }
+    (bundle_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return bundle_dir
 
 
 def _build_metadata_yaml(
@@ -345,6 +592,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
+import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
@@ -417,6 +665,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
+import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
@@ -453,6 +702,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
+import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
@@ -577,6 +827,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
+import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
@@ -612,6 +863,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
+import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
@@ -688,6 +940,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
+import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
@@ -721,6 +974,7 @@ render_genomic_distribution 은 cmg-seqviewer 화면 렌더링과 동일한 함�
 from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
+import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
@@ -792,6 +1046,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
+import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
@@ -828,6 +1083,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
+import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
@@ -861,6 +1117,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
+import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
@@ -896,6 +1153,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
+import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
@@ -928,6 +1186,7 @@ render_concordance_summary 은 cmg-seqviewer 화면 렌더링과 동일한 함�
 from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
+import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
@@ -963,6 +1222,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
+import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
@@ -999,6 +1259,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
+import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
@@ -1036,6 +1297,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
+import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
@@ -1073,6 +1335,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
+import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
@@ -1109,6 +1372,7 @@ inputs/data.csv 는 long-format 멤버십 테이블(dataset/item)이며, matplot
 from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
+import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
@@ -1149,6 +1413,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
+import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
@@ -1183,6 +1448,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
+import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
@@ -1219,6 +1485,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
+import numpy as np
 import pandas as pd
 
 # ── inlined from src/plots/multi_group_heatmap.py ──────────────────────
@@ -1365,6 +1632,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
+import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
@@ -1396,6 +1664,7 @@ def _build_generic_plot_script(source_stem: str, plot_type: str, params_repr: st
 from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
+import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 

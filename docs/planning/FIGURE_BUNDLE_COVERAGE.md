@@ -46,12 +46,12 @@ The external contract is documented in
 
 | Status | Count | Notes |
 |---|---:|---|
-| Bundle-ready with dedicated script builder | 29 plot types | See §4 |
-| Missing bundle context / builder | 0 figures | See §5 |
+| Internal bundle-ready (script builder) | 29 plot types | See §4 |
+| fig-atlas contract mappings | 7 sample shapes | See §5 |
 | Ambiguous / legacy | 2 | See §6 |
-| Metadata contract gaps | 4 items | See §7 |
+| Open contract items | 2 | See §7 |
 
-## 4. Bundle-ready figures
+## 4. Bundle-ready figures (internal cmg-seqviewer bundle)
 
 These have `get_bundle_context()` and a dedicated `_build_*_plot_script()`
 branch (no generic fallback):
@@ -88,11 +88,24 @@ branch (no generic fallback):
 | `upset` | UpSet plot |
 | `multi_group_heatmap` | Multi-group heatmap |
 
-## 5. Missing bundle coverage
+## 5. fig-atlas contract coverage
 
-None. All user-facing `BasePlotDialog` subclasses now have a bundle context and
-a dedicated script builder. The coverage regression test enforces this for
-future dialogs.
+Internal bundle coverage (29 plot types) is complete. fig-atlas contract
+mapping is currently implemented for the seven sample shapes:
+
+| cmg plot_type | fig-atlas plot_type |
+|---|---|
+| `padj_histogram` | `histogram` |
+| `tss_distance` | `histogram` |
+| `motif_enrichment` | `motif_dotplot` |
+| `tf_footprint` | `threshold_scatter` |
+| `comparison_dot` | `cross_condition_dotplot` |
+| `chromvar` | `volcano` |
+| `expression_distribution` | `violin` |
+
+`fa bundle check` passes **7/7** for the updated samples. The remaining 22
+internal plot types still need a fig-atlas contract mapping before they can be
+handed off.
 
 ## 6. Ambiguous / legacy
 
@@ -104,19 +117,24 @@ future dialogs.
   embedded `VolcanoPlotWidget` / `HeatmapWidget` already have bundle contexts;
   the wrappers are not the primary UI path.
 
-## 7. Metadata contract gaps
+## 7. fig-atlas contract notes / open items
 
-`metadata/metadata.yaml` currently lacks or misstates:
+Resolved by the 2026-10-23 fig-atlas reply and the `export_fig_atlas_bundle()`
+path:
 
-1. `output_formats` — should list the formats actually written.
-2. `output_files` — currently lists `outputs/figure.*`, while the manifest also
-   writes `outputs/<source_stem>.*`; align to the real files.
-3. `panel_notes` — external pipeline needs panel-level interpretation; map from
-   `context["panel_notes"]` or `notes`.
-4. environment info — Python version, platform, and app version; git commit is
-   optional.
-5. `statistics_tables` — currently always lists `inputs/statistics.csv` even
-   when no statistics file was written.
+- `plot_type` uses registered fig-atlas names (see §5).
+- `plot_params` carries the column roles and thresholds.
+- `figure_number` is left empty; the project layer assigns it.
+- `panel_notes` is a string (one bundle = one panel).
+- `statistics_tables: []` is accepted when only design cut-off lines are drawn.
+- The fig-atlas bundle writes one `outputs/<source_stem>.*` set and no script.
+- `claim_boundary` is a sentence about what the panel does and does not support.
+
+Still open:
+
+1. Map the remaining 22 internal plot types to fig-atlas `plot_type`s.
+2. Decide whether `expression_distribution` should use `hue_col` for grouped
+   violins instead of the current combined `category` column.
 
 ## 8. Recommended order
 

@@ -1,8 +1,10 @@
 # Publication-Quality Figure & Bundle Handoff Plan
 
-- **Status (2026-10-23)**: scope revised. P1 theme/export and P4 bundle export
-  are implemented. Active work is **bundle handoff coverage**; final
-  publication size/layout is delegated to the external figure-atlas pipeline.
+- **Status (2026-10-24)**: P1 theme/export and P4 bundle export are implemented;
+  all 29 plot types have an internal bundle. fig-atlas contract mapping is
+  implemented for 7 sample shapes and passes `fa bundle check` 7/7. Remaining
+  work is mapping the other 22 plot types and wiring real project bundles into
+  cmg-figure.
 - **Code baseline**: v1.4.1
 - **Coverage audit**: [FIGURE_BUNDLE_COVERAGE.md](FIGURE_BUNDLE_COVERAGE.md)
 - **Historical details**:
@@ -23,12 +25,20 @@ Produce a **reproducible panel bundle** for every user-facing figure:
 - `metadata/metadata.yaml` + `manifest.json`
 - stable figure slug / source stem
 
-### External figure-atlas pipeline
+### fig-atlas (foundation) and cmg-figure (project layer)
 
-Own the final publication work:
+**fig-atlas** owns the foundational contract:
 
+- bundle ingest and validation
+- `FigureSpec` schema
+- publish/verify workflow
+- atlas-level structure
+
+**cmg-figure** uses fig-atlas for actual research-project figures:
+
+- figure numbers and panel labels (a/b/c)
+- project-specific panel grouping
 - journal page size, margins, and column width
-- multi-panel composition (a/b/c)
 - figure-level typography, legends, and annotations
 - final submission layout and export
 
@@ -49,19 +59,26 @@ the external pipeline focused on **figure assembly and publication layout**.
 | Central figure theme / export / style panel | ✅ P1 (2026-06-05) | `src/utils/figure_theme.py`, `figure_export.py`, `gui/widgets/figure_style_panel.py` |
 | Reproducible bundle export + script generation | ✅ P4 (2026-07-09) | `src/utils/figure_bundle_export.py` |
 | Bundle button in `BasePlotDialog` | ✅ | `src/gui/base_plot_dialog.py` |
-| Dedicated script builders | ✅ 23 plot types | `figure_bundle_export.py` |
+| Dedicated script builders | ✅ 29 plot types | `figure_bundle_export.py` |
 | Coverage audit | ✅ 2026-10-23 | [FIGURE_BUNDLE_COVERAGE.md](FIGURE_BUNDLE_COVERAGE.md) |
 
-## 3. Active phase — Bundle handoff coverage (P2)
+## 3. Active phase — Bundle handoff coverage and contract review (P2)
 
 **Goal:** every figure reachable from the GUI can be exported as a bundle that
 the external pipeline can ingest without manual repair.
 
 ### 3.1 Coverage status
 
-All user-facing figure dialogs now have a bundle context and a dedicated script
-builder. The audit covers 29 plot types; details are in
+All user-facing figure dialogs now have an internal bundle context and a
+dedicated script builder. The audit covers 29 plot types; details are in
 [FIGURE_BUNDLE_COVERAGE.md](FIGURE_BUNDLE_COVERAGE.md).
+
+fig-atlas contract mapping is implemented for the 7 sample shapes:
+`histogram` (2), `motif_dotplot`, `threshold_scatter`,
+`cross_condition_dotplot`, `volcano`, and `violin`. The updated samples pass
+`fa bundle check` **7/7**, ingest into a temporary project **7/7**, and pass
+`fa build --preflight` / `fa verify`. The other 22 plot types still need a
+fig-atlas `plot_type` mapping.
 
 ### 3.2 Work items
 
@@ -114,5 +131,6 @@ Multi-panel assembly remains delegated to the external pipeline.
 ## 7. Related documents
 
 - [Figure bundle coverage audit](FIGURE_BUNDLE_COVERAGE.md)
+- [Figure-atlas handoff checklist](FIGURE_ATLAS_HANDOFF_CHECKLIST.md)
 - [External pipeline requirements](external_pipeline_requirements.md)
 - [Expression Distribution plan](EXPRESSION_DISTRIBUTION_PLAN.md)

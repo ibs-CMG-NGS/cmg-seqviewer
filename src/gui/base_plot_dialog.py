@@ -175,6 +175,18 @@ class BasePlotDialog(QDialog):
             bundle_btn.clicked.connect(self._on_export_bundle)
             bar.addWidget(bundle_btn)
 
+            try:
+                from utils.figure_bundle_export import FIG_ATLAS_PLOT_TYPES
+                _atlas_ctx = self.get_bundle_context()
+                if str(_atlas_ctx.get("plot_type", "")).lower() in FIG_ATLAS_PLOT_TYPES:
+                    atlas_btn = QPushButton("Export fig-atlas Bundle")
+                    atlas_btn.setToolTip(
+                        "fig-atlas가 읽는 data + metadata 번들로 export (script 없음)")
+                    atlas_btn.clicked.connect(self._on_export_fig_atlas_bundle)
+                    bar.addWidget(atlas_btn)
+            except Exception:  # noqa: BLE001 — 버튼 노출 실패가 다이얼로그를 막지 않도록
+                pass
+
             # 재렌더 가능한 plot_type 이면 탭 고정 버튼도 자동 노출
             try:
                 from plots.registry import is_supported
@@ -219,6 +231,24 @@ class BasePlotDialog(QDialog):
                                     "플롯을 메인 창의 탭으로 고정했습니다.")
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Pin failed", str(exc))
+
+    def _on_export_fig_atlas_bundle(self):
+        """Export the fig-atlas handoff shape (data + metadata, no script)."""
+        context = self.get_bundle_context()
+        slug = context.get("figure_slug", "figure")
+        path = self._prompt_bundle_path(f"{slug}_fig_atlas")
+        if not path:
+            return
+        try:
+            from utils.figure_bundle_export import export_fig_atlas_bundle
+            bundle_dir = export_fig_atlas_bundle(
+                context, path, slug,
+                context.get("figure_title", "Figure"))
+            QMessageBox.information(
+                self, "fig-atlas bundle exported",
+                f"Bundle created at:\n{bundle_dir}")
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "fig-atlas export failed", str(exc))
 
     def _on_export_bundle(self):
         """get_bundle_context() 를 재현 번들로 export (공용).

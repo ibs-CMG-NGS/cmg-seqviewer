@@ -8,11 +8,12 @@
 | Document | Description | Status | Remaining work |
 |---|---|---|---|
 | [MCP / AI Agent integration](MCP_AGENT_INTEGRATION_PLAN.md) | Headless service layer + MCP tools for AI clients | Planned (Phase 0 not started) | Privacy/threat model, tool schema, headless service, MCP server |
-| [Figure bundle handoff](FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md) | Reproducible per-panel bundles for the external figure-atlas layout pipeline | P1 + P4 done; P2 validation active | coverage complete; metadata contract + headless validation ([audit](FIGURE_BUNDLE_COVERAGE.md)) |
+| [Figure bundle handoff](FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md) | Reproducible per-panel bundles for fig-atlas (contract) and cmg-figure (project layout) | P1 + P4 done; fig-atlas contract 7/7; P2 mappings remain | coverage complete; metadata contract + headless validation ([audit](FIGURE_BUNDLE_COVERAGE.md)) |
 | [Expression Distribution](EXPRESSION_DISTRIBUTION_PLAN.md) | Per-sample pseudobulk/quantile violin-box view | **v1.4.1 released** | Phase 3 cell-level store, full-atlas lazy DuckDB query, full-atlas export scope |
 | [ATAC pipeline packaging](ATAC_PIPELINE_SEQVIEWER_PACKAGING.md) | Requirements for the external ATAC 3rd-party pipeline | External coordination | Pipeline-side manifest/companion fields |
 | [RNA pipeline packaging](RNA_PIPELINE_SEQVIEWER_PACKAGING.md) | Requirements for the external RNA-seq 3rd-party pipeline | External coordination | Pipeline-side metadata/manifest fields |
 | [External pipeline requirements](external_pipeline_requirements.md) | Figure-atlas external pipeline contract | Reference | Maintained with pipeline teams |
+| [Figure-atlas handoff checklist](FIGURE_ATLAS_HANDOFF_CHECKLIST.md) | Bundle ingest/metadata/FigureSpec confirmation items | Review | Send with the sample ZIP |
 
 ## Recently retired
 
