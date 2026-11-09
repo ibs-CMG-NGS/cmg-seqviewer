@@ -120,3 +120,22 @@ def test_expression_distribution_fig_atlas(qtbot, tmp_path):
     assert "hue_order:" in meta
     assert {"cell_type", "condition", "mean_expression"}.issubset(data.columns)
     assert "category" not in data.columns
+
+
+def test_go_dot_fig_atlas(tmp_path):
+    df = pd.DataFrame({
+        "term_id": ["GO:1"], "description": ["term"],
+        "ontology": ["BP"], "gene_ratio": ["8/120"], "bg_ratio": ["80/18870"],
+        "pvalue": [1e-5], "fdr": [0.001], "qvalue": [0.001],
+        "gene_count": [8], "gene_symbols": ["A/B"], "fold_enrichment": [15.0],
+        "direction": ["UP"], "gene_set": ["UP"],
+    })
+    out = export_fig_atlas_bundle(
+        {"figure": None, "dataframe": df, "plot_params": {"top_n": 20},
+         "plot_type": "go_dot", "figure_slug": "go_dot",
+         "figure_title": "GO dot", "source_stem": "go_dot"},
+        tmp_path / "go_dot", "go_dot", "GO dot")
+    meta = (out / "metadata" / "metadata.yaml").read_text(encoding="utf-8")
+    assert "plot_type: go_dot" in meta
+    assert "x_axis: Gene Ratio" in meta
+    assert "size_mode: Gene Count" in meta

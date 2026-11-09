@@ -171,6 +171,7 @@ FIG_ATLAS_PLOT_TYPES = {
     "comparison_dot": "cross_condition_dotplot",
     "chromvar": "volcano",
     "expression_distribution": "violin",
+    "go_dot": "go_dot",
 }
 
 
@@ -195,6 +196,13 @@ def _fig_atlas_payload(context: Mapping[str, Any]):
         if params.get("bins"):
             out["bins"] = int(params["bins"])
         return df, "histogram", out
+
+    if internal == "go_dot":
+        return df, "go_dot", {
+            "x_axis": "Gene Ratio",
+            "size_mode": "Gene Count",
+            "top_n": int(params.get("top_n") or 20),
+        }
 
     if internal == "motif_enrichment":
         out = df.copy()

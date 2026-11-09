@@ -35,9 +35,20 @@ Attached:
   - **A. Direct** (contract exists, shape matches)
   - **B. Direct after a reshape**
   - **C. Needs a contract/renderer**
-- `samples/` — one synthetic table for each of the eight Table C types:
-  `go_dot`, `expression_dot`, `genomic_distribution`, `concordance_heatmap`,
+- `samples/` — one synthetic table for each Table C type:
+  `expression_dot`, `genomic_distribution`, `concordance_heatmap`,
   `quadrant`, `integrated_volcano`, `upset`, `go_comparison_dot`.
+- `samples/go_dot_bundle/` — a validated `de_go.go_dot` bundle
+  (`fa bundle check`: ok, 0 warnings, 0 errors).
+
+`go_dot` is now mapped in `export_fig_atlas_bundle()`:
+`plot_type: go_dot`, `x_axis: Gene Ratio`, `size_mode: Gene Count`, `top_n`.
+Its current column names already match the `de_go.go_dot` contract.
+
+`expression_dot` is the one remaining shape with a semantic mismatch:
+`core.dot_matrix` exists, but its `color_col` is a category, while the viewer
+uses a numeric mean-expression colour. Please either add a numeric colour role
+or tell us to bin the mean into categories.
 
 Please return the mapping table as before:
 
@@ -45,18 +56,18 @@ Please return the mapping table as before:
 - columns the contract reads
 - any reshape the exporter must do
 
-For Table C, please also say whether you will add a contract/renderer or whether
-we should reshape to an existing one. The open questions are listed at the end
-of `COLUMN_ROLES.md`.
+For the remaining Table C types, please say whether you will add a
+contract/renderer or whether we should reshape to an existing one. The open
+questions are listed at the end of `COLUMN_ROLES.md`.
 
 ## 3. Next step
 
 After the mapping table arrives, we will:
 
-1. add the mappings to `export_fig_atlas_bundle()`;
+1. add the remaining mappings to `export_fig_atlas_bundle()`;
 2. generate one sample bundle per newly mapped type;
 3. run `fa bundle check` and the ingest/build/lint/verify cycle;
-4. keep the seven confirmed bundles as the reference set.
+4. keep the seven confirmed reference bundles unchanged.
 
 ## 4. Delivery
 

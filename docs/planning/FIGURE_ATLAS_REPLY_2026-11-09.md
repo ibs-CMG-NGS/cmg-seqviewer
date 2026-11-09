@@ -65,8 +65,8 @@ the exporter.
 
 | Your plot_type | Situation | What we need from you |
 |---|---|---|
-| `go_dot` | renderer exists, **no bundle contract** | column names (term, Gene Ratio, Fold Enrichment, Gene Count, adjusted P) |
-| `expression_dot` | `dot_matrix` renderer exists, **no bundle contract** | columns for row, column, size and colour |
+| `go_dot` | **contract added** (`de_go.go_dot`): `description`, `gene_ratio`, `gene_count`, `fold_enrichment`, `fdr` | confirm your column names; rename in the exporter if they differ |
+| `expression_dot` | **contract added** (`core.dot_matrix`): `row`, `column`, optional `size_col`, `color_col` (a category), `row_group_col` | confirm the columns; `color_col` is a category, so a numeric colour needs a renderer change |
 | `genomic_distribution` | pie; **no pie renderer** | annotation counts; decide pie or a stacked share bar |
 | `concordance_heatmap` | `signed_heatmap` is close but has no category strip | columns, and whether the strip is required |
 | `quadrant` | `group_scatter` plots the two axes but has no cut-off lines | columns and the category rules |
@@ -76,7 +76,9 @@ the exporter.
 
 ## 4. Summary of what we will do
 
-- Add bundle contracts (and, where missing, renderers) for the types in Table C once the columns
-  arrive, in the order you need them. `go_dot` and `expression_dot` are small (the renderers exist);
-  `upset`, `quadrant` and `integrated_volcano` are new renderers and will take longer.
+- `go_dot` and `expression_dot` can be ingested today: their contracts (`de_go.go_dot` and
+  `core.dot_matrix`) are in the package, with the column names above. Send one sample each and we
+  will confirm the mapping.
+- Add bundle contracts (and, where missing, renderers) for the other Table C types once the columns
+  arrive. `upset`, `quadrant` and `integrated_volcano` are new renderers and will take longer.
 - Keep the seven confirmed bundles as the reference set; no change is needed to them.
