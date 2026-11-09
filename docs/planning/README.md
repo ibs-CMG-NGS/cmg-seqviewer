@@ -17,8 +17,10 @@
 | [fig-atlas reply 2026-10-24](FIGURE_ATLAS_REPLY_2026-10-24.md) | Second contract review: four exporter changes + remaining mappings | Review | Applied; 7/7 check |
 | [cmg response 2026-10-24](FIGURE_ATLAS_RESPONSE_2026-10-24.md) | Changes applied + validation + 22-type mapping request | Draft | Send to fig-atlas |
 | [fig-atlas reply 2026-11-09](FIGURE_ATLAS_REPLY_2026-11-09.md) | Four changes confirmed; 22-type mapping request | Review | Mapping table pending |
-| [cmg response 2026-11-09](FIGURE_ATLAS_RESPONSE_2026-11-09.md) | Column-role table + 8 sample tables | Draft | Send to fig-atlas |
-| [Column-role table](FIG_ATLAS_COLUMN_ROLES.md) | 22 remaining types; direct/reshape/new-contract split | Draft | Await mapping |
+| [cmg response 2026-11-09](FIGURE_ATLAS_RESPONSE_2026-11-09.md) | Column-role table + 8 sample tables | Draft | Superseded by -2 |
+| [Column-role table](FIG_ATLAS_COLUMN_ROLES.md) | 22 remaining types; final mapping + sample bundles | ✅ Implemented | 22/22 check |
+| [fig-atlas reply 2026-11-09-2](FIGURE_ATLAS_REPLY_2026-11-09-2.md) | Final mapping for 22 types | Review | Implemented |
+| [cmg response 2026-11-09-2](FIGURE_ATLAS_RESPONSE_2026-11-09-2.md) | 22 mappings + validation + two open questions | Draft | Send to fig-atlas |
 
 ## Recently retired
 

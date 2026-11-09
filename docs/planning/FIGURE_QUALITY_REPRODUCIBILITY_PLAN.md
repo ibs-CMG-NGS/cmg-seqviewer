@@ -73,13 +73,14 @@ All user-facing figure dialogs now have an internal bundle context and a
 dedicated script builder. The audit covers 29 plot types; details are in
 [FIGURE_BUNDLE_COVERAGE.md](FIGURE_BUNDLE_COVERAGE.md).
 
-fig-atlas contract mapping is implemented for the 7 sample shapes:
-`histogram` (2), `motif_dotplot`, `threshold_scatter`,
-`cross_condition_dotplot`, `volcano`, and `violin`. The updated samples pass
-`fa bundle check` **7/7**, ingest into a temporary project **7/7**, and pass
-`fa build --preflight` / `fa verify`; `fa lint` reports 0 unread keys. The second
-review's four changes (bins, chromVAR roles, grouped violin, motif colour label)
-are applied. The other 22 plot types still need a fig-atlas `plot_type` mapping.
+fig-atlas contract mapping is now implemented for all 29 internal plot types:
+the seven earlier sample shapes (`histogram` x2, `motif_dotplot`,
+`threshold_scatter`, `cross_condition_dotplot`, `volcano`, `violin`) and the 22
+types in [FIG_ATLAS_COLUMN_ROLES.md](FIG_ATLAS_COLUMN_ROLES.md). The 22 new
+sample bundles pass `fa bundle check` **22/22**, ingest **22/22**, and pass
+`fa build --preflight` / `fa verify`. Remaining open items: confirm the PCA
+gene × sample orientation and the `go_cluster_dot.direction_colors` lint key
+reported by `fa ingest`.
 
 ### 3.2 Work items
 

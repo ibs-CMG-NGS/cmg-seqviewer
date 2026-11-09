@@ -2,11 +2,12 @@
 
 - **Date**: 2026-11-09
 - **Source**: cmg-seqviewer v1.4.1, `export_fig_atlas_bundle()` mappings
-- **Purpose**: give fig-atlas the current dataframe shape and column roles for the
-  remaining 22 internal plot types, plus one synthetic sample table for each of
-  the eight types in Table C.
+- **Purpose**: record the final mapping for the 22 remaining internal plot
+  types and the synthetic sample bundle for each.
+- **Status**: all 22 mappings are implemented in
+  `export_fig_atlas_bundle()`; 22/22 sample bundles pass `fa bundle check`.
 
-The seven already-confirmed sample types are not repeated here.
+The seven earlier-confirmed sample types are not repeated here.
 
 ## A. Direct mappings (contract exists, shape matches)
 
@@ -33,26 +34,31 @@ The seven already-confirmed sample types are not repeated here.
 | `composition` | `stacked_bar` | `cell_type`, `PropMean.<condition>` columns, `prop_ratio`, `pvalue`, `fdr` | wide -> long: one row per (condition, cell type) with `category`, `part`, `count` (or proportion) |
 | `annotation_comparison` | `cross_condition_dotplot` | `dataset`, `annotation`, `log2fc`, `adj_pvalue` (long) | rename: `annotation` -> `GO Term`, `dataset` -> `Condition`, signed `-log10(adj_pvalue)` -> `Signed -log10(FDR)` |
 
-## C. Needs a contract or renderer on the fig-atlas side first
+## C. New contracts/renderers — resolved mapping
 
-Sample tables are in `samples/`. `samples/go_dot_bundle/` is a validated `de_go.go_dot` bundle (fa bundle check: ok).
+The fig-atlas 2026-11-09 reply resolved these; all are implemented.
 
-| Your plot_type | Current data columns | Current measures / roles | Sample |
+| Your plot_type | fig-atlas plot_type | Contract roles / exporter action | Sample |
 |---|---|---|---|
-| `expression_dot` | `gene_id`, `gene_name`, `cell_type`, `mean_expression`, `pct_expressing`, `n_cells` | row = gene, column = cell type; size = pct; colour = numeric mean. `core.dot_matrix` exists, but its `color_col` is a category; numeric colour needs a renderer change or a binned category decision. | `samples/expression_dot.csv` |
-| `genomic_distribution` | `peak_id`, `annotation` (optional `log2fc`, `adj_pvalue`) | count of peaks per annotation category | `samples/genomic_distribution.csv` |
-| `concordance_heatmap` | `symbol`, `rna_log2fc`, `atac_log2fc_mean`, `concordance`, `rna_padj`, `atac_padj`, `peak_count` | rows = genes; columns = RNA/ATAC log2FC; category strip = concordance | `samples/concordance_heatmap.csv` |
-| `quadrant` | `symbol`, `rna_log2fc`, `atac_log2fc_mean`, `concordance`, `rna_padj`, `peak_count` | x = ATAC log2FC, y = RNA log2FC; colour = concordance; optional cut-off lines | `samples/quadrant.csv` |
-| `integrated_volcano` | `symbol`, `rna_log2fc`, `rna_padj`, `concordance`, `peak_count` | x = RNA log2FC, y = -log10(RNA padj); colour = concordance; size = peak count | `samples/integrated_volcano.csv` |
-| `upset` | `dataset`, `item` (long membership) | one row per (set, item); intersections computed by the renderer | `samples/upset.csv` |
-| `go_comparison_dot` | wide: `term_id`, `description`, `ontology`, `<dataset>_fe`, `<dataset>_fdr`, `<dataset>_gene_count` | colour = fold enrichment; size = gene count; filter = FDR; one column group per dataset | `samples/go_comparison_dot.csv` |
+| `expression_dot` | `dot_matrix` | `row_col: gene_name`, `col_col: cell_type`, `size_col: pct_expressing`, `color_col: mean_expression`; numeric colour is supported | `samples/expression_dot.csv` |
+| `genomic_distribution` | `bar_scatter` | aggregate annotation counts to `symbol`/`value`; `category_col: symbol`, `value_col: value` | `samples/genomic_distribution.csv` |
+| `concordance_heatmap` | `heatmap` | `label_col: symbol`, `sample_columns: [rna_log2fc, atac_log2fc_mean]`, `normalization: none`; keep `concordance` as an unused extra | `samples/concordance_heatmap.csv` |
+| `quadrant` | `group_scatter` | `x_col: atac_log2fc_mean`, `y_col: rna_log2fc`, `group_col: concordance`; cut-offs via `x_cutoffs`/`y_cutoffs` in `plot_params` | `samples/quadrant.csv` |
+| `integrated_volcano` | `threshold_scatter` | `x_col: rna_log2fc`, `y_col: rna_padj` (`y_transform: neg_log10`), `effect_col`/`sig_col`, `color_col: concordance`, `size_col: peak_count` | `samples/integrated_volcano.csv` |
+| `upset` | `upset` | `dataset_col: dataset`, `item_col: item`; long membership table | `samples/upset.csv` |
+| `go_comparison_dot` | `dot_matrix` | reshape wide -> long: `description`, `dataset`, `fe`, `fdr`, `gene_count`; `row_col: description`, `col_col: dataset`, `size_col: gene_count`, `color_col: fe` | `samples/go_comparison_dot.csv` |
 
-## Questions for fig-atlas
+## Implementation notes
 
-1. For `expression_dot`, should the contract use `dot_matrix` with row/column/size/colour roles?
-2. For `genomic_distribution`, do you prefer a pie or a stacked share bar?
-3. For `concordance_heatmap`, is the category strip required, or optional?
-4. For `quadrant`, should cut-off lines be part of the contract or config?
-5. For `integrated_volcano`, can `threshold_scatter` be extended with colour/size roles?
-6. For `upset`, should we wait for a renderer or provide a two-set Euler fallback?
-7. For `go_comparison_dot`, do you prefer the wide table above or a long table per dataset?
+- `go_dot` is in the direct table and has a validated `samples/go_dot_bundle/`
+  (`fa bundle check`: ok).
+- `pca`: the exporter keeps the gene × sample orientation because fig-atlas
+  `render_pca` transposes internally; the 2026-11-09 reply said "one row per
+  sample", so this orientation should be confirmed.
+- All 22 new sample bundles are in
+  `cmg_fig_atlas_bundle_samples_2026-11-09/`.
+- `fa bundle check`: **22/22 ok, 0 warnings, 0 errors**.
+- `fa ingest`/`build --preflight`/`verify`: pass; preflight warnings are from the
+  deliberately dense 22-panel test layout.
+- `fa lint` reports 3 unread keys for `plots.go_cluster_dot.direction_colors`,
+  which fig-atlas's `fa ingest` adds; the bundle metadata itself has no such key.

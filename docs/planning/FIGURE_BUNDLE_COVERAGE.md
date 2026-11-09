@@ -91,7 +91,9 @@ branch (no generic fallback):
 ## 5. fig-atlas contract coverage
 
 Internal bundle coverage (29 plot types) is complete. fig-atlas contract
-mapping is currently implemented for the seven sample shapes:
+mapping is implemented for all 29 types: the seven earlier sample shapes below
+plus the 22 types in [FIG_ATLAS_COLUMN_ROLES.md](FIG_ATLAS_COLUMN_ROLES.md).
+The 22 new sample bundles pass `fa bundle check` **22/22**.
 
 | cmg plot_type | fig-atlas plot_type |
 |---|---|

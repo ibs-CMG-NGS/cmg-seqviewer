@@ -172,7 +172,113 @@ FIG_ATLAS_PLOT_TYPES = {
     "chromvar": "volcano",
     "expression_distribution": "violin",
     "go_dot": "go_dot",
+    "volcano": "volcano",
+    "heatmap": "heatmap",
+    "ma": "ma_plot",
+    "pca": "pca",
+    "go_bar": "go_bar",
+    "go_cluster_dot": "go_cluster_dot",
+    "count_summary": "count_summary",
+    "venn": "venn",
+    "multi_group_heatmap": "multi_group_heatmap",
+    "meta_volcano": "volcano",
+    "gene_expression_bar": "bar_scatter",
+    "concordance_summary": "bar_scatter",
+    "composition": "stacked_bar",
+    "annotation_comparison": "cross_condition_dotplot",
+    "expression_dot": "dot_matrix",
+    "genomic_distribution": "bar_scatter",
+    "concordance_heatmap": "heatmap",
+    "quadrant": "group_scatter",
+    "integrated_volcano": "threshold_scatter",
+    "upset": "upset",
+    "go_comparison_dot": "dot_matrix",
 }
+
+
+def _rename_cols(df: pd.DataFrame, mapping: dict) -> pd.DataFrame:
+    return df.rename(columns={k: v for k, v in mapping.items() if k in df.columns})
+
+
+def _gene_bar_long(df: pd.DataFrame, params: Mapping[str, Any]) -> pd.DataFrame:
+    gene_col = params.get("gene_col") or next(
+        (c for c in ("symbol", "gene_id") if c in df.columns), df.columns[0])
+    groups = params.get("sample_groups") or {}
+    rows = []
+    if groups:
+        for _, row in df.iterrows():
+            for group, cols in groups.items():
+                for col in cols:
+                    if col in df.columns:
+                        rows.append({"symbol": row[gene_col], "group": group,
+                                     "value": row[col]})
+    else:
+        for _, row in df.iterrows():
+            for col in df.columns:
+                if col == gene_col or not pd.api.types.is_numeric_dtype(df[col]):
+                    continue
+                rows.append({"symbol": row[gene_col], "group": col,
+                             "value": row[col]})
+    return pd.DataFrame(rows)
+
+
+def _composition_long(df: pd.DataFrame) -> pd.DataFrame:
+    if "cell_type" not in df.columns:
+        return df
+    mean_cols = [c for c in df.columns if str(c).startswith("PropMean.")]
+    rows = []
+    if mean_cols:
+        for _, row in df.iterrows():
+            for col in mean_cols:
+                rows.append({"category": row["cell_type"],
+                             "part": str(col).split("PropMean.", 1)[1],
+                             "count": row[col]})
+    elif "prop_ratio" in df.columns:
+        for _, row in df.iterrows():
+            rows.append({"category": row["cell_type"], "part": "PropRatio",
+                         "count": row["prop_ratio"]})
+    return pd.DataFrame(rows)
+
+
+def _annotation_long(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    out["GO Term"] = out.get("annotation", "")
+    out["Condition"] = out.get("dataset", "")
+    lfc = pd.to_numeric(out.get("log2fc"), errors="coerce")
+    padj = pd.to_numeric(out.get("adj_pvalue"), errors="coerce").clip(lower=1e-300)
+    value = np.sign(lfc) * -np.log10(padj)
+    out["Signed -log10(FDR)"] = value
+    out["Gene Ratio"] = value.abs().clip(upper=10.0) / 10.0
+    out["GO ID"] = ""
+    out["Direction"] = np.where(lfc >= 0, "UP", "DOWN")
+    out["Adjusted P-value"] = padj
+    return out
+
+
+def _go_comparison_long(df: pd.DataFrame, params: Mapping[str, Any]) -> pd.DataFrame:
+    names = list(params.get("dataset_names") or [])
+    safes = list(params.get("safe_names") or [])
+    displays = list(params.get("display_names") or names)
+    if not safes:
+        safes = [n for n in names]
+    if not names:
+        safes = sorted({c[:-len("_fe")] for c in df.columns if c.endswith("_fe")})
+        names = list(safes)
+        displays = list(safes)
+    rows = []
+    for _, row in df.iterrows():
+        for name, safe, display in zip(names, safes, displays):
+            fe_col, fdr_col, gc_col = f"{safe}_fe", f"{safe}_fdr", f"{safe}_gene_count"
+            if fe_col not in df.columns or fdr_col not in df.columns:
+                continue
+            rows.append({
+                "description": row.get("description", ""),
+                "dataset": display,
+                "fe": row.get(fe_col),
+                "fdr": row.get(fdr_col),
+                "gene_count": row.get(gc_col, 0),
+            })
+    return pd.DataFrame(rows)
 
 
 def _fig_atlas_payload(context: Mapping[str, Any]):
@@ -196,6 +302,138 @@ def _fig_atlas_payload(context: Mapping[str, Any]):
         if params.get("bins"):
             out["bins"] = int(params["bins"])
         return df, "histogram", out
+
+    if internal == "volcano":
+        return df, "volcano", {
+            "log2fc_threshold": float(params.get("log2fc_threshold") or 1.0),
+            "padj_threshold": float(params.get("padj_threshold") or 0.05),
+        }
+
+    if internal == "heatmap":
+        out = df.copy()
+        if "symbol" not in out.columns:
+            for candidate in ("gene_name", "gene_id"):
+                if candidate in out.columns:
+                    out["symbol"] = out[candidate]
+                    break
+        return out, "heatmap", {"label_col": "symbol"}
+
+    if internal == "ma":
+        out = _rename_cols(df, {
+            "base_mean": "baseMean", "log2fc": "log2FoldChange",
+            "adj_pvalue": "padj",
+        })
+        return out, "ma_plot", {
+            "x_col": "baseMean", "y_col": "log2FoldChange", "sig_col": "padj",
+        }
+
+    if internal == "pca":
+        p = {}
+        for key in ("n_genes", "transform", "scaling", "x_pc", "y_pc",
+                    "point_size", "show_labels", "sample_groups", "group_colors"):
+            if key in params:
+                p[key] = params[key]
+        return df, "pca", p
+
+    if internal in ("go_bar", "go_cluster_dot", "count_summary", "venn",
+                    "multi_group_heatmap", "upset"):
+        target = FIG_ATLAS_PLOT_TYPES[internal]
+        return df, target, {}
+
+    if internal == "meta_volcano":
+        x_col = params.get("x_col") or next(
+            (c for c in ("meta_effect_log2fc", "meta_log2fc_mean", "meta_log2fe_mean")
+             if c in df.columns), "meta_log2fc_mean")
+        p_col = params.get("p_col") or next(
+            (c for c in ("meta_pvalue_fisher", "meta_fdr_fisher",
+                         "meta_pvalue_stouffer", "meta_pvalue_re")
+             if c in df.columns), "meta_pvalue_fisher")
+        out = _rename_cols(df, {x_col: "log2FC", p_col: "padj"})
+        return out, "volcano", {
+            "log2fc_threshold": float(params.get("lfc_threshold") or 1.0),
+            "padj_threshold": float(params.get("p_threshold") or 0.05),
+        }
+
+    if internal == "gene_expression_bar":
+        return _gene_bar_long(df, params), "bar_scatter", {
+            "category_col": "symbol", "group_col": "group", "value_col": "value",
+        }
+
+    if internal == "concordance_summary":
+        if "concordance" not in df.columns:
+            return df, "bar_scatter", {}
+        counts = df["concordance"].value_counts()
+        out = pd.DataFrame({"symbol": counts.index, "value": counts.values})
+        return out, "bar_scatter", {
+            "category_col": "symbol", "value_col": "value",
+        }
+
+    if internal == "composition":
+        return _composition_long(df), "stacked_bar", {
+            "x_col": "category", "stack_col": "part", "value_col": "count",
+            "percent": True,
+        }
+
+    if internal == "annotation_comparison":
+        return _annotation_long(df), "cross_condition_dotplot", {
+            "term_col": "GO Term", "condition_col": "Condition",
+            "value_col": "Signed -log10(FDR)", "size_col": "Gene Ratio",
+        }
+
+    if internal == "expression_dot":
+        return df, "dot_matrix", {
+            "row_col": "gene_name", "col_col": "cell_type",
+            "size_col": "pct_expressing", "color_col": "mean_expression",
+            "colorbar_label": "mean expression",
+        }
+
+    if internal == "genomic_distribution":
+        if "annotation" not in df.columns:
+            return df, "bar_scatter", {}
+        counts = df["annotation"].value_counts()
+        out = pd.DataFrame({"symbol": counts.index, "value": counts.values})
+        return out, "bar_scatter", {
+            "category_col": "symbol", "value_col": "value",
+        }
+
+    if internal == "concordance_heatmap":
+        return df, "heatmap", {
+            "label_col": "symbol",
+            "sample_columns": ["rna_log2fc", "atac_log2fc_mean"],
+            "normalization": "none", "colormap": "RdBu_r",
+        }
+
+    if internal == "quadrant":
+        p = {
+            "x_col": "atac_log2fc_mean", "y_col": "rna_log2fc",
+            "group_col": "concordance", "fit": False,
+        }
+        for key in ("x_cutoffs", "y_cutoffs", "group_colors", "group_labels"):
+            if key in params:
+                p[key] = params[key]
+        if "rna_lfc_cutoff" in params or "atac_lfc_cutoff" in params:
+            p["y_cutoffs"] = [-abs(float(params.get("rna_lfc_cutoff") or 1.0)),
+                              abs(float(params.get("rna_lfc_cutoff") or 1.0))]
+            p["x_cutoffs"] = [-abs(float(params.get("atac_lfc_cutoff") or 1.0)),
+                              abs(float(params.get("atac_lfc_cutoff") or 1.0))]
+        return df, "group_scatter", p
+
+    if internal == "integrated_volcano":
+        return df, "threshold_scatter", {
+            "x_col": "rna_log2fc", "y_col": "rna_padj", "y_transform": "neg_log10",
+            "effect_col": "rna_log2fc", "sig_col": "rna_padj",
+            "color_col": "concordance", "size_col": "peak_count",
+            "log2fc_threshold": float(params.get("log2fc_threshold") or 1.0),
+            "padj_threshold": float(params.get("padj_threshold") or 0.05),
+        }
+
+    if internal == "go_comparison_dot":
+        out = _go_comparison_long(df, params)
+        return out, "dot_matrix", {
+            "row_col": "description", "col_col": "dataset",
+            "size_col": "gene_count", "color_col": "fe",
+            "colorbar_label": "fold enrichment",
+        }
 
     if internal == "go_dot":
         return df, "go_dot", {
