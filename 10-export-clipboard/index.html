@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
     
     
       
@@ -31,10 +31,10 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -1089,6 +1089,18 @@
  provenance information</p>
 </li>
 </ol>
+<p>For the external <strong>fig-atlas</strong> publication pipeline, use
+<strong>Export fig-atlas Bundle</strong> instead. It writes the handoff shape that fig-atlas
+reads:</p>
+<ul>
+<li><code>inputs/data.csv</code> — the data table with the contract column names</li>
+<li><code>metadata/metadata.yaml</code> — <code>plot_type</code> and the <code>plot_params</code> column roles</li>
+<li>one reference output set under <code>outputs/&lt;source_stem&gt;.png/pdf/svg</code></li>
+<li><code>manifest.json</code></li>
+</ul>
+<p>fig-atlas draws the panel itself at its final printed size; it does not run a
+script. Use the regular <strong>Export Bundle</strong> when you need the standalone
+<code>scripts/figure.py</code> for local reproduction.</p>
 <p>Useful for archiving a figure alongside exactly the data and parameters that
  produced it, or handing it off for a downstream figure-atlas / publication workflow.
  If the current tab doesn't support this, a message says so.</p>
@@ -1221,10 +1233,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "search.suggest", "toc.integrate"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "search.suggest", "toc.integrate"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
     
   </body>
