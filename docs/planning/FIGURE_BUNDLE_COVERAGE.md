@@ -134,20 +134,22 @@ Resolved by the fig-atlas replies and the `export_fig_atlas_bundle()` path:
 - chromVAR `volcano` sends only thresholds (no threshold-scatter roles).
 - Expression Distribution uses `hue_col: condition` for grouped violins.
 - Motif colour is significance (`-log10(p)`), with an explicit colourbar label.
-- `fa bundle check` 7/7; `fa lint` reports 0 unread keys after build.
+- All 22 additional types are mapped; `fa bundle check` is **22/22** on the new
+  sample bundles.
+- PCA orientation is confirmed (gene × sample; the renderer transposes
+  internally).
+- `go_cluster_dot.direction_colors` is a renderer default reported as
+  `not_reached`, not a bundle problem.
 
-Still open:
-
-1. Map the remaining 22 internal plot types to fig-atlas `plot_type`s.
-2. Decide whether `expression_distribution` should use `hue_col` for grouped
-   violins instead of the current combined `category` column.
+No open fig-atlas contract items remain. The next step is real project bundles
+in cmg-figure.
 
 ## 8. Recommended order
 
 1. Keep the coverage regression test green for new dialogs.
-2. Validate `metadata.yaml` against the external contract.
-3. Run every generated `scripts/figure.py` headlessly in CI or a release check.
-4. Hand a sample bundle to the external figure-atlas pipeline for review.
+2. Use the 22 synthetic bundles as the frozen contract reference set.
+3. Prepare real project bundles and the project-level FigureSpec in cmg-figure.
+4. Run the same check/ingest/build/verify cycle in the project environment.
 
 ## 9. Related documents
 

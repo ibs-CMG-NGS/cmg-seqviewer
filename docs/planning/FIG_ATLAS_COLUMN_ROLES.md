@@ -61,5 +61,5 @@ The fig-atlas 2026-11-09 reply resolved these; all are implemented.
 - `fa ingest`/`build --preflight`/`verify`: pass; preflight warnings are from the
   deliberately dense 22-panel test layout.
 - fig-atlas v0.4.0 is the reference package for the new contracts/renderers.
-- `fa lint` reports 3 unread keys for `plots.go_cluster_dot.direction_colors`,
-  which fig-atlas's `fa ingest` adds; the bundle metadata itself has no such key.
+- `go_cluster_dot.direction_colors` is a renderer default reported under
+  `not_reached`; it is not a bundle issue and should not be added to metadata.

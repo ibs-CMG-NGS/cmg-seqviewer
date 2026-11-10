@@ -1,10 +1,9 @@
 # Publication-Quality Figure & Bundle Handoff Plan
 
-- **Status (2026-10-24)**: P1 theme/export and P4 bundle export are implemented;
-  all 29 plot types have an internal bundle. fig-atlas contract mapping is
-  implemented for 7 sample shapes and passes `fa bundle check` 7/7. Remaining
-  work is mapping the other 22 plot types and wiring real project bundles into
-  cmg-figure.
+- **Status (2026-11-10)**: P1/P4 and the fig-atlas handoff are complete. All 29
+  internal plot types have a fig-atlas mapping; the 22 new sample bundles pass
+  `fa bundle check` 22/22 and fig-atlas has accepted the contract. Remaining work
+  is preparing real project bundles and the FigureSpec in cmg-figure.
 - **Code baseline**: v1.4.1
 - **Coverage audit**: [FIGURE_BUNDLE_COVERAGE.md](FIGURE_BUNDLE_COVERAGE.md)
 - **Historical details**:
