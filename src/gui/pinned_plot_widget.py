@@ -56,6 +56,9 @@ class PinnedPlotWidget(QWidget):
         bundle_btn = QPushButton("Export Bundle")
         bundle_btn.clicked.connect(self._export_bundle)
         bar.addWidget(bundle_btn)
+        atlas_btn = QPushButton("Export fig-atlas Bundle")
+        atlas_btn.clicked.connect(self._export_fig_atlas_bundle)
+        bar.addWidget(atlas_btn)
         layout.addLayout(bar)
 
         self._render()
@@ -117,6 +120,31 @@ class PinnedPlotWidget(QWidget):
             'source_stem': slug,
             'notes': 'Generated from a cmg-seqviewer pinned plot tab',
         }
+
+    def _export_fig_atlas_bundle(self):
+        from utils.figure_bundle_export import (
+            export_fig_atlas_bundle, FIG_ATLAS_PLOT_TYPES)
+        ctx = self.get_bundle_context()
+        if str(ctx.get('plot_type', '')).lower() not in FIG_ATLAS_PLOT_TYPES:
+            QMessageBox.information(
+                self, "Not mapped",
+                "This pinned plot type has no fig-atlas contract mapping yet.")
+            return
+        slug = ctx.get('figure_slug', 'figure_bundle')
+        path, _ = remembered_save_path(
+            self, "Export fig-atlas Bundle — choose folder name",
+            f"{slug}_fig_atlas", "Figure Bundle Folder (*)",
+        )
+        if not path:
+            return
+        try:
+            bundle_dir = export_fig_atlas_bundle(
+                ctx, path, slug, ctx.get('figure_title', 'Figure'))
+            QMessageBox.information(
+                self, "fig-atlas bundle exported",
+                f"Bundle created at:\n{bundle_dir}")
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.critical(self, "fig-atlas export failed", str(e))
 
     def _export_bundle(self):
         from utils.figure_bundle_export import export_figure_bundle

@@ -92,6 +92,10 @@ class ConcordanceSummaryDialog(QDialog):
         bundle_btn.setToolTip("재현 가능한 figure 번들(데이터+스크립트+메타)로 export")
         bundle_btn.clicked.connect(self._on_export_bundle)
         btn_layout.addWidget(bundle_btn)
+        atlas_btn = QPushButton("Export fig-atlas Bundle")
+        atlas_btn.setToolTip("fig-atlas가 읽는 data + metadata 번들로 export (script 없음)")
+        atlas_btn.clicked.connect(self._on_export_fig_atlas_bundle)
+        btn_layout.addWidget(atlas_btn)
         pin_btn = QPushButton("📌 Pin to Tab")
         pin_btn.setToolTip("이 플롯을 메인 창의 탭으로 고정합니다(스냅샷).")
         pin_btn.clicked.connect(self._on_pin_to_tab)
@@ -187,6 +191,25 @@ class ConcordanceSummaryDialog(QDialog):
             QMessageBox.information(self, "Bundle exported", f"Bundle created at:\n{bundle_dir}")
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Bundle export failed", str(exc))
+
+    def _on_export_fig_atlas_bundle(self):
+        context = self.get_bundle_context()
+        slug = context.get("figure_slug", "figure_bundle")
+        path, _ = remembered_save_path(
+            self, "Export fig-atlas Bundle — choose folder name",
+            f"{slug}_fig_atlas", "Figure Bundle Folder (*)",
+        )
+        if not path:
+            return
+        try:
+            from utils.figure_bundle_export import export_fig_atlas_bundle
+            bundle_dir = export_fig_atlas_bundle(
+                context, path, slug, context.get("figure_title", "Figure"))
+            QMessageBox.information(
+                self, "fig-atlas bundle exported",
+                f"Bundle created at:\n{bundle_dir}")
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "fig-atlas export failed", str(exc))
 
     def _find_pin_host(self):
         """부모 체인을 거슬러 pin_plot_from_context() 를 가진 메인 윈도우를 찾는다."""
