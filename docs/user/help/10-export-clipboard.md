@@ -45,6 +45,27 @@ script. The bundle therefore carries **data + column roles**, not drawing code.
 Useful for archiving a figure alongside exactly the data and parameters that
 produced it, or handing it off for downstream publication layout.
 
+### What fig-atlas can reproduce
+
+Every supported plot type can be handed off, but a few use the **closest
+fig-atlas shape** rather than a pixel-identical copy:
+
+- **Genomic Distribution**: pie chart becomes a stacked share bar.
+- **Concordance Heatmap**: the concordance category strip is not drawn.
+- **Cell-Type Composition**: ratio/means modes are simplified.
+- **Genomic Annotation Comparison**: not every counts/proportion/enrichment
+  mode is represented.
+- **Gene Expression Bar**: significance brackets need a p-value column.
+- **Comparison Dot Plot**: drawn with the GO-style cross-condition dot plot.
+- **TF Motif Enrichment**: bar chart becomes a motif dot plot; colour means
+  significance, not fold enrichment.
+- **chromVAR**: only the volcano mode is mapped; scatter/heatmap modes are not.
+- **GO Comparison Dot**: top-N/min-dataset/FDR filtering may differ.
+
+If you need the exact viewer appearance, use **Save Figure** in the viewer or
+keep that figure in cmg-seqviewer. The contract mapping is for downstream
+publication layout, not a guarantee of identical styling.
+
 ## 10.3 Cell Selection
 
 Flexible cell selection in data tables:
