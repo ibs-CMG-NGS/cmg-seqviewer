@@ -1060,38 +1060,19 @@
  "last used folder" for the session — pick a location once and later exports
  default to it, so you won't have to re-navigate every time.</em></p>
 <h2 id="102-export-figure-bundle">10.2 Export Figure Bundle...<a class="headerlink" href="#102-export-figure-bundle" title="Permanent link">&para;</a></h2>
-<p>Most plot windows (pinned Volcano/Heatmap tabs and the majority of the
- other plot dialogs) can export a self-contained, reproducible <strong>figure bundle</strong>
- instead of just an image:</p>
+<p>Most plot windows (pinned Volcano/Heatmap tabs, standalone dialogs, and the
+Concordance Summary) can export a <strong>figure bundle</strong> for the external
+<strong>fig-atlas</strong> publication pipeline:</p>
 <ol>
 <li>
 <p>With the plot tab/dialog active, go to
- <strong>File → Export Figure Bundle...</strong></p>
+ <strong>File → Export Figure Bundle...</strong> (or click <strong>Export Bundle</strong> in the plot window).</p>
 </li>
 <li>
-<p>Choose a destination folder name (defaults to a name based on the plot type)</p>
+<p>Choose a destination folder name (defaults to a name based on the plot type).</p>
 </li>
 </ol>
-<p>The bundle folder contains:</p>
-<ol>
-<li>
-<p><code>scripts/figure.py</code> — a standalone script that reproduces the figure</p>
-</li>
-<li>
-<p><code>inputs/data.csv</code> — the exact data used to draw it</p>
-</li>
-<li>
-<p><code>outputs/figure.png/pdf/svg</code> — the rendered figure (PNG always,
- PDF/SVG best-effort)</p>
-</li>
-<li>
-<p><code>metadata/metadata.yaml</code> and <code>manifest.json</code> —
- provenance information</p>
-</li>
-</ol>
-<p>For the external <strong>fig-atlas</strong> publication pipeline, use
-<strong>Export fig-atlas Bundle</strong> instead. It writes the handoff shape that fig-atlas
-reads:</p>
+<p>The bundle is the fig-atlas handoff shape:</p>
 <ul>
 <li><code>inputs/data.csv</code> — the data table with the contract column names</li>
 <li><code>metadata/metadata.yaml</code> — <code>plot_type</code> and the <code>plot_params</code> column roles</li>
@@ -1099,11 +1080,9 @@ reads:</p>
 <li><code>manifest.json</code></li>
 </ul>
 <p>fig-atlas draws the panel itself at its final printed size; it does not run a
-script. Use the regular <strong>Export Bundle</strong> when you need the standalone
-<code>scripts/figure.py</code> for local reproduction.</p>
-<p>Useful for archiving a figure alongside exactly the data and parameters that
- produced it, or handing it off for a downstream figure-atlas / publication workflow.
- If the current tab doesn't support this, a message says so.</p>
+script. The bundle therefore carries <strong>data + column roles</strong>, not drawing code.
+Useful for archiving a figure alongside exactly the data and parameters that
+produced it, or handing it off for downstream publication layout.</p>
 <h2 id="103-cell-selection">10.3 Cell Selection<a class="headerlink" href="#103-cell-selection" title="Permanent link">&para;</a></h2>
 <p>Flexible cell selection in data tables:</p>
 <ol>
