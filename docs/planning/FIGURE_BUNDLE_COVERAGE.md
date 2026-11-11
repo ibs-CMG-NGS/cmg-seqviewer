@@ -109,6 +109,29 @@ The 22 new sample bundles pass `fa bundle check` **22/22**.
 internal plot types still need a fig-atlas contract mapping before they can be
 handed off.
 
+## 5.1 Contract coverage vs visual fidelity
+
+All 29 viewer plot types have a fig-atlas **contract mapping**, and the 22 new
+sample bundles pass `fa bundle check`. That is not the same as pixel-identical
+reproduction: some mappings use the closest existing fig-atlas shape and reduce
+viewer-specific options.
+
+| Viewer figure | Mapping | Fidelity note |
+|---|---|---|
+| `genomic_distribution` | `stacked_bar` | viewer pie -> stacked share bar |
+| `concordance_heatmap` | `heatmap` | concordance category strip is not drawn |
+| `composition` | `stacked_bar` | viewer ratio/means modes are reduced to the stacked mean/ratio shape |
+| `annotation_comparison` | `cross_condition_dotplot` | viewer counts/proportion/enrichment modes are not all represented |
+| `gene_expression_bar` | `bar_scatter` | significance brackets require a p-value column; not automatic |
+| `comparison_dot` | `cross_condition_dotplot` | gene comparison uses the GO-style shape; Gene Ratio is a proxy |
+| `motif_enrichment` | `motif_dotplot` | viewer bar chart becomes a motif dot plot; colour is significance |
+| `chromvar` | `volcano` | only the volcano mode is mapped; scatter/heatmap modes are not |
+| `go_comparison_dot` | `dot_matrix` | top-N/min-dataset/FDR filtering may differ from the viewer |
+
+The remaining mapped types (histograms, violin, volcano, MA, PCA, GO dot/bar/
+cluster, count summary, Venn, UpSet, multi-group heatmap, expression dot, etc.)
+are close to the viewer shape.
+
 ## 6. Ambiguous / legacy
 
 - `GONetworkDialog` currently exposes a bundle for the **cluster summary dot
