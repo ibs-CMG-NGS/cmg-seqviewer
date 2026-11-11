@@ -572,6 +572,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="10.2 Export Figure Bundle...">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-fig-atlas-can-reproduce" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What fig-atlas can reproduce
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1083,6 +1100,25 @@ Concordance Summary) can export a <strong>figure bundle</strong> for the externa
 script. The bundle therefore carries <strong>data + column roles</strong>, not drawing code.
 Useful for archiving a figure alongside exactly the data and parameters that
 produced it, or handing it off for downstream publication layout.</p>
+<h3 id="what-fig-atlas-can-reproduce">What fig-atlas can reproduce<a class="headerlink" href="#what-fig-atlas-can-reproduce" title="Permanent link">&para;</a></h3>
+<p>Every supported plot type can be handed off, but a few use the <strong>closest
+fig-atlas shape</strong> rather than a pixel-identical copy:</p>
+<ul>
+<li><strong>Genomic Distribution</strong>: pie chart becomes a stacked share bar.</li>
+<li><strong>Concordance Heatmap</strong>: the concordance category strip is not drawn.</li>
+<li><strong>Cell-Type Composition</strong>: ratio/means modes are simplified.</li>
+<li><strong>Genomic Annotation Comparison</strong>: not every counts/proportion/enrichment
+  mode is represented.</li>
+<li><strong>Gene Expression Bar</strong>: significance brackets need a p-value column.</li>
+<li><strong>Comparison Dot Plot</strong>: drawn with the GO-style cross-condition dot plot.</li>
+<li><strong>TF Motif Enrichment</strong>: bar chart becomes a motif dot plot; colour means
+  significance, not fold enrichment.</li>
+<li><strong>chromVAR</strong>: only the volcano mode is mapped; scatter/heatmap modes are not.</li>
+<li><strong>GO Comparison Dot</strong>: top-N/min-dataset/FDR filtering may differ.</li>
+</ul>
+<p>If you need the exact viewer appearance, use <strong>Save Figure</strong> in the viewer or
+keep that figure in cmg-seqviewer. The contract mapping is for downstream
+publication layout, not a guarantee of identical styling.</p>
 <h2 id="103-cell-selection">10.3 Cell Selection<a class="headerlink" href="#103-cell-selection" title="Permanent link">&para;</a></h2>
 <p>Flexible cell selection in data tables:</p>
 <ol>
