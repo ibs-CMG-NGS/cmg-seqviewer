@@ -89,13 +89,9 @@ class ConcordanceSummaryDialog(QDialog):
         save_btn.clicked.connect(self._on_save)
         btn_layout.addWidget(save_btn)
         bundle_btn = QPushButton("Export Bundle")
-        bundle_btn.setToolTip("재현 가능한 figure 번들(데이터+스크립트+메타)로 export")
-        bundle_btn.clicked.connect(self._on_export_bundle)
+        bundle_btn.setToolTip("fig-atlas가 읽는 data + metadata 번들로 export (script 없음)")
+        bundle_btn.clicked.connect(self._on_export_fig_atlas_bundle)
         btn_layout.addWidget(bundle_btn)
-        atlas_btn = QPushButton("Export fig-atlas Bundle")
-        atlas_btn.setToolTip("fig-atlas가 읽는 data + metadata 번들로 export (script 없음)")
-        atlas_btn.clicked.connect(self._on_export_fig_atlas_bundle)
-        btn_layout.addWidget(atlas_btn)
         pin_btn = QPushButton("📌 Pin to Tab")
         pin_btn.setToolTip("이 플롯을 메인 창의 탭으로 고정합니다(스냅샷).")
         pin_btn.clicked.connect(self._on_pin_to_tab)
@@ -157,7 +153,7 @@ class ConcordanceSummaryDialog(QDialog):
 
     # ── Bundle export / Pin to Tab ──────────────────────────────────────────
     # BasePlotDialog를 상속하지 않는 다이얼로그라 동일 기능을 자체적으로 갖춘다
-    # (gui/base_plot_dialog.py의 _on_export_bundle/_on_pin_to_tab과 동일한 로직).
+    # (gui/base_plot_dialog.py의 _on_export_fig_atlas_bundle/_on_pin_to_tab과 동일한 로직).
 
     def get_bundle_context(self) -> dict:
         return {
@@ -171,26 +167,6 @@ class ConcordanceSummaryDialog(QDialog):
             'source_stem': 'concordance_summary',
             'notes': 'Generated from cmg-seqviewer Concordance Summary (RNA vs ATAC) plot',
         }
-
-    def _on_export_bundle(self):
-        context = self.get_bundle_context()
-        slug = context.get("figure_slug", "figure_bundle")
-        path, _ = remembered_save_path(
-            self, "Export Figure Bundle — choose folder name",
-            f"{slug}_bundle", "Figure Bundle Folder (*)",
-        )
-        if not path:
-            return
-        try:
-            from utils.figure_bundle_export import export_figure_bundle
-            bundle_dir = export_figure_bundle(
-                context, path, slug,
-                context.get("figure_title", "Figure"),
-                context.get("plot_type", "plot"),
-            )
-            QMessageBox.information(self, "Bundle exported", f"Bundle created at:\n{bundle_dir}")
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Bundle export failed", str(exc))
 
     def _on_export_fig_atlas_bundle(self):
         context = self.get_bundle_context()

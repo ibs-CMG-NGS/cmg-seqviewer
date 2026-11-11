@@ -61,6 +61,10 @@ the external pipeline focused on **figure assembly and publication layout**.
 | Dedicated script builders | ✅ 29 plot types | `figure_bundle_export.py` |
 | Coverage audit | ✅ 2026-10-23 | [FIGURE_BUNDLE_COVERAGE.md](FIGURE_BUNDLE_COVERAGE.md) |
 
+> The user-facing **Export Bundle** now emits the fig-atlas data + metadata
+> shape. `export_figure_bundle()` and its generated scripts remain internal
+> (tests/backward compatibility) and are not the downstream handoff.
+
 ## 3. Active phase — Bundle handoff coverage and contract review (P2)
 
 **Goal:** every figure reachable from the GUI can be exported as a bundle that

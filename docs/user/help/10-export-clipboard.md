@@ -24,30 +24,16 @@ Export any tab's data to file:
 
 ## 10.2 Export Figure Bundle...
 
-Most plot windows (pinned Volcano/Heatmap tabs and the majority of the
- other plot dialogs) can export a self-contained, reproducible **figure bundle**
- instead of just an image:
+Most plot windows (pinned Volcano/Heatmap tabs, standalone dialogs, and the
+Concordance Summary) can export a **figure bundle** for the external
+**fig-atlas** publication pipeline:
 
 1. With the plot tab/dialog active, go to
- **File → Export Figure Bundle...**
+ **File → Export Figure Bundle...** (or click **Export Bundle** in the plot window).
 
-2. Choose a destination folder name (defaults to a name based on the plot type)
+2. Choose a destination folder name (defaults to a name based on the plot type).
 
-The bundle folder contains:
-
-3. `scripts/figure.py` — a standalone script that reproduces the figure
-
-4. `inputs/data.csv` — the exact data used to draw it
-
-5. `outputs/figure.png/pdf/svg` — the rendered figure (PNG always,
- PDF/SVG best-effort)
-
-6. `metadata/metadata.yaml` and `manifest.json` —
- provenance information
-
-For the external **fig-atlas** publication pipeline, use
-**Export fig-atlas Bundle** instead. It writes the handoff shape that fig-atlas
-reads:
+The bundle is the fig-atlas handoff shape:
 
 - `inputs/data.csv` — the data table with the contract column names
 - `metadata/metadata.yaml` — `plot_type` and the `plot_params` column roles
@@ -55,12 +41,9 @@ reads:
 - `manifest.json`
 
 fig-atlas draws the panel itself at its final printed size; it does not run a
-script. Use the regular **Export Bundle** when you need the standalone
-`scripts/figure.py` for local reproduction.
-
+script. The bundle therefore carries **data + column roles**, not drawing code.
 Useful for archiving a figure alongside exactly the data and parameters that
- produced it, or handing it off for a downstream figure-atlas / publication workflow.
- If the current tab doesn't support this, a message says so.
+produced it, or handing it off for downstream publication layout.
 
 ## 10.3 Cell Selection
 

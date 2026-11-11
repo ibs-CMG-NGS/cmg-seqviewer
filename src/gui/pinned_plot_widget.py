@@ -54,11 +54,9 @@ class PinnedPlotWidget(QWidget):
         save_btn.clicked.connect(self._save_figure)
         bar.addWidget(save_btn)
         bundle_btn = QPushButton("Export Bundle")
-        bundle_btn.clicked.connect(self._export_bundle)
+        bundle_btn.setToolTip("fig-atlas가 읽는 data + metadata 번들로 export (script 없음)")
+        bundle_btn.clicked.connect(self._export_fig_atlas_bundle)
         bar.addWidget(bundle_btn)
-        atlas_btn = QPushButton("Export fig-atlas Bundle")
-        atlas_btn.clicked.connect(self._export_fig_atlas_bundle)
-        bar.addWidget(atlas_btn)
         layout.addLayout(bar)
 
         self._render()
@@ -145,22 +143,3 @@ class PinnedPlotWidget(QWidget):
                 f"Bundle created at:\n{bundle_dir}")
         except Exception as e:  # noqa: BLE001
             QMessageBox.critical(self, "fig-atlas export failed", str(e))
-
-    def _export_bundle(self):
-        from utils.figure_bundle_export import export_figure_bundle
-        ctx = self.get_bundle_context()
-        slug = ctx.get('figure_slug', 'figure_bundle')
-        path, _ = remembered_save_path(
-            self, "Export Figure Bundle — choose folder name",
-            f"{slug}_bundle", "Figure Bundle Folder (*)",
-        )
-        if not path:
-            return
-        try:
-            bundle_dir = export_figure_bundle(
-                ctx, path, slug, ctx.get('figure_title', 'Figure'),
-                ctx.get('plot_type', 'plot'),
-            )
-            QMessageBox.information(self, "Bundle exported", f"Bundle created at:\n{bundle_dir}")
-        except Exception as e:  # noqa: BLE001
-            QMessageBox.critical(self, "Bundle export failed", str(e))

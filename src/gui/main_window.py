@@ -28,7 +28,7 @@ from gui.filter_panel import FilterPanel
 from gui.dataset_tree_panel import DatasetTreePanel
 from gui.comparison_panel import ComparisonPanel
 from gui.visualization_dialog import VolcanoPlotWidget, VolcanoPlotDialog, HeatmapWidget, HeatmapDialog, PadjHistogramDialog, DotPlotDialog
-from utils.figure_bundle_export import export_figure_bundle
+from utils.figure_bundle_export import export_fig_atlas_bundle, FIG_ATLAS_PLOT_TYPES
 from gui.pca_dialog import PCADialog
 from gui.venn_dialog import VennDiagramDialog
 from gui.venn_dialog_comparison import VennDiagramFromComparisonDialog
@@ -2808,14 +2808,15 @@ class MainWindow(QMainWindow):
             if not path:
                 return
             try:
-                bundle_dir = export_figure_bundle(
-                    context,
-                    path,
-                    slug,
-                    context.get('figure_title', 'Figure'),
-                    context.get('plot_type', 'plot'),
-                )
-                QMessageBox.information(self, "Bundle exported", f"Bundle created at:\n{bundle_dir}")
+                if str(context.get('plot_type', '')).lower() not in FIG_ATLAS_PLOT_TYPES:
+                    QMessageBox.information(
+                        self, "Not mapped",
+                        "This plot type has no fig-atlas contract mapping.")
+                    return
+                bundle_dir = export_fig_atlas_bundle(
+                    context, path, slug, context.get('figure_title', 'Figure'))
+                QMessageBox.information(
+                    self, "Bundle exported", f"Bundle created at:\n{bundle_dir}")
             except Exception as exc:
                 QMessageBox.critical(self, "Bundle export failed", str(exc))
             return

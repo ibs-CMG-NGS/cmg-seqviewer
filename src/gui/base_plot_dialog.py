@@ -171,21 +171,10 @@ class BasePlotDialog(QDialog):
         # get_bundle_context()를 구현한 다이얼로그는 재현 번들 export 버튼을 자동 노출
         if hasattr(self, "get_bundle_context"):
             bundle_btn = QPushButton("Export Bundle")
-            bundle_btn.setToolTip("재현 가능한 figure 번들(데이터+스크립트+메타)로 export")
-            bundle_btn.clicked.connect(self._on_export_bundle)
+            bundle_btn.setToolTip(
+                "fig-atlas가 읽는 data + metadata 번들로 export (script 없음)")
+            bundle_btn.clicked.connect(self._on_export_fig_atlas_bundle)
             bar.addWidget(bundle_btn)
-
-            try:
-                from utils.figure_bundle_export import FIG_ATLAS_PLOT_TYPES
-                _atlas_ctx = self.get_bundle_context()
-                if str(_atlas_ctx.get("plot_type", "")).lower() in FIG_ATLAS_PLOT_TYPES:
-                    atlas_btn = QPushButton("Export fig-atlas Bundle")
-                    atlas_btn.setToolTip(
-                        "fig-atlas가 읽는 data + metadata 번들로 export (script 없음)")
-                    atlas_btn.clicked.connect(self._on_export_fig_atlas_bundle)
-                    bar.addWidget(atlas_btn)
-            except Exception:  # noqa: BLE001 — 버튼 노출 실패가 다이얼로그를 막지 않도록
-                pass
 
             # 재렌더 가능한 plot_type 이면 탭 고정 버튼도 자동 노출
             try:
@@ -249,30 +238,6 @@ class BasePlotDialog(QDialog):
                 f"Bundle created at:\n{bundle_dir}")
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "fig-atlas export failed", str(exc))
-
-    def _on_export_bundle(self):
-        """get_bundle_context() 를 재현 번들로 export (공용).
-
-        기본 폴더 이름은 {slug}_bundle 로 제안하되, Save 대화상자에서 사용자가 위치와
-        폴더 이름을 자유롭게 바꿀 수 있다.
-        """
-        context = self.get_bundle_context()
-        slug = context.get("figure_slug", "figure_bundle")
-        path = self._prompt_bundle_path(f"{slug}_bundle")
-        if not path:
-            return
-        try:
-            from utils.figure_bundle_export import export_figure_bundle
-            bundle_dir = export_figure_bundle(
-                context,
-                path,
-                slug,
-                context.get("figure_title", "Figure"),
-                context.get("plot_type", "plot"),
-            )
-            QMessageBox.information(self, "Bundle exported", f"Bundle created at:\n{bundle_dir}")
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Bundle export failed", str(exc))
 
     def _prompt_bundle_path(self, default_name: str) -> str:
         """번들 폴더 경로를 Save 대화상자로 받는다(이름 편집 가능). 취소 시 빈 문자열."""
