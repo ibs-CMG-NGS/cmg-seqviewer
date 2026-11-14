@@ -54,6 +54,26 @@ the server starts in `schema_only` mode.
 - `CMG_MCP_DISABLE=1` is the kill switch; `enabled: false` also disables the
   server.
 
+## Interface boundary (GUI / CLI / MCP)
+
+| Capability | GUI | CLI | MCP |
+|---|---|---|---|
+| Interactive exploration, dialogs, column mapping | yes | no | no |
+| Load / filter / headless plot / export | yes | yes | yes |
+| Recipes and batch processing | no | yes | no |
+| Database list/describe | yes | yes | no |
+| Database import/edit/delete | yes | no | no |
+| DE comparison | yes | yes | yes |
+| GO/KEGG ORA (dataset source) | yes | no | yes |
+| GO/KEGG paste/meta/prerank | yes | no | no |
+| Project save/load, tabs, pinned plots | yes | no | no |
+| IGV, gene annotation, multi-omics | yes | no | no |
+| GUI bridge / live GUI control | future | no | future |
+
+MCP is the standard integration path for AI clients. The CLI is for humans,
+shell scripts, HPC, and CI; it is not a superset of MCP, and MCP is not a
+superset of the CLI. Both call the shared service layer.
+
 ## Client configuration
 
 Claude Desktop (`claude_desktop_config.json`) and Cursor (`mcp.json`) both use an

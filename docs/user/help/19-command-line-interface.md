@@ -13,6 +13,11 @@ interactively still belongs in the GUI. Once a procedure is settled, a
 **recipe** file lets you replay it on one file (`run`) or apply it across many
 files at once (`batch`).
 
+> **Using an AI client?** Use the MCP server, not shell commands. AI clients
+> (Claude Desktop, Cursor, etc.) should call MCP tools; the CLI is intended for
+> humans, shell scripts, HPC, and CI. The two share services but do not expose
+> the same feature set. See [AI Agent / MCP](19a-ai-agent-mcp.md).
+
 Because manual column mapping requires a dialog, the CLI never prompts for it:
 if a file's columns cannot be auto-detected, the command fails immediately with
 a clear error (listing the required columns and what was actually found) instead

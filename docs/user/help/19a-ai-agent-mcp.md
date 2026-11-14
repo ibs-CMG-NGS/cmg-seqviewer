@@ -11,6 +11,20 @@ the app does not include a chat assistant and the AI cannot click the GUI.
 > without institutional IRB/DPIA review. The default is **schema only** (no row
 > values); row preview, images, and writes are opt-in.
 
+## Which interface should I use?
+
+| Interface | Best for | AI agent? |
+|---|---|---|
+| GUI | Interactive exploration, dialogs, project state, IGV, annotation | No |
+| CLI | Shell scripts, HPC/CI, recipes, batch processing | Not the standard AI path |
+| MCP | Claude Desktop, Cursor, and other MCP clients | **Yes** |
+| GUI bridge | Future: hand results to a running GUI | Future |
+
+AI clients should call the **MCP server**, not shell out to `cmg-seqviewer-cli`.
+CLI and MCP share the same `src/services/` layer, but they are not identical
+surfaces: CLI has `run`/`batch`/`datasets`, while MCP adds resources/prompts and
+the enrichment tool. The GUI remains the place for interactive work.
+
 ## Install
 
 MCP is an optional extra, so a normal install does not include it:
@@ -72,6 +86,28 @@ Point your MCP client at the server and set the workspace explicitly:
 The AI **cannot** read full tables through MCP, access files outside the
 workspace, or control the GUI. For full data, use the
 [command-line interface](19-command-line-interface.md) or the app itself.
+
+## Feature boundary (v1.2)
+
+Supported through MCP:
+
+- Dataset load/inspect/summary/query preview (preview is opt-in)
+- Filtering (statistical, gene list, keyword, column subset)
+- Headless plot rendering and table export (opt-in)
+- DE dataset comparison
+- Dataset-source GO/KEGG ORA (network opt-in)
+- F1 help and schema/workflow resources
+
+Not supported through MCP:
+
+- Clicking or controlling the GUI; no GUI bridge yet
+- Interactive column mapping
+- Database import/edit/delete (MCP has no database tools)
+- Project save/load, tabs, pinned plots, session state
+- IGV integration, gene annotation, multi-omics integration
+- Expression summary/distribution dialog-specific workflows
+- Enrichment from pasted genes, meta-signature, or prerank (dataset-source ORA only)
+- Full-table transfer (`L3`); use `export_table` or the CLI for local files
 
 ## Exposure levels
 
