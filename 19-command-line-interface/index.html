@@ -857,10 +857,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#195-exit-codes-and-scripting" class="md-nav__link">
+  <a href="#195-headless-inspection-and-plotting" class="md-nav__link">
     <span class="md-ellipsis">
       
-        19.5 Exit codes and scripting
+        19.5 Headless inspection and plotting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#196-exit-codes-and-scripting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        19.6 Exit codes and scripting
       
     </span>
   </a>
@@ -1054,7 +1065,7 @@ actually found) instead of opening a GUI dialog.</p>
 <p>or, from a source checkout, equivalently:</p>
 <pre><code class="language-bash">python src/cli.py --help
 </code></pre>
-<p>Four subcommands are available: <code>load</code>, <code>filter</code>, <code>run</code>, <code>batch</code>.</p>
+<p>Subcommands: <code>load</code>, <code>filter</code>, <code>run</code>, <code>batch</code>, <code>summary</code>, <code>query</code>, <code>plot</code>, <code>export</code>, <code>schema</code>, and <code>help</code>.</p>
 <h2 id="192-load-inspect-a-file">19.2 <code>load</code> — inspect a file<a class="headerlink" href="#192-load-inspect-a-file" title="Permanent link">&para;</a></h2>
 <p>Loads a file through the same auto-detection used by <strong>File → Open
 Dataset</strong>, and reports what was detected — without writing anything.
@@ -1194,7 +1205,34 @@ writes a JSON array with one entry per file (<code>input</code>, <code>status</c
 <code>dataset_type</code>, <code>rows_total</code>, <code>rows_filtered</code>, <code>output</code>, or <code>error</code>) — a
 machine-readable record of what was run, suitable for checking into a
 results folder alongside the filtered tables.</p>
-<h2 id="195-exit-codes-and-scripting">19.5 Exit codes and scripting<a class="headerlink" href="#195-exit-codes-and-scripting" title="Permanent link">&para;</a></h2>
+<h2 id="195-headless-inspection-and-plotting">19.5 Headless inspection and plotting<a class="headerlink" href="#195-headless-inspection-and-plotting" title="Permanent link">&para;</a></h2>
+<p>These commands use the shared <code>src/services/</code> layer, so they behave the same
+way as the CLI filtering path and can be called by an AI client or a pipeline.</p>
+<p><strong><code>summary</code></strong> prints a JSON-safe dataset summary:</p>
+<pre><code class="language-bash">cmg-seqviewer-cli summary data/DE.xlsx --json
+</code></pre>
+<p><strong><code>query</code></strong> selects columns and a row range without filtering:</p>
+<pre><code class="language-bash">cmg-seqviewer-cli query data/DE.xlsx \
+  --columns gene_id log2fc adj_pvalue --limit 100 --out preview.csv
+</code></pre>
+<p><strong><code>plot</code></strong> renders any registered plot type with the same renderers as the GUI:</p>
+<pre><code class="language-bash">cmg-seqviewer-cli plot data/DE.xlsx --plot-type volcano \
+  --params-json '{&quot;log2fc_threshold&quot;: 1.0, &quot;padj_threshold&quot;: 0.05}' \
+  --out figures/volcano.png --dpi 300
+</code></pre>
+<p>Use <code>schema --json</code> to list available <code>plot_type</code>s and their parameters.
+The plot is rendered headlessly with matplotlib Agg; no <code>QApplication</code> is
+created.</p>
+<p><strong><code>export</code></strong> writes the loaded table as CSV/TSV/Excel/Parquet:</p>
+<pre><code class="language-bash">cmg-seqviewer-cli export data/DE.xlsx --out exported/de.csv
+</code></pre>
+<p><strong><code>schema</code></strong> lists plot types and help sections; <strong><code>help</code></strong> searches or prints
+the Markdown F1 help:</p>
+<pre><code class="language-bash">cmg-seqviewer-cli schema --json
+cmg-seqviewer-cli help filter --json
+cmg-seqviewer-cli help --section 01-getting-started
+</code></pre>
+<h2 id="196-exit-codes-and-scripting">19.6 Exit codes and scripting<a class="headerlink" href="#196-exit-codes-and-scripting" title="Permanent link">&para;</a></h2>
 <p>Every subcommand returns <code>0</code> on success and <code>1</code> on failure (an
 unrecognized file, missing required columns, a bad recipe, or — for
 <code>batch</code> — at least one file failing), so the CLI composes normally with
