@@ -59,6 +59,8 @@ Point your MCP client at the server and set the workspace explicitly:
 
 - List loaded datasets and inspect schema, dtypes, counts, and metadata.
 - Summarize a dataset and apply a filter to create a child dataset.
+- Compare two or more DE datasets: overlap counts by default; gene lists need
+  `aggregate`/`preview`, and a comparison table needs `preview`.
 - Render a plot to a file (only when images and writes are enabled).
 - Export a table to CSV/TSV/XLSX/Parquet (only when writes are enabled).
 - Search the in-app help and read a help section.
@@ -79,13 +81,15 @@ workspace, or control the GUI. For full data, use the
 
 Images can contain gene symbols, cell types, and condition names, so
 `allow_images` is a separate opt-in. Plot artifacts also need `allow_write`;
-table exports need `allow_write` as well.
+table exports need `allow_write` as well. Comparison gene lists are data values,
+so they require `data_policy=aggregate` or `preview`; a comparison table requires
+`preview`.
 The local audit log at `~/.cmg-seqviewer/mcp_audit.jsonl` records tool names,
 handle hashes, policy, and response sizes — not row values or absolute paths.
 
-## v1 limitations
+## v1.1 limitations
 
-- `compare_datasets`, enrichment, and network tools are not in v1.
+- Enrichment and network tools are not in v1.1.
 - No GUI bridge or live GUI control.
 - No in-app chat; use your own MCP client.
 

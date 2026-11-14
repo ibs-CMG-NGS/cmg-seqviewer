@@ -36,6 +36,16 @@ def test_compare_files_and_json(tmp_path):
     assert len(payload["comparison_table"]) == 2
 
 
+def test_result_to_dict_can_omit_gene_lists(tmp_path):
+    a = _write_de(tmp_path / "a.csv", ["G1", "G2", "G3"])
+    b = _write_de(tmp_path / "b.csv", ["G2", "G3", "G4"])
+    result = AnalysisService().compare_files([a, b])
+    payload = AnalysisService.result_to_dict(result, include_genes=False)
+    assert payload["overlap_stats"]["common_genes_count"] == 2
+    assert "common_genes" not in payload
+    assert "unique_genes" not in payload
+
+
 def test_compare_gene_list(tmp_path):
     a = _write_de(tmp_path / "a.csv", ["G1", "G2", "G3"])
     b = _write_de(tmp_path / "b.csv", ["G2", "G3", "G4"])

@@ -57,16 +57,18 @@ class AnalysisService:
         result: ComparisonResult,
         include_table: bool = False,
         table_limit: Optional[int] = None,
+        include_genes: bool = True,
     ) -> Dict[str, Any]:
         out: Dict[str, Any] = {
             "dataset_names": list(result.dataset_names),
-            "common_genes": list(result.common_genes),
-            "unique_genes": {
-                name: list(genes) for name, genes in result.unique_genes.items()
-            },
             "overlap_stats": result.get_overlap_stats(),
             "metadata": json.loads(json.dumps(result.metadata, default=str)),
         }
+        if include_genes:
+            out["common_genes"] = list(result.common_genes)
+            out["unique_genes"] = {
+                name: list(genes) for name, genes in result.unique_genes.items()
+            }
         if include_table and result.comparison_table is not None:
             table = result.comparison_table
             if table_limit is not None:

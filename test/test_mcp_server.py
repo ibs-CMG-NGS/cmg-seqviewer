@@ -26,8 +26,21 @@ def _de_csv(tmp_path):
     return path
 
 
+def _de_csv_b(tmp_path):
+    path = tmp_path / "de2.csv"
+    pd.DataFrame(
+        {
+            "gene_id": ["G2", "G3", "G4"],
+            "log2fc": [1.5, -2.0, 2.5],
+            "adj_pvalue": [0.01, 0.02, 0.03],
+        }
+    ).to_csv(path, index=False)
+    return path
+
+
 def _service(tmp_path, **policy_kwargs):
     _de_csv(tmp_path)
+    _de_csv_b(tmp_path)
     kwargs = {"workspace_root": tmp_path, "audit_log": tmp_path / "audit.jsonl"}
     kwargs.update(policy_kwargs)
     return MCPToolService(MCPPolicy(**kwargs))
@@ -102,6 +115,58 @@ def test_filter_returns_child_handle_without_rows(tmp_path):
     assert child["rows_before"] == 3
     assert child["rows_after"] == 2
     assert "G1" not in json.dumps(child)
+
+
+def test_compare_defaults_to_counts_only(tmp_path):
+    svc = _service(tmp_path)
+    a = svc.load_dataset("de.csv", "differential_expression")["handle"]
+    b = svc.load_dataset("de2.csv", "differential_expression")["handle"]
+    out = svc.compare_datasets([a, b])
+    assert out["overlap_stats"]["common_genes_count"] == 1
+    assert "common_genes" not in out
+    assert "unique_genes" not in out
+    assert "comparison_table" not in out
+    assert "G1" not in json.dumps(out)
+
+
+def test_compare_gene_lists_require_aggregate(tmp_path):
+    svc = _service(tmp_path)
+    a = svc.load_dataset("de.csv", "differential_expression")["handle"]
+    b = svc.load_dataset("de2.csv", "differential_expression")["handle"]
+    denied = svc.compare_datasets([a, b], include_genes=True)
+    assert denied["error_code"] == "GENE_LIST_DENIED"
+
+    aggregate = _service(tmp_path, data_policy="aggregate")
+    a = aggregate.load_dataset("de.csv", "differential_expression")["handle"]
+    b = aggregate.load_dataset("de2.csv", "differential_expression")["handle"]
+    out = aggregate.compare_datasets([a, b], include_genes=True)
+    assert set(out["common_genes"]) == {"G2"}
+    assert out["unique_genes"]["de"] == ["G1"]
+    assert set(out["unique_genes"]["de2"]) == {"G3", "G4"}
+
+
+def test_compare_table_requires_preview(tmp_path):
+    svc = _service(tmp_path)
+    a = svc.load_dataset("de.csv", "differential_expression")["handle"]
+    b = svc.load_dataset("de2.csv", "differential_expression")["handle"]
+    denied = svc.compare_datasets([a, b], include_table=True)
+    assert denied["error_code"] == "TABLE_DENIED"
+
+    preview = _service(tmp_path, data_policy="preview")
+    a = preview.load_dataset("de.csv", "differential_expression")["handle"]
+    b = preview.load_dataset("de2.csv", "differential_expression")["handle"]
+    out = preview.compare_datasets(
+        [a, b], include_table=True, include_genes=True, table_limit=2
+    )
+    assert len(out["comparison_table"]) == 2
+    assert set(out["common_genes"]) == {"G2"}
+
+
+def test_compare_requires_two_handles(tmp_path):
+    svc = _service(tmp_path)
+    a = svc.load_dataset("de.csv", "differential_expression")["handle"]
+    out = svc.compare_datasets([a])
+    assert out["error_code"] == "TOO_FEW_DATASETS"
 
 
 def test_preview_images_write_and_audit(tmp_path):
@@ -194,7 +259,7 @@ def test_build_server_registers_v1_tools_resources_and_prompts(tmp_path):
     assert any(r.uri == "help://index" for r in resources)
     assert any(r.uri_template == "help://section/{slug}" for r in templates)
     assert any(r.uri_template == "schema://dataset/{dataset_type}" for r in templates)
-    assert {"de-analysis", "expression-summary", "composition"} <= {
+    assert {"de-analysis", "expression-summary", "composition", "compare-datasets"} <= {
         p.name for p in prompts
     }
 
@@ -243,7 +308,7 @@ def test_stdio_end_to_end(tmp_path):
                 init = await session.initialize()
                 assert init.server_info.name == "cmg-seqviewer"
                 tools = await session.list_tools()
-                assert len(tools.tools) == 10
+                assert len(tools.tools) == 11
                 result = await session.call_tool(
                     "load_dataset",
                     {"path": "de.csv", "type_hint": "differential_expression"},

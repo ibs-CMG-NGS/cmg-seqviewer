@@ -1,8 +1,8 @@
 # MCP Integration (v1)
 
-> Status: v1 headless server implemented (2026-11-14). Phase 1 services/CLI are
-> shared; `compare_datasets`, enrichment, and the optional GUI bridge are not v1.
-> Read [MCP privacy](mcp-privacy.md) before enabling anything beyond `schema_only`.
+> Status: v1.1 headless server implemented (2026-11-14). Phase 1 services/CLI are
+> shared; enrichment and the optional GUI bridge are not v1.1. Read
+> [MCP privacy](mcp-privacy.md) before enabling anything beyond `schema_only`.
 
 ## Install and run
 
@@ -75,7 +75,7 @@ explicitly:
 Use an absolute path to the environment's `cmg-seqviewer-mcp` if the client does
 not inherit your shell `PATH`. Restart the client after changing the config.
 
-## Tools (v1)
+## Tools (v1.1)
 
 | Tool | Purpose | Policy |
 |---|---|---|
@@ -84,6 +84,7 @@ not inherit your shell `PATH`. Restart the client after changing the config.
 | `describe_dataset` | Type, rows, columns, dtypes, required columns, metadata. | always |
 | `summarize_dataset` | JSON-safe dataset summary. | always |
 | `filter_dataset` | Apply a filter; return a new child handle and counts. | always |
+| `compare_datasets` | Compare >=2 DE handles; counts by default. | always (gene lists: `aggregate`/`preview`; table: `preview`) |
 | `query_rows` | Small row preview (default 20, max 100). | `preview` |
 | `plot` | Render a registered plot type to a workspace file. | `allow_images` + `allow_write` |
 | `export_table` | Export a handle to CSV/TSV/XLSX/Parquet. | `allow_write` |
@@ -99,7 +100,9 @@ headless renderers, including `volcano`, `heatmap`, `pca`, `composition`,
 
 Successful responses include `schema_version` and `data_policy`. Artifacts
 return a **workspace-relative** path plus SHA-256; absolute paths and row values
-are not returned by default.
+are not returned by default. `compare_datasets` returns overlap counts only
+unless gene lists (`aggregate`/`preview`) or a table (`preview`) are explicitly
+requested.
 
 ## Resources and prompts
 
@@ -110,13 +113,14 @@ Resources:
 - `schema://dataset/{dataset_type}` — required standard columns.
 - `docs://pipeline-integration` — pipeline integration specification.
 - `workflow://de-analysis`, `workflow://expression-summary`,
-  `workflow://composition` — short workflow notes.
+  `workflow://composition`, `workflow://compare-datasets` — short workflow notes.
 
 Prompts:
 
 - `de-analysis`
 - `expression-summary`
 - `composition`
+- `compare-datasets`
 
 ## Errors
 
@@ -136,10 +140,11 @@ The default audit log is `~/.cmg-seqviewer/mcp_audit.jsonl` (local JSONL). Each
 line records timestamp, tool, a truncated dataset-handle hash, data policy, and
 response size. It does **not** record row values, absolute paths, or user names.
 
-## v1 limitations
+## v1.1 limitations
 
-- No `compare_datasets` tool yet; use the CLI `compare` path when available.
-- `aggregate` is accepted by policy, but v1 `summarize_dataset` returns the
+- `compare_datasets` returns counts only by default; set `include_genes=true`
+  with `aggregate`/`preview`, or `include_table=true` with `preview`.
+- `aggregate` is accepted by policy, but `summarize_dataset` returns the
   metadata summary; grouped aggregate tools are v1.1.
 - No full-table transfer (`L3`); use `export_table` and a local file.
 - No enrichment/network tools in v1.

@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 from models.data_models import Dataset, DatasetType, FilterCriteria, FilterMode
+from services.analysis_service import AnalysisService
 from services.dataset_service import DatasetService
 from services.filter_service import FilterService
 from services.help_service import HelpService
@@ -186,6 +187,7 @@ class MCPToolService:
         self.logger = logger or logging.getLogger(__name__)
         self.datasets = DatasetService(self.logger)
         self.filters = FilterService(self.logger)
+        self.analysis = AnalysisService(self.logger)
         self.plots = PlotService(self.logger)
         self.help = HelpService()
 
@@ -332,6 +334,53 @@ class MCPToolService:
         return out
 
     @_tool_error
+    def compare_datasets(
+        self,
+        handles: list[str],
+        gene_list: Optional[list[str]] = None,
+        adj_pvalue_cutoff: float = 0.05,
+        log2fc_cutoff: float = 1.0,
+        include_genes: bool = False,
+        include_table: bool = False,
+        table_limit: int = 50,
+    ) -> dict:
+        if len(handles) < 2:
+            raise ToolError(
+                "TOO_FEW_DATASETS", "At least 2 dataset handles are required."
+            )
+        datasets = [self.registry.get(handle) for handle in handles]
+        if include_genes and self.policy.data_policy not in ("aggregate", "preview"):
+            raise ToolError(
+                "GENE_LIST_DENIED",
+                "Gene lists require aggregate or preview data policy.",
+                "Set data_policy=aggregate (or preview) in .cmg-mcp-policy.json.",
+            )
+        if include_table and self.policy.data_policy != "preview":
+            raise ToolError(
+                "TABLE_DENIED",
+                "Comparison tables require preview data policy.",
+                "Set data_policy=preview in .cmg-mcp-policy.json.",
+            )
+        result = self.analysis.compare_datasets(
+            datasets,
+            gene_list=gene_list,
+            adj_pvalue_cutoff=adj_pvalue_cutoff,
+            log2fc_cutoff=log2fc_cutoff,
+        )
+        out = self._base()
+        out["handles"] = list(handles)
+        out.update(
+            self.analysis.result_to_dict(
+                result,
+                include_table=include_table,
+                table_limit=max(0, min(int(table_limit), 100)),
+                include_genes=include_genes,
+            )
+        )
+        self._audit("compare_datasets", handles[0], out)
+        return out
+
+    @_tool_error
     def query_rows(
         self,
         handle: str,
@@ -436,6 +485,7 @@ _WORKFLOWS = {
     "de-analysis": '# DE analysis\n\n1. `load_dataset(path, type_hint="differential_expression")`\n2. `filter_dataset(handle, mode="statistical", criteria={...})`\n3. `plot(handle, plot_type="volcano")`\n4. `summarize_dataset(handle)`\n',
     "expression-summary": '# Expression summary\n\n1. `load_dataset(path, type_hint="expression_summary")`\n2. `describe_dataset(handle)`\n3. `plot(handle, plot_type="expression_dot")`\n',
     "composition": '# Composition\n\n1. `load_dataset(path, type_hint="composition")`\n2. `summarize_dataset(handle)`\n3. `plot(handle, plot_type="composition")`\n',
+    "compare-datasets": "# Compare datasets\n\n1. `load_dataset` for each DE file\n2. `compare_datasets(handles=[...])` for overlap counts\n3. Add `include_genes=true` only with aggregate/preview policy\n",
 }
 
 TOOL_DESCRIPTIONS = {
@@ -444,6 +494,7 @@ TOOL_DESCRIPTIONS = {
     "describe_dataset": "Describe a handle: type, rows, columns, dtypes, metadata.",
     "summarize_dataset": "Return a JSON-safe summary for a handle.",
     "filter_dataset": "Apply a filter and return a new child handle (counts only).",
+    "compare_datasets": "Compare >=2 DE handles; counts by default, gene lists opt-in.",
     "query_rows": "Preview rows; requires preview policy opt-in.",
     "plot": "Render a registered plot type to a workspace image; requires image opt-in.",
     "export_table": "Export a handle to a workspace file; requires write opt-in.",
@@ -561,6 +612,17 @@ def build_server(policy: Optional[MCPPolicy] = None):
             "Use load_dataset with type_hint=composition, summarize_dataset for group "
             "counts, and plot with plot_type=composition. Report FDR/PropRatio "
             "interpretation without exposing raw rows by default."
+        )
+
+    @server.prompt(
+        name="compare-datasets",
+        description="Compare DE datasets: overlap counts, opt-in gene lists",
+    )
+    def compare_datasets_prompt() -> str:
+        return (
+            "Load each DE file, call compare_datasets with their handles, and report "
+            "overlap counts. Ask before enabling include_genes or include_table; "
+            "gene lists need aggregate/preview and tables need preview policy."
         )
 
     return server
