@@ -1,6 +1,6 @@
 # CMG-SeqViewer MCP / AI Agent Integration Plan
 
-- **상태**: Phase 0/2 v1 구현 완료, Phase 1 partial (2026-11-14)
+- **상태**: Phase 0/1/2 v1.2 구현 완료, Claude Code E2E 완료 (2026-11-15)
 - **목표 버전**: v1.5.0 이후 (미정; 별도 `cmg-seqviewer-mcp` optional extra)
 - **작성일**: 2026-10-21
 - **관련 문서**: [CLI 도움말](../user/help/19-command-line-interface.md) · [파이프라인 연동](../developer/pipeline-integration.md) · [Expression Summary](../user/help/22-expression-summary.md)
@@ -321,7 +321,7 @@ cmg-seqviewer-cli schema|help
 - `test_plot_service.py`: Agg 렌더 smoke + 파일 생성
 - 대용량 pagination/preview 테스트
 - 기존 GUI 테스트 유지 (전체 pytest)
-- 최소 1개 실제 AI 클라이언트 end-to-end 수동 검증
+- ✅ 최소 1개 실제 AI 클라이언트 end-to-end 수동 검증 (Claude Code, 2026-11-15)
 
 ## 10. Docs
 
@@ -356,7 +356,7 @@ Phase 3 제외 시 **2–3주**, 포함 시 **4–5주** (1인 기준).
 - 기본 `schema_only`에서 row 값/이미지가 응답에 포함되지 않음
 - `preview`/`aggregate`/이미지는 명시적 opt-in 없이는 거부됨
 - 감사 로그가 기록되고 절대경로/사용자명이 노출되지 않음
-- 최소 1개 AI 클라이언트(Claude Desktop 또는 Cursor)에서 end-to-end 검증
+- ✅ 최소 1개 AI 클라이언트(Claude Code)에서 end-to-end 검증 (2026-11-15)
 
 ## 13. Risks
 
@@ -392,6 +392,6 @@ Phase 3 제외 시 **2–3주**, 포함 시 **4–5주** (1인 기준).
 2. Phase 1: ✅ services + CLI inspection/plot/export/datasets/compare + pure `FilterEngine`
 3. Phase 2: ✅ `cmg-seqviewer-mcp` stdio v1.2 + resources/prompts + compare + enrichment
 4. Phase 3 이후: GUI bridge, paste/meta/prerank enrichment, 추가 클라이언트
-5. 남은 검증: Claude Desktop/Cursor end-to-end 수동 확인 (stdio client E2E는 자동 테스트 완료)
+5. ✅ Claude Code E2E 완료 (list/load/summarize/compare/help/filter/plot/policy gate); Claude Desktop/Cursor는 선택적 반복
 6. 모든 Phase에서 privacy acceptance criteria(7.7) 충족 여부를 릴리스 게이트로 확인
 7. enrichment는 v1.2에서 dataset-source ORA로 구현

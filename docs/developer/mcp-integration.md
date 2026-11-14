@@ -1,8 +1,9 @@
 # MCP Integration (v1)
 
-> Status: v1.2 headless server implemented (2026-11-15). Phase 1 services/CLI are
-> shared; the optional GUI bridge is not v1.2. Read [MCP privacy](mcp-privacy.md)
-> before enabling anything beyond `schema_only`.
+> Status: v1.2 headless server implemented and Claude Code E2E verified
+> (2026-11-15). Phase 1 services/CLI are shared; the optional GUI bridge is not
+> v1.2. Read [MCP privacy](mcp-privacy.md) before enabling anything beyond
+> `schema_only`.
 
 ## Install and run
 
@@ -87,7 +88,9 @@ claude mcp get cmg-seqviewer-e2e          # expect Status: Connected
 
 Then, after logging in (`/login` in Claude Code), ask it to call
 `list_datasets`, `load_dataset`, `summarize_dataset`, and `compare_datasets`.
-This is the manual acceptance check; automated tests use a Python MCP client.
+Verified with Claude Code 2.1.197 on 2026-11-15: list/load/summarize/compare/
+help/filter/plot, plus the `NETWORK_DENIED` enrichment policy gate. Automated
+tests use a Python MCP client.
 
 ## Tools (v1.2)
 
