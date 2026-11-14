@@ -17,6 +17,8 @@
 | [테스트 가이드](testing.md) | 테스트 작성 및 실행 | ⭐⭐ 중급 |
 | [API 문서](api.md) | 주요 클래스 및 함수 | ⭐⭐⭐ 고급 |
 | [파이프라인 연동 가이드](pipeline-integration.md) | R 파이프라인 → 앱 직결 규격 | ⭐⭐ 중급 |
+| [MCP 연동](mcp-integration.md) | headless MCP server v1 도구/리소스/클라이언트 설정 | ⭐⭐ 중급 |
+| [MCP 개인정보 보호](mcp-privacy.md) | 노출 레벨·동의·감사·민감 데이터 지침 | ⭐⭐ 중급 |
 | [연동 문의 회신](pipeline-integration-response.md) | scRNA-seq 3차 분석 파이프라인 Q1~Q7/R1 회신 | ⭐⭐ 중급 |
 | [HypoMap 연동 회신](hypomap-expression-integration-response.md) | HypoMap 발현 요약 테이블 연동 범위 회신 | ⭐⭐ 중급 |
 | [파이프라인 상태 확인 회신](scrna-pipeline-status-response.md) | 현재 버전/번들 호환성/Import 테스트 결과 회신 | ⭐⭐ 중급 |

@@ -1,6 +1,6 @@
 # CMG-SeqViewer MCP / AI Agent Integration Plan
 
-- **상태**: 계획 (Phase 0 시작 전)
+- **상태**: Phase 0/2 v1 구현 완료, Phase 1 partial (2026-11-14)
 - **목표 버전**: v1.5.0 이후 (미정; 별도 `cmg-seqviewer-mcp` optional extra)
 - **작성일**: 2026-10-21
 - **관련 문서**: [CLI 도움말](../user/help/19-command-line-interface.md) · [파이프라인 연동](../developer/pipeline-integration.md) · [Expression Summary](../user/help/22-expression-summary.md)
@@ -59,18 +59,21 @@ only an optional later phase and is not the primary AI-agent path.
 | 플롯 | `src/plots/*.py` + `PlotService` (Agg) | **핵심 자산**. headless 이미지 생성 가능 |
 | DB | `DatabaseManager` import/load/search/export | MCP tool로 노출 가능 |
 | 도움말 | `docs/user/help/*.md` + `HelpService` | MCP **resources**로 그대로 제공 가능 |
-| MCP/서버 | 없음 | `mcp` SDK를 optional extra로 추가 (Phase 2) |
+| MCP/서버 | `src/mcp_server.py` v1 (stdio, 10 tools, resources, prompts) | Phase 2 v1 구현 완료. `compare_datasets`/enrichment는 v1.1 |
 
-### Implementation status (2026-11-10)
+### Implementation status (2026-11-14)
 
 - ✅ `DatasetService`: load/describe/summary/query/export
 - ✅ `FilterService`: statistical/gene-list/keyword via the GUI-shared path
 - ✅ `PlotService`: Agg render to PNG/PDF/SVG using `plots.registry`
 - ✅ `HelpService`: list/read/search F1 Markdown
 - ✅ CLI: `summary`, `query`, `plot`, `export`, `schema`, `help`
-- ⏳ `AnalysisService` / `datasets list|describe` / `compare`
-- ⏳ MCP server v1 (stdio) and privacy/audit controls
-- Verification: `391 passed, 4 deselected`; service/CLI tests included
+- ✅ MCP server v1 (stdio): `src/mcp_server.py`, `cmg-seqviewer-mcp`
+- ✅ MCP policy/audit: schema-only default, preview/images/write opt-in, JSONL audit
+- ✅ MCP resources: help, dataset schema, pipeline doc, workflow notes
+- ✅ MCP prompts: DE, expression summary, composition
+- ⏳ `AnalysisService` / `datasets list|describe` / `compare_datasets`
+- Verification: `405 passed, 4 deselected`; service/CLI/MCP tests included
 
 ### 현재 CLI의 한계
 
@@ -323,9 +326,9 @@ cmg-seqviewer-cli schema|help
 
 | Phase | 내용 | 예상 |
 |------|------|------|
-| 0 | 결정·tool schema·client 호환성 | 2–3일 |
-| 1 | headless services + CLI 확장 + 테스트 (partial: services + inspection/plot/export commands done) | 1–2주 |
-| 2 | MCP server v1 (stdio, tools/resources/prompts) | 1주 |
+| 0 | 결정·tool schema·client 호환성 | 2–3일 (✅ 2026-11-14) |
+| 1 | headless services + CLI 확장 + 테스트 (partial: services + inspection/plot/export commands done) | 1–2주 (⏳) |
+| 2 | MCP server v1 (stdio, tools/resources/prompts) | 1주 (✅ v1, 2026-11-14) |
 | 3 | (선택) GUI bridge — service-layer bridge only, not live control | 1–2주 |
 | 4 | packaging/docs/security | 3–5일 |
 
@@ -365,7 +368,7 @@ Phase 3 제외 시 **2–3주**, 포함 시 **4–5주** (1인 기준).
 4. **GO/KEGG enrichment**: v1.1 (v1은 기존 결과 조회/필터만).
 5. **쓰기 권한**: 기본 read-only + export 허용 (DB import/삭제는 opt-in).
 6. **패키징**: 별도 `cmg-seqviewer-mcp` 콘솔 스크립트 + `[mcp]` optional extra.
-7. **데이터 정책 기본값**: `schema_only` (row/image/aggregate는 프로젝트별 opt-in), MCP는 기본 비활성·optional extra.
+7. **데이터 정책 기본값**: `schema_only` (row/image/aggregate는 프로젝트별 opt-in). MCP는 optional extra이며, 사용자가 `cmg-seqviewer-mcp`를 실행할 때만 동작한다.
 
 추가 협의 가능:
 
@@ -375,8 +378,9 @@ Phase 3 제외 시 **2–3주**, 포함 시 **4–5주** (1인 기준).
 
 ## 15. Next Actions
 
-1. Phase 0: **privacy threat model/데이터 노출 레벨 리뷰** + tool schema 초안 + Claude Desktop/Cursor 설정 프로토타입
-2. Phase 1: `src/services/` 추출, CLI 확장, headless plot/export 테스트
-3. Phase 2: `cmg-seqviewer-mcp` stdio 서버 + resources/prompts
+1. Phase 0: ✅ privacy threat model/노출 레벨 + tool schema + client 설정 문서
+2. Phase 1: ✅ services + CLI inspection/plot/export; ⏳ `AnalysisService`/`datasets`/`compare`
+3. Phase 2: ✅ `cmg-seqviewer-mcp` stdio v1 + resources/prompts
 4. Phase 3 이후: GUI bridge, enrichment, 추가 클라이언트
-5. 모든 Phase에서 privacy acceptance criteria(7.7) 충족 여부를 릴리스 게이트로 확인
+5. 남은 검증: Claude Desktop/Cursor end-to-end 수동 확인, `compare_datasets` v1.1 (stdio client E2E는 자동 테스트 완료)
+6. 모든 Phase에서 privacy acceptance criteria(7.7) 충족 여부를 릴리스 게이트로 확인

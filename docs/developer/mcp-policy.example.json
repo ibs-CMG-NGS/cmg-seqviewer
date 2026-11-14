@@ -1,0 +1,8 @@
+{
+  "data_policy": "schema_only",
+  "allow_row_preview": false,
+  "allow_images": false,
+  "allow_write": false,
+  "max_preview_rows": 20,
+  "enabled": true
+}

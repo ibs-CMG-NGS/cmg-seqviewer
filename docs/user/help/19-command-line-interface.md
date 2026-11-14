@@ -227,4 +227,4 @@ shell `&&` / CI pipelines. Pass `--verbose` to any subcommand for a full
 traceback instead of the one-line `Error: ...` message on stderr.
 
 ---
-**See also**: [User Guide](../user-guide.md) · [FAQ](24-faq.md)
+**See also**: [User Guide](../user-guide.md) · [FAQ](24-faq.md) · [AI Agent / MCP](19a-ai-agent-mcp.md)

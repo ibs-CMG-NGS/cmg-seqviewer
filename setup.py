@@ -33,6 +33,7 @@ setup(
     url="https://github.com/yourusername/rna-seq-data-view",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
+    py_modules=["cli", "main", "mcp_server", "version"],
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Science/Research",
@@ -63,6 +64,9 @@ setup(
         "PyYAML>=6.0",  # CLI recipe files (src/cli.py `run`/`batch`)
     ],
     extras_require={
+        "mcp": [
+            "mcp>=2.3,<3",
+        ],
         "dev": [
             "pytest>=7.3.0",
             "pytest-qt>=4.2.0",
@@ -75,6 +79,7 @@ setup(
         "console_scripts": [
             "rna-seq-analyzer=main:main",
             "cmg-seqviewer-cli=cli:main",
+            "cmg-seqviewer-mcp=mcp_server:main",
         ],
     },
     include_package_data=True,

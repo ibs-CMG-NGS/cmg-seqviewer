@@ -70,8 +70,7 @@ class DatasetService:
         )
 
     def describe(self, dataset: Dataset) -> Dict[str, Any]:
-        required_getter = _REQUIRED_COLUMNS.get(dataset.dataset_type)
-        required = list(required_getter()) if required_getter else []
+        required = self.required_columns(dataset.dataset_type)
         present = [str(c) for c in (dataset.dataframe.columns
                                      if dataset.dataframe is not None else [])]
         report = {
@@ -86,6 +85,11 @@ class DatasetService:
         if dataset.file_path is not None:
             report["file"] = str(dataset.file_path)
         return report
+
+    def required_columns(self, dataset_type: DatasetType) -> List[str]:
+        """Return the required standard columns for a dataset type."""
+        getter = _REQUIRED_COLUMNS.get(dataset_type)
+        return list(getter()) if getter else []
 
     def summary(self, dataset: Dataset) -> Dict[str, Any]:
         """JSON-safe dataset summary (DataFrames become shape/column metadata)."""

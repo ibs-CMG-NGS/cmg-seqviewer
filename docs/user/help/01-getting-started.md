@@ -23,6 +23,7 @@ All sections of this guide (numbers match the first/second-level headings; click
 - [17. Project Save/Load](17-project-save-load.md)
 - [18. IGV Integration](18-igv-integration.md)
 - [19. Command Line Interface](19-command-line-interface.md)
+- [19a. AI Agent / MCP (Experimental)](19a-ai-agent-mcp.md)
 - [20. Cell-Type Composition](20-cell-type-composition.md)
 - [21. Expression Distribution (Violin/Box)](21-expression-distribution.md)
 - [22. Expression Summary (Gene × Cell Type)](22-expression-summary.md)

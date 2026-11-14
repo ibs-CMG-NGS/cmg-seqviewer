@@ -127,8 +127,9 @@ class TestHelpStructure:
     def test_last_section_is_faq(self):
         files = sorted(REPO_HELP.glob("*.md"))
         assert files[-1].name == "24-faq.md"
-        assert len(files) == 24
+        assert len(files) == 25
         assert (REPO_HELP / "19-command-line-interface.md").exists()
+        assert (REPO_HELP / "19a-ai-agent-mcp.md").exists()
 
     def test_second_level_numbering(self):
         """④ ## N.M 계층 넘버링: 각 파일의 ## 헤딩이 {N}.{k} 형식."""
