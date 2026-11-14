@@ -3,6 +3,7 @@
 from .analysis_service import AnalysisService
 from .database_service import DatabaseService
 from .dataset_service import DatasetService
+from .filter_engine import FilterEngine
 from .filter_service import FilterService
 from .help_service import HelpService
 from .plot_service import PlotService
@@ -11,6 +12,7 @@ __all__ = [
     "AnalysisService",
     "DatabaseService",
     "DatasetService",
+    "FilterEngine",
     "FilterService",
     "HelpService",
     "PlotService",

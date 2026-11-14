@@ -17,6 +17,7 @@ from models.data_models import Dataset, FilterCriteria, ComparisonResult, Filter
 from models.standard_columns import StandardColumns
 from utils.data_loader import DataLoader
 from utils.statistics import StatisticalAnalyzer
+from services.filter_engine import FilterEngine
 from gui.workers import DataLoadWorker, FilterWorker, AnalysisWorker
 
 
@@ -58,6 +59,7 @@ class MainPresenter(QObject):
         # 유틸리티
         self.data_loader = DataLoader()
         self.analyzer = StatisticalAnalyzer()
+        self.filter_engine = FilterEngine(self.logger)
         
         # FSM 콜백 등록
         self._register_fsm_callbacks()
@@ -224,92 +226,18 @@ class MainPresenter(QObject):
             self.logger.warning(f"Dataset not found: {dataset_name}")
     
     def _keyword_search_column(self) -> str:
-        """현재 데이터셋에서 키워드 검색 대상 식별자 컬럼을 고른다.
-
-        GO/KEGG → description(+term_id), 그 외 → symbol → gene_id 순.
-        """
-        if self.current_dataset is None or self.current_dataset.dataframe is None:
-            return ""
-        cols = list(self.current_dataset.dataframe.columns)
-        dt = self.current_dataset.dataset_type
-        # 심볼 컬럼은 데이터셋마다 'symbol' 또는 'gene_symbol'/'gene_name' 등으로 다르다.
-        if dt == DatasetType.GO_ANALYSIS:
-            order = [StandardColumns.DESCRIPTION, StandardColumns.TERM_ID, 'description', 'term_id']
-        else:
-            order = [StandardColumns.SYMBOL, 'symbol', 'gene_symbol', 'gene_name',
-                     StandardColumns.GENE_ID, 'gene_id',
-                     StandardColumns.DESCRIPTION, 'description']
-        for c in order:
-            if c in cols:
-                return c
-        # fallback: 첫 문자열 컬럼
-        for c in cols:
-            if self.current_dataset.dataframe[c].dtype == object:
-                return c
-        return cols[0] if cols else ""
+        return self.filter_engine.keyword_search_column(self.current_dataset)
 
     def _filter_by_keyword(self, keyword: str, column: str) -> pd.DataFrame:
-        """current_dataset 을 지정 컬럼의 부분문자열(대소문자 무시)로 필터."""
-        df = self.current_dataset.dataframe
-        if column not in df.columns:
-            return df.iloc[0:0]
-        mask = df[column].astype(str).str.contains(keyword, case=False, na=False, regex=False)
-        return df[mask]
+        return self.filter_engine.filter_by_keyword(
+            self.current_dataset, keyword, column)
 
     def _subset_columns(self, columns) -> pd.DataFrame:
-        """current_dataset 에서 지정한 컬럼만(원본 순서 유지) 남긴 DataFrame 반환."""
-        df = self.current_dataset.dataframe
-        keep = [c for c in df.columns if c in set(columns or [])]
-        return df[keep] if keep else df.iloc[:, 0:0]
+        return self.filter_engine.subset_columns(self.current_dataset, columns)
 
     def compute_filtered_df(self, criteria: FilterCriteria):
-        """탭/시그널 없이 current_dataset 에 필터를 적용한 DataFrame 만 반환한다.
-
-        apply_filter 의 df 계산 dispatch와 동일한 헬퍼를 재사용한다. 프로젝트 복원 시
-        filtered 시트에서 pin 한 plot 의 원본(필터된) 데이터를 재현하는 데 쓴다.
-        조건에 맞는 데이터가 없거나 지원되지 않으면 None 반환.
-        """
-        if self.current_dataset is None:
-            return None
-        if criteria.mode == FilterMode.COLUMN_SUBSET:
-            return self._subset_columns(criteria.subset_columns)
-        if criteria.mode == FilterMode.KEYWORD:
-            kw = (criteria.search_keyword or "").strip()
-            if not kw:
-                return None
-            col = criteria.search_column or self._keyword_search_column()
-            return self._filter_by_keyword(kw, col)
-        if criteria.mode == FilterMode.GENE_LIST:
-            if criteria.term_id_list:
-                return self._filter_go_by_term_ids(criteria.term_id_list)
-            if criteria.gene_list:
-                return self._filter_by_gene_list(criteria.gene_list)
-            return None
-        dt = self.current_dataset.dataset_type
-        if dt == DatasetType.DIFFERENTIAL_EXPRESSION:
-            return self._filter_by_statistics(
-                adj_pvalue_max=criteria.adj_pvalue_max, log2fc_min=criteria.log2fc_min,
-                regulation_direction=criteria.regulation_direction)
-        if dt == DatasetType.GO_ANALYSIS:
-            return self._filter_by_statistics(
-                fdr_max=criteria.fdr_max, ontology=criteria.ontology,
-                go_direction=criteria.go_direction,
-                fold_enrichment_min=getattr(criteria, 'fold_enrichment_min', 0.0),
-                min_gene_count=getattr(criteria, 'go_min_gene_count', 0))
-        if dt == DatasetType.MULTI_GROUP:
-            return self._filter_mg_by_statistics(
-                padj_max=criteria.mg_padj_max, basemean_min=criteria.mg_basemean_min)
-        if dt == DatasetType.COMPOSITION:
-            return self._filter_composition_by_statistics(fdr_max=criteria.fdr_max)
-        if dt == DatasetType.ATAC_SEQ:
-            return self._filter_atac_by_statistics(
-                adj_pvalue_max=criteria.adj_pvalue_max, log2fc_min=criteria.log2fc_min,
-                regulation_direction=criteria.regulation_direction,
-                atac_annotation=criteria.atac_annotation,
-                atac_distance_max=criteria.atac_distance_max,
-                atac_peak_width_min=criteria.atac_peak_width_min,
-                atac_peak_width_max=criteria.atac_peak_width_max)
-        return None
+        """Return the filtered DataFrame without tabs/signals."""
+        return self.filter_engine.filter(self.current_dataset, criteria)
 
     def apply_filter(self, criteria: FilterCriteria):
         """
@@ -512,339 +440,32 @@ class MainPresenter(QObject):
             self.error_occurred.emit(f"Filtering failed: {str(e)}")
     
     def _filter_by_gene_list(self, gene_list: List[str]) -> pd.DataFrame:
-        """
-        유전자 리스트로 필터링 (입력 순서 유지)
-        
-        Args:
-            gene_list: 유전자 ID/Symbol 리스트 (순서 유지됨)
-            
-        Returns:
-            필터링된 DataFrame (gene_list 순서대로 정렬)
-        """
-        df = self.current_dataset.dataframe
-        dataset_type = self.current_dataset.dataset_type
+        return self.filter_engine.filter_by_gene_list(
+            self.current_dataset, gene_list)
 
-        # ── GO/KEGG 데이터: gene_symbols 컬럼에서 부분 포함 검색 ──
-        if dataset_type == DatasetType.GO_ANALYSIS:
-            return self._filter_go_by_gene_symbols(df, gene_list)
-
-        # ── ATAC-seq: nearest_gene (gene symbol) 기준 필터링 ──
-        if dataset_type == DatasetType.ATAC_SEQ:
-            if StandardColumns.NEAREST_GENE in df.columns:
-                gene_col = StandardColumns.NEAREST_GENE
-            elif StandardColumns.GENE_ID in df.columns:
-                gene_col = StandardColumns.GENE_ID
-            else:
-                self.logger.error(f"Available columns: {df.columns.tolist()}")
-                raise ValueError(
-                    f"ATAC-seq 데이터에 '{StandardColumns.NEAREST_GENE}' 컬럼이 없습니다. "
-                    "데이터를 다시 불러오거나 컬럼 매핑을 확인하세요."
-                )
-        # ── DE / MULTI_GROUP: symbol → gene_symbol → gene_id 순서 ──
-        elif StandardColumns.SYMBOL in df.columns:
-            gene_col = StandardColumns.SYMBOL
-        elif 'gene_symbol' in df.columns:  # MULTI_GROUP 데이터셋
-            gene_col = 'gene_symbol'
-        elif StandardColumns.GENE_ID in df.columns:
-            gene_col = StandardColumns.GENE_ID
-        else:
-            self.logger.error(f"Available columns: {df.columns.tolist()}")
-            raise ValueError(f"Neither '{StandardColumns.SYMBOL}' nor 'gene_symbol' nor '{StandardColumns.GENE_ID}' column found in dataset")
-        
-        # gene_list 입력 순서를 정렬 키로 사용
-        gene_order = {g.strip().lower(): i for i, g in enumerate(gene_list)}
-
-        # 대소문자 무시 매칭 후 sort_key 부여 — _gene_list_rank 열은 의도적으로 보존:
-        # 다운스트림(heatmap 등 시각화)이 "입력 순서"를 존중하도록 하는 내부 신호열
-        # (클러스터링을 요청하지 않는 한 사용자가 넣어준 순서대로 표시 — 의도된 동작).
-        mask = df[gene_col].astype(str).str.strip().str.lower().isin(gene_order)
-        filtered = (
-            df[mask]
-            .assign(_gene_list_rank=df.loc[mask, gene_col].astype(str).str.strip().str.lower().map(gene_order))
-            .sort_values('_gene_list_rank')
-            .copy()
-        )
-        
-        self.logger.info(
-            f"Gene list filter: {len(filtered)}/{len(df)} rows matched, "
-            f"order preserved from input list"
-        )
-        
-        return filtered
-
-    def _filter_go_by_gene_symbols(self, df: 'pd.DataFrame', gene_list: List[str]) -> 'pd.DataFrame':
-        """
-        GO/KEGG 데이터를 gene symbol 목록으로 필터링.
-
-        gene_symbols 컬럼에 입력 유전자 중 하나라도 포함된 row를 반환.
-        매칭은 대소문자 무시, 단어 단위 비교 (부분 문자열 오매칭 방지).
-
-        Args:
-            df: GO 데이터 DataFrame
-            gene_list: 검색할 유전자 Symbol 목록
-
-        Returns:
-            매칭된 GO term rows (gene_symbols 히트 수 내림차순 정렬)
-        """
-        import re
-
-        gs_col = StandardColumns.GENE_SYMBOLS
-        if gs_col not in df.columns:
-            self.logger.error(f"gene_symbols column not found. Available: {df.columns.tolist()}")
-            raise ValueError(
-                f"GO 데이터에 '{gs_col}' 컬럼이 없습니다. "
-                "데이터를 다시 불러오거나 컬럼 매핑을 확인하세요."
-            )
-
-        query_set = {g.upper() for g in gene_list if g.strip()}
-
-        def count_hits(cell_value) -> int:
-            """gene_symbols 셀에서 query_set에 속하는 유전자 수 반환"""
-            if not isinstance(cell_value, str) or not cell_value.strip():
-                return 0
-            # 쉼표, 슬래시, 세미콜론, 공백 등 구분자로 분리
-            symbols = {s.strip().upper() for s in re.split(r'[,;/\s]+', cell_value) if s.strip()}
-            return len(symbols & query_set)
-
-        hit_counts = df[gs_col].apply(count_hits)
-        mask = hit_counts > 0
-        filtered = df[mask].copy()
-        filtered['_hit_count'] = hit_counts[mask]
-        filtered = filtered.sort_values('_hit_count', ascending=False).drop(columns='_hit_count')
-
-        self.logger.info(
-            f"GO gene-symbol filter: {len(filtered)}/{len(df)} terms matched "
-            f"({len(query_set)} query genes)"
-        )
-        return filtered
+    def _filter_go_by_gene_symbols(self, df: 'pd.DataFrame',
+                                   gene_list: List[str]) -> 'pd.DataFrame':
+        return self.filter_engine.filter_go_by_gene_symbols(df, gene_list)
 
     def _filter_go_by_term_ids(self, term_id_list: List[str]) -> 'pd.DataFrame':
-        """
-        GO/KEGG 데이터를 term_id 목록으로 필터링.
+        return self.filter_engine.filter_go_by_term_ids(
+            self.current_dataset, term_id_list)
 
-        term_id 컬럼과 정확히 일치하는 rows를 반환 (대소문자 무시).
-        입력 리스트의 순서를 유지하여 정렬.
+    def _filter_by_statistics(self, *args, **kwargs) -> pd.DataFrame:
+        return self.filter_engine.filter_by_statistics(
+            self.current_dataset, *args, **kwargs)
 
-        Args:
-            term_id_list: 검색할 GO/KEGG Term ID 목록 (예: ['GO:0006955', 'hsa04110'])
+    def _filter_mg_by_statistics(self, *args, **kwargs) -> pd.DataFrame:
+        return self.filter_engine.filter_mg_by_statistics(
+            self.current_dataset, *args, **kwargs)
 
-        Returns:
-            매칭된 rows (term_id_list 입력 순서대로 정렬)
-        """
-        df = self.current_dataset.dataframe
+    def _filter_composition_by_statistics(self, *args, **kwargs) -> pd.DataFrame:
+        return self.filter_engine.filter_composition_by_statistics(
+            self.current_dataset, *args, **kwargs)
 
-        tid_col = StandardColumns.TERM_ID
-        if tid_col not in df.columns:
-            self.logger.error(f"term_id column not found. Available: {df.columns.tolist()}")
-            raise ValueError(
-                f"GO 데이터에 '{tid_col}' 컬럼이 없습니다. "
-                "데이터를 다시 불러오거나 컬럼 매핑을 확인하세요."
-            )
-
-        # 입력 순서를 정렬 키로 사용
-        id_order = {tid.strip().upper(): i for i, tid in enumerate(term_id_list) if tid.strip()}
-        mask = df[tid_col].astype(str).str.strip().str.upper().isin(id_order)
-        filtered = (
-            df[mask]
-            .assign(_sort_key=df.loc[mask, tid_col].astype(str).str.strip().str.upper().map(id_order))
-            .sort_values('_sort_key')
-            .drop(columns='_sort_key')
-            .copy()
-        )
-
-        self.logger.info(
-            f"GO term-id filter: {len(filtered)}/{len(df)} terms matched "
-            f"({len(id_order)} query IDs)"
-        )
-        return filtered
-
-    def _filter_by_statistics(self, adj_pvalue_max: Optional[float] = None,
-                               log2fc_min: Optional[float] = None,
-                               fdr_max: Optional[float] = None,
-                               ontology: Optional[str] = None,
-                               go_direction: Optional[str] = None,
-                               fold_enrichment_min: Optional[float] = None,
-                               min_gene_count: Optional[int] = None,
-                               regulation_direction: str = "both") -> pd.DataFrame:
-        """
-        통계값으로 필터링 (p-value, FC)
-        
-        Args:
-            adj_pvalue_max: 최대 adjusted p-value (DE용, optional)
-            log2fc_min: 최소 절대 log2 Fold Change (DE용, optional)
-            fdr_max: 최대 FDR (GO analysis용, optional)
-            ontology: Ontology 필터 (GO용, optional) - "All", "BP", "MF", "CC", "KEGG"
-            go_direction: Direction 필터 (GO용, optional) - "All", "UP", "DOWN", "TOTAL"
-            
-        Returns:
-            필터링된 DataFrame
-        """
-        dataset_type = self.current_dataset.dataset_type
-        df = self.current_dataset.dataframe.copy()
-        
-        if dataset_type == DatasetType.DIFFERENTIAL_EXPRESSION:
-            # DE 데이터 필터링 (표준 컬럼명 직접 사용)
-            adj_pval_col = StandardColumns.ADJ_PVALUE
-            log2fc_col = StandardColumns.LOG2FC
-            
-            if not all([adj_pval_col in df.columns, log2fc_col in df.columns]):
-                self.logger.error(f"Available columns: {df.columns.tolist()}")
-                raise ValueError(f"Required columns not found: {adj_pval_col}, {log2fc_col}")
-            
-            mask = (df[adj_pval_col] <= adj_pvalue_max) & (abs(df[log2fc_col]) >= log2fc_min)
-            filtered = df[mask]
-
-            if regulation_direction == "up":
-                filtered = filtered[filtered[log2fc_col] > 0]
-            elif regulation_direction == "down":
-                filtered = filtered[filtered[log2fc_col] < 0]
-
-            self.logger.info(
-                f"Statistical filter (DE): {len(filtered)}/{len(df)} rows "
-                f"(p≤{adj_pvalue_max}, |FC|≥{log2fc_min}, dir={regulation_direction})"
-            )
-            
-        elif dataset_type == DatasetType.GO_ANALYSIS:
-            # GO 데이터 필터링 (표준 컬럼명 직접 사용)
-            fdr_col = StandardColumns.FDR
-            
-            if fdr_col not in df.columns:
-                self.logger.error(f"Available columns: {df.columns.tolist()}")
-                raise ValueError(f"FDR column not found: {fdr_col}")
-            
-            # FDR 필터
-            mask = df[fdr_col] <= fdr_max
-            
-            # Ontology 필터
-            if ontology and ontology != "All":
-                ontology_col = StandardColumns.ONTOLOGY
-                if ontology_col in df.columns:
-                    mask = mask & (df[ontology_col].str.upper() == ontology.upper())
-            
-            # Gene Set 필터 (UP/DOWN/TOTAL DEG)
-            if go_direction and go_direction != "All":
-                gene_set_col = StandardColumns.GENE_SET
-                if gene_set_col in df.columns:
-                    mask = mask & (df[gene_set_col].str.upper() == go_direction.upper())
-
-            # Fold Enrichment 최소값
-            if fold_enrichment_min and fold_enrichment_min > 0:
-                fe_col = StandardColumns.FOLD_ENRICHMENT
-                if fe_col in df.columns:
-                    fe_vals = pd.to_numeric(df[fe_col], errors='coerce')
-                    mask = mask & (fe_vals >= fold_enrichment_min)
-
-            # Count(내 리스트 ∩ term) 최소값 — 1~2개 term 의 노이즈 제거
-            if min_gene_count and min_gene_count > 0:
-                gc_col = StandardColumns.GENE_COUNT
-                if gc_col in df.columns:
-                    gc_vals = pd.to_numeric(df[gc_col], errors='coerce')
-                    mask = mask & (gc_vals >= min_gene_count)
-
-            filtered = df[mask]
-
-            filter_desc = f"FDR≤{fdr_max}"
-            if fold_enrichment_min and fold_enrichment_min > 0:
-                filter_desc += f", FE≥{fold_enrichment_min}"
-            if min_gene_count and min_gene_count > 0:
-                filter_desc += f", Count≥{min_gene_count}"
-            if ontology and ontology != "All":
-                filter_desc += f", {ontology}"
-            if go_direction and go_direction != "All":
-                filter_desc += f", {go_direction}"
-            
-            self.logger.info(
-                f"Statistical filter (GO): {len(filtered)}/{len(df)} rows ({filter_desc})"
-            )
-        else:
-            raise ValueError(f"Cannot filter dataset type: {dataset_type.value}")
-        
-        return filtered
-
-    def _filter_mg_by_statistics(self, padj_max: float, basemean_min: float) -> pd.DataFrame:
-        """
-        Multi-Group 데이터를 padj / baseMean 기준으로 필터링.
-
-        Args:
-            padj_max: 최대 adjusted p-value (LRT padj)
-            basemean_min: 최소 평균 발현량
-
-        Returns:
-            필터링된 DataFrame
-        """
-        df = self.current_dataset.dataframe.copy()
-        col_lower = {c.lower(): c for c in df.columns}
-
-        padj_col = col_lower.get('padj') or col_lower.get('adj_pvalue') or col_lower.get('p_adj')
-        basemean_col = col_lower.get('basemean') or col_lower.get('base_mean')
-
-        if padj_col:
-            df = df[df[padj_col] <= padj_max]
-        if basemean_col and basemean_min > 0:
-            df = df[df[basemean_col] >= basemean_min]
-
-        self.logger.info(
-            f"Multi-Group filter: {len(df)}/{len(self.current_dataset.dataframe)} rows "
-            f"(padj≤{padj_max}, baseMean≥{basemean_min})"
-        )
-        return df
-
-    def _filter_composition_by_statistics(self, fdr_max: float) -> pd.DataFrame:
-        """Cell-type composition을 FDR 기준으로 필터링 (pvalue fallback)."""
-        df = self.current_dataset.dataframe.copy()
-        col = 'fdr' if 'fdr' in df.columns else ('pvalue' if 'pvalue' in df.columns else None)
-        if col is not None:
-            df = df[pd.to_numeric(df[col], errors='coerce') <= fdr_max]
-        self.logger.info(
-            f"Composition filter: {len(df)}/{len(self.current_dataset.dataframe)} rows "
-            f"(fdr≤{fdr_max})")
-        return df
-
-    def _filter_atac_by_statistics(
-        self,
-        adj_pvalue_max: float,
-        log2fc_min: float,
-        regulation_direction: str = "both",
-        atac_annotation: str = "All",
-        atac_distance_max: 'int | None' = None,
-        atac_peak_width_min: 'int | None' = None,
-        atac_peak_width_max: 'int | None' = None,
-    ) -> pd.DataFrame:
-        """
-        ATAC-seq DA 데이터를 adj_pvalue / log2fc + ATAC 전용 기준으로 필터링.
-        """
-        df = self.current_dataset.dataframe.copy()
-
-        # 통계 필터
-        if 'adj_pvalue' in df.columns:
-            df = df[df['adj_pvalue'] <= adj_pvalue_max]
-        if 'log2fc' in df.columns:
-            df = df[df['log2fc'].abs() >= log2fc_min]
-            if regulation_direction == "up":
-                df = df[df['log2fc'] > 0]
-            elif regulation_direction == "down":
-                df = df[df['log2fc'] < 0]
-
-        # Annotation 필터
-        if atac_annotation != "All" and 'annotation' in df.columns:
-            df = df[df['annotation'].astype(str).str.startswith(atac_annotation, na=False)]
-
-        # Distance to TSS 필터
-        if atac_distance_max is not None and 'distance_to_tss' in df.columns:
-            df = df[df['distance_to_tss'].abs() <= atac_distance_max]
-
-        # Peak Width 필터
-        if 'peak_width' in df.columns:
-            if atac_peak_width_min is not None:
-                df = df[df['peak_width'] >= atac_peak_width_min]
-            if atac_peak_width_max is not None:
-                df = df[df['peak_width'] <= atac_peak_width_max]
-
-        self.logger.info(
-            f"ATAC filter: {len(df)}/{len(self.current_dataset.dataframe)} peaks "
-            f"(p≤{adj_pvalue_max}, |FC|≥{log2fc_min}, annot={atac_annotation})"
-        )
-        return df
+    def _filter_atac_by_statistics(self, *args, **kwargs) -> pd.DataFrame:
+        return self.filter_engine.filter_atac_by_statistics(
+            self.current_dataset, *args, **kwargs)
 
     def run_analysis(self, analysis_type: str, gene_list: List[str],
                      adj_pvalue_cutoff: float = 0.05, log2fc_cutoff: float = 1.0):

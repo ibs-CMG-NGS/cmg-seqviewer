@@ -53,9 +53,9 @@ only an optional later phase and is not the primary AI-agent path.
 
 | 영역 | 현재 | 판단 |
 |------|------|------|
-| CLI | `load/filter/run/batch` + `summary/query/plot/export/datasets/compare/schema/help` (`src/cli.py`) | 자동화 기반 확보. pure FilterService 추출은 후속 |
-| Services | `src/services/` Dataset/Database/Filter/Analysis/Plot/HelpService | 공유 계층 확보. FilterService는 아직 presenter wrapper |
-| 필터 | `FilterService` → `MainPresenter.compute_filtered_df` | 동작 공유 완료. 순수 추출은 후속 |
+| CLI | `load/filter/run/batch` + `summary/query/plot/export/datasets/compare/schema/help` (`src/cli.py`) | 자동화 기반 확보 |
+| Services | `src/services/` Dataset/Database/FilterEngine/Filter/Analysis/Plot/HelpService | 공유 계층 확보. GUI presenter도 FilterEngine에 위임 |
+| 필터 | `FilterEngine` ← GUI `MainPresenter` / `FilterService` | 단일 순수 구현으로 통합 |
 | 플롯 | `src/plots/*.py` + `PlotService` (Agg) | **핵심 자산**. headless 이미지 생성 가능 |
 | DB | `DatabaseManager` import/load/search/export | MCP tool로 노출 가능 |
 | 도움말 | `docs/user/help/*.md` + `HelpService` | MCP **resources**로 그대로 제공 가능 |
@@ -64,7 +64,8 @@ only an optional later phase and is not the primary AI-agent path.
 ### Implementation status (2026-11-14)
 
 - ✅ `DatasetService`: load/describe/summary/query/export
-- ✅ `FilterService`: statistical/gene-list/keyword via the GUI-shared path
+- ✅ `FilterEngine`: pure statistical/gene-list/keyword/column-subset logic
+- ✅ `FilterService`: uses `FilterEngine` directly (no Qt/presenter)
 - ✅ `PlotService`: Agg render to PNG/PDF/SVG using `plots.registry`
 - ✅ `HelpService`: list/read/search F1 Markdown
 - ✅ CLI: `summary`, `query`, `plot`, `export`, `schema`, `help`
@@ -74,8 +75,7 @@ only an optional later phase and is not the primary AI-agent path.
 - ✅ MCP prompts: DE, expression summary, composition
 - ✅ `AnalysisService`: headless compare over `StatisticalAnalyzer`
 - ✅ CLI `datasets list|describe` + `compare`
-- ⏳ `FilterService` pure extraction (still wraps `MainPresenter`)
-- Verification: `412 passed, 4 deselected`; service/CLI/MCP tests included
+- Verification: `417 passed, 4 deselected`; service/CLI/MCP tests included
 
 ### 현재 CLI의 한계
 
@@ -122,14 +122,16 @@ GUI ─────────────── 기존 유지 (필요 시 서�
 src/services/
 ├── __init__.py
 ├── dataset_service.py   # load/list/describe/query/export
-├── filter_service.py    # statistical/gene list/keyword/column subset
+├── database_service.py  # pre-loaded DB list/describe/load
+├── filter_engine.py     # pure statistical/gene list/keyword/column subset
+├── filter_service.py    # headless facade over FilterEngine
 ├── plot_service.py      # plot_type + params -> PNG/SVG/PDF
 ├── analysis_service.py  # compare/enrichment (옵션)
 └── help_service.py      # F1 help/schema 조회
 ```
 
 - `DatasetService.load()`는 `Dataset` + `handle(UUID)` 반환
-- `FilterService`는 `MainPresenter`에서 순수 로직 추출
+- `FilterEngine`은 순수 로직, `MainPresenter`와 `FilterService`가 공유
 - `PlotService`는 `plots.registry.render_to_figure()` + `figure_export.save_figure()` 사용
 - `AnalysisService`는 v1에서 `compare_datasets` 우선, enrichment는 optional
 - 서비스 반환값은 JSON 직렬화 가능한 dict + artifact path + (플롯) PNG bytes
@@ -329,7 +331,7 @@ cmg-seqviewer-cli schema|help
 | Phase | 내용 | 예상 |
 |------|------|------|
 | 0 | 결정·tool schema·client 호환성 | 2–3일 (✅ 2026-11-14) |
-| 1 | headless services + CLI 확장 + 테스트 (services + inspection/plot/export/datasets/compare done) | 1–2주 (✅ 2026-11-14) |
+| 1 | headless services + CLI 확장 + 테스트 (services + inspection/plot/export/datasets/compare + pure FilterEngine) | 1–2주 (✅ 2026-11-14) |
 | 2 | MCP server v1 (stdio, tools/resources/prompts) | 1주 (✅ v1, 2026-11-14) |
 | 3 | (선택) GUI bridge — service-layer bridge only, not live control | 1–2주 |
 | 4 | packaging/docs/security | 3–5일 |
@@ -381,7 +383,7 @@ Phase 3 제외 시 **2–3주**, 포함 시 **4–5주** (1인 기준).
 ## 15. Next Actions
 
 1. Phase 0: ✅ privacy threat model/노출 레벨 + tool schema + client 설정 문서
-2. Phase 1: ✅ services + CLI inspection/plot/export/datasets/compare; ⏳ pure `FilterService` extraction
+2. Phase 1: ✅ services + CLI inspection/plot/export/datasets/compare + pure `FilterEngine`
 3. Phase 2: ✅ `cmg-seqviewer-mcp` stdio v1 + resources/prompts
 4. Phase 3 이후: GUI bridge, enrichment, 추가 클라이언트
 5. 남은 검증: Claude Desktop/Cursor end-to-end 수동 확인, MCP `compare_datasets` v1.1 (stdio client E2E는 자동 테스트 완료)
