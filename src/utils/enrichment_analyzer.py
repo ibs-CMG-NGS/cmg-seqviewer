@@ -35,6 +35,28 @@ from utils.go_kegg_loader import compute_fold_enrichment, parse_gene_symbols, re
 # --------------------------------------------------------------------------
 TAXID = {"human": 9606, "mouse": 10090}
 
+
+class _GoatoolsLogAdapter:
+    """goatools 는 ``log`` 에 file-like(.write) 를 기대한다(Logger 아님).
+
+    ``GOEnrichmentStudy(log=...)`` 는 생성 즉시 ``log.write(...)`` 를 호출하므로
+    Logger 를 그대로 넘기면 AttributeError 가 난다. 앱 로거로 위임하는 얇은 어댑터.
+    """
+
+    def __init__(self, logger, level: int = logging.INFO):
+        self._logger = logger
+        self._level = level
+
+    def write(self, msg):
+        text = (msg or "").strip()
+        if text:
+            self._logger.log(self._level, text)
+        return len(msg or "")
+
+    def flush(self):
+        pass
+
+
 # 온라인(Enrichr) 라이브러리명 — GO 2023(Human), KEGG 2021(Human)/2019(Mouse)
 ONLINE_LIBRARY_NAMES = {
     "human": {
@@ -456,7 +478,7 @@ class EnrichmentAnalyzer:
         goea = GOEnrichmentStudyNS(
             population, ns2assoc, dag,
             propagate_counts=True, alpha=0.05, methods=["fdr_bh"],
-            logger=self.logger,
+            log=_GoatoolsLogAdapter(self.logger),
         )
         self.logger.info("GOATOOLS local: %d study / %d population (taxid %d)",
                          len(study_entrez), len(population), taxid)

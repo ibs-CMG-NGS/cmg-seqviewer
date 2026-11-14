@@ -676,7 +676,7 @@ class TestPipelineParity:
         # in-app 표준 변환
         an.cache = StubCache(tmp_path)
         import json
-        rec = json.loads((Path("test/fixtures/enrichr_response_go_bp.json")).read_text())[0]
+        rec = json.loads((Path("test/fixtures/enrichr_response_go_bp.json")).read_text(encoding="utf-8"))[0]
         df_in = pd.DataFrame([rec])
         app_df, _ = an.to_standard([RawResult("DOWN_BP", "enrichr", df_in)],
                                    organism="human")

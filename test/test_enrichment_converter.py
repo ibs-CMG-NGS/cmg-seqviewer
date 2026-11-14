@@ -28,8 +28,8 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 OBO = FIXTURES / "mini-obo.obo"
 GMT_GO = FIXTURES / "gmt_go_bp.txt"
 GMT_KEGG = FIXTURES / "gmt_kegg.txt"
-ENR_GO = json.loads((FIXTURES / "enrichr_response_go_bp.json").read_text())
-ENR_KEGG = json.loads((FIXTURES / "enrichr_response_kegg.json").read_text())
+ENR_GO = json.loads((FIXTURES / "enrichr_response_go_bp.json").read_text(encoding="utf-8"))
+ENR_KEGG = json.loads((FIXTURES / "enrichr_response_kegg.json").read_text(encoding="utf-8"))
 
 
 class StubCache:

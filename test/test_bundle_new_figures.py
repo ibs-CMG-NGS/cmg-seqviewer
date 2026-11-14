@@ -27,7 +27,7 @@ def test_padj_histogram_bundle(qtbot, tmp_path):
     out = export_figure_bundle(
         ctx, tmp_path / "padj", "pvalue_histogram",
         "P-value Histogram", "padj_histogram")
-    assert "render_padj_histogram" in (out / "scripts" / "figure.py").read_text()
+    assert "render_padj_histogram" in (out / "scripts" / "figure.py").read_text(encoding="utf-8")
     _run_script(out)
 
 
@@ -41,7 +41,7 @@ def test_tss_distance_bundle(qtbot, tmp_path):
     out = export_figure_bundle(
         ctx, tmp_path / "tss", "tss_distance",
         "TSS Distance", "tss_distance")
-    assert "render_tss_distance" in (out / "scripts" / "figure.py").read_text()
+    assert "render_tss_distance" in (out / "scripts" / "figure.py").read_text(encoding="utf-8")
     _run_script(out)
 
 
@@ -64,7 +64,7 @@ def test_motif_enrichment_bundle_comparison(qtbot, tmp_path):
     out = export_figure_bundle(
         ctx, tmp_path / "motif", "motif_enrichment",
         "TF Motif Enrichment", "motif_enrichment")
-    assert "render_motif_enrichment" in (out / "scripts" / "figure.py").read_text()
+    assert "render_motif_enrichment" in (out / "scripts" / "figure.py").read_text(encoding="utf-8")
     _run_script(out)
 
 
@@ -83,7 +83,7 @@ def test_tf_footprint_bundle(qtbot, tmp_path):
     out = export_figure_bundle(
         ctx, tmp_path / "fp", "tf_footprint",
         "TF Activity", "tf_footprint")
-    assert "render_tf_footprint" in (out / "scripts" / "figure.py").read_text()
+    assert "render_tf_footprint" in (out / "scripts" / "figure.py").read_text(encoding="utf-8")
     _run_script(out)
 
 
@@ -100,7 +100,7 @@ def test_comparison_dot_bundle(qtbot, tmp_path):
     out = export_figure_bundle(
         ctx, tmp_path / "dot", "comparison_dot",
         "Comparison Dot Plot", "comparison_dot")
-    assert "render_comparison_dot" in (out / "scripts" / "figure.py").read_text()
+    assert "render_comparison_dot" in (out / "scripts" / "figure.py").read_text(encoding="utf-8")
     _run_script(out)
 
 
@@ -122,5 +122,5 @@ def test_chromvar_bundle_volcano(qtbot, tmp_path):
     out = export_figure_bundle(
         ctx, tmp_path / "chromvar", "chromvar",
         "chromVAR TF Activity", "chromvar")
-    assert "render_chromvar" in (out / "scripts" / "figure.py").read_text()
+    assert "render_chromvar" in (out / "scripts" / "figure.py").read_text(encoding="utf-8")
     _run_script(out)

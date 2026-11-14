@@ -28,6 +28,11 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller pillow
       
+      - name: Run unit tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: pytest -q
+      
       - name: Create icon
         run: python scripts/create_icon.py
       

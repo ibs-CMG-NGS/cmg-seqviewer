@@ -154,10 +154,15 @@ class HelpDialog(QDialog):
             QDesktopServices.openUrl(url)
             return
         assert self.help_dir.is_dir(), "help dir unavailable for anchor navigation"
-        raw = url.path() if not url.isRelative() else url.toString()
-        candidate = self.help_dir / raw
-        if not candidate.exists():
-            candidate = (self.help_dir.parent / raw)   # ../user-guide.md 등 docs 루트
+        # 로컬 파일 링크는 QUrl.path() 가 Windows에서 "/C:/..." 형태가 되어
+        # help_dir 과 결합하면 존재하지 않는 경로가 된다 → toLocalFile() 사용.
+        if url.isLocalFile():
+            candidate = Path(url.toLocalFile())
+        else:
+            raw = url.path() if not url.isRelative() else url.toString()
+            candidate = self.help_dir / raw
+            if not candidate.exists():
+                candidate = (self.help_dir.parent / raw)   # ../user-guide.md 등 docs 루트
         if not candidate.is_file() or candidate.suffix != ".md":
             return
         text = candidate.read_text(encoding="utf-8")
