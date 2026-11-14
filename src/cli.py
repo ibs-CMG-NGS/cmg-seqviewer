@@ -15,10 +15,18 @@ what's actually in the file) — the CLI never silently produces a broken
 dataset.
 
 Subcommands:
-    load    — report a file's detected type/rows/columns/validity
-    filter  — load + apply a statistical filter + export, flags only
-    run     — load + filter + export, driven by a recipe file (utils/recipe.py)
-    batch   — apply one recipe's filter/output settings across many input files
+    load      — report a file's detected type/rows/columns/validity
+    filter    — load + apply a statistical filter + export, flags only
+    run       — load + filter + export, driven by a recipe file (utils/recipe.py)
+    batch     — apply one recipe's filter/output settings across many input files
+    summary   — JSON-safe dataset summary
+    query     — select columns/rows and print or export
+    plot      — render a registered plot type headlessly
+    export    — write the loaded table as CSV/TSV/XLSX/Parquet
+    datasets  — list/describe the pre-loaded database
+    compare   — compare >=2 DE datasets (common/unique genes)
+    schema    — list plot types and help sections
+    help      — search/read the F1 help
 
 Usage:
     python -m cli load data.xlsx
@@ -27,6 +35,9 @@ Usage:
     python -m cli filter atac.parquet --type atac --out filtered.csv
     python -m cli run recipe.yaml
     python -m cli batch recipe.yaml --inputs "data/*.xlsx" --out-dir results/ --manifest results/manifest.json
+    python -m cli datasets list --json
+    python -m cli datasets describe <dataset_id> --json
+    python -m cli compare a.csv b.csv --json --include-table
 
 `load`/`filter` accept CSV/TSV/Parquet inputs as well as Excel. `--type`
 accepts atac / differential_expression / go_analysis / multi_group / composition /
@@ -199,6 +210,90 @@ def cmd_help(args: argparse.Namespace) -> int:
     else:
         for section in sections:
             print(f"{section['slug']}: {section['title']}")
+    return 0
+
+
+def _database_service(args: argparse.Namespace):
+    from services.database_service import DatabaseService
+    return DatabaseService(database_dir=getattr(args, "database_dir", None))
+
+
+def cmd_datasets_list(args: argparse.Namespace) -> int:
+    rows = _database_service(args).list(
+        query=args.query or "", cell_type=args.cell_type or "",
+        organism=args.organism or "", dataset_type=args.type or "",
+        researcher=args.researcher or "", tags=args.tag or None)
+    if args.json:
+        print(json.dumps(rows, ensure_ascii=False, indent=2))
+        return 0
+    if not rows:
+        print("no datasets found")
+        return 0
+    for row in rows:
+        print(f"{row['dataset_id']}\t{row['alias']}\t"
+              f"{row['dataset_type']}\t{row['row_count']} rows")
+    return 0
+
+
+def cmd_datasets_describe(args: argparse.Namespace) -> int:
+    row = _database_service(args).describe(
+        args.dataset_id, include_schema=not args.no_schema)
+    if args.json:
+        print(json.dumps(row, ensure_ascii=False, indent=2))
+        return 0
+    for key in ("dataset_id", "alias", "dataset_type", "organism", "cell_type",
+                "row_count", "gene_count", "file_path"):
+        if key in row and row[key] not in ("", None):
+            print(f"{key}: {row[key]}")
+    if row.get("load_error"):
+        print(f"load_error: {row['load_error']}")
+    schema = row.get("schema")
+    if schema:
+        print(f"columns: {schema.get('columns', [])}")
+        print(f"valid: {schema.get('valid')}")
+    return 0
+
+
+def _read_gene_list(path: Optional[str]) -> Optional[list[str]]:
+    if not path:
+        return None
+    lines = Path(path).read_text(encoding="utf-8").splitlines()
+    genes = [line.strip() for line in lines if line.strip()]
+    return genes or None
+
+
+def cmd_compare(args: argparse.Namespace) -> int:
+    logger = logging.getLogger("cmg_cli.compare")
+    from services.analysis_service import AnalysisService
+    from services.dataset_service import DatasetService
+
+    service = AnalysisService(logger)
+    result = service.compare_files(
+        [Path(p) for p in args.files], _dataset_type_hint(args.type),
+        gene_list=_read_gene_list(args.gene_list),
+        adj_pvalue_cutoff=args.adj_pvalue_max,
+        log2fc_cutoff=args.log2fc_min)
+    payload = service.result_to_dict(
+        result, include_table=args.include_table,
+        table_limit=args.table_limit)
+
+    if args.out and result.comparison_table is not None:
+        DatasetService(logger).export(result.comparison_table, Path(args.out))
+        payload["artifact"] = str(args.out)
+        if not args.json:
+            print(f"wrote: {args.out} ({len(result.comparison_table)} rows)")
+
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+
+    stats = payload["overlap_stats"]
+    print(f"datasets: {stats['total_datasets']}")
+    print(f"common genes: {stats['common_genes_count']}")
+    for name, count in stats["unique_genes_per_dataset"].items():
+        print(f"unique {name}: {count}")
+    if args.include_table and "comparison_table" in payload:
+        print(pd.DataFrame(payload["comparison_table"]).to_string(index=False))
     return 0
 
 
@@ -461,6 +556,53 @@ def build_parser() -> argparse.ArgumentParser:
                         help="section slug를 Markdown으로 출력")
     p_help.add_argument("--json", action="store_true", help="JSON으로 출력")
     p_help.set_defaults(func=cmd_help)
+
+    p_datasets = sub.add_parser("datasets", help="pre-loaded 데이터베이스 목록/상세")
+    dsub = p_datasets.add_subparsers(dest="datasets_command", required=True)
+    p_ds_list = dsub.add_parser("list", help="데이터베이스 데이터셋 목록")
+    p_ds_list.add_argument("--database-dir", default=None,
+                           help="database 디렉터리 (기본: 앱 데이터 경로)")
+    p_ds_list.add_argument("--query", default="",
+                           help="alias/notes/tag/researcher 검색")
+    p_ds_list.add_argument("--type", default="", help="dataset_type 필터")
+    p_ds_list.add_argument("--organism", default="", help="organism 필터")
+    p_ds_list.add_argument("--cell-type", default="", help="cell_type 필터")
+    p_ds_list.add_argument("--researcher", default="", help="researcher 필터")
+    p_ds_list.add_argument("--tag", action="append", default=None,
+                           help="tag 필터 (여러 번 지정 가능)")
+    p_ds_list.add_argument("--json", action="store_true", help="JSON으로 출력")
+    p_ds_list.set_defaults(func=cmd_datasets_list)
+
+    p_ds_describe = dsub.add_parser("describe", help="데이터셋 메타데이터/스키마")
+    p_ds_describe.add_argument("dataset_id", help="데이터셋 ID")
+    p_ds_describe.add_argument("--database-dir", default=None,
+                               help="database 디렉터리 (기본: 앱 데이터 경로)")
+    p_ds_describe.add_argument("--no-schema", action="store_true",
+                               help="parquet을 로드하지 않고 메타데이터만 출력")
+    p_ds_describe.add_argument("--json", action="store_true",
+                               help="JSON으로 출력")
+    p_ds_describe.set_defaults(func=cmd_datasets_describe)
+
+    p_compare = sub.add_parser(
+        "compare", help="DE 데이터셋 2개 이상의 유전자 overlap 비교")
+    p_compare.add_argument("files", nargs="+",
+                           help="비교할 DE 입력 파일 2개 이상")
+    p_compare.add_argument("--type", choices=_TYPE_CHOICES, default=None,
+                           help="모든 입력에 적용할 명시적 타입 힌트")
+    p_compare.add_argument("--gene-list", default=None,
+                           help="비교할 유전자 목록 텍스트 파일 (한 줄에 하나)")
+    p_compare.add_argument("--adj-pvalue-max", type=float, default=0.05,
+                           help="유의 유전자 adj p-value 상한 (default: 0.05)")
+    p_compare.add_argument("--log2fc-min", type=float, default=1.0,
+                           help="유의 유전자 |log2FC| 하한 (default: 1.0)")
+    p_compare.add_argument("--out", default=None,
+                           help="비교 테이블 저장 (.csv/.tsv/.xlsx/.parquet)")
+    p_compare.add_argument("--include-table", action="store_true",
+                           help="JSON/text에 비교 테이블 포함")
+    p_compare.add_argument("--table-limit", type=int, default=50,
+                           help="JSON 테이블 최대 행 (default: 50)")
+    p_compare.add_argument("--json", action="store_true", help="JSON으로 출력")
+    p_compare.set_defaults(func=cmd_compare)
 
     return parser
 

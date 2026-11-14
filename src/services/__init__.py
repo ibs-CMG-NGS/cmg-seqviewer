@@ -1,7 +1,17 @@
-"""Headless service layer shared by the CLI and (later) MCP."""
+"""Headless service layer shared by the CLI and MCP."""
 
+from .analysis_service import AnalysisService
+from .database_service import DatabaseService
 from .dataset_service import DatasetService
 from .filter_service import FilterService
 from .help_service import HelpService
+from .plot_service import PlotService
 
-__all__ = ["DatasetService", "FilterService", "HelpService"]
+__all__ = [
+    "AnalysisService",
+    "DatabaseService",
+    "DatasetService",
+    "FilterService",
+    "HelpService",
+    "PlotService",
+]

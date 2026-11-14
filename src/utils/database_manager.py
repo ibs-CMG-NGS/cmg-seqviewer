@@ -1750,7 +1750,7 @@ class DatabaseManager:
         if dataset_type:
             results = [
                 meta for meta in results
-                if meta.dataset_type.lower() == dataset_type.lower()
+                if meta.dataset_type.value.lower() == dataset_type.lower()
             ]
 
         # 연구자 필터

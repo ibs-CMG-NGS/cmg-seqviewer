@@ -66,6 +66,62 @@ def test_plot_unknown_type_fails(tmp_path, capsys):
     assert "Unsupported plot_type" in capsys.readouterr().err
 
 
+def _write_de_file(path, genes):
+    pd.DataFrame({
+        "gene_id": genes,
+        "log2fc": [2.0, -2.5, 1.5][:len(genes)],
+        "adj_pvalue": [0.01, 0.02, 0.03][:len(genes)],
+    }).to_csv(path, index=False)
+    return path
+
+
+def _make_database(tmp_path):
+    (tmp_path / "datasets").mkdir()
+    pd.DataFrame({
+        "gene_id": ["G1", "G2"],
+        "log2fc": [2.0, -1.0],
+        "adj_pvalue": [0.01, 0.5],
+    }).to_parquet(tmp_path / "datasets" / "de.parquet")
+    (tmp_path / "metadata.json").write_text(json.dumps({
+        "datasets": [{
+            "dataset_id": "d1",
+            "alias": "Test DE",
+            "original_filename": "de.parquet",
+            "dataset_type": "differential_expression",
+            "row_count": 2,
+            "file_path": "de.parquet",
+        }]
+    }), encoding="utf-8")
+    return tmp_path
+
+
+def test_datasets_list_and_describe(tmp_path, capsys):
+    db = _make_database(tmp_path)
+    rc = cli.main(["datasets", "list", "--database-dir", str(db), "--json"])
+    rows = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert rows[0]["dataset_id"] == "d1"
+
+    rc = cli.main(["datasets", "describe", "d1", "--database-dir", str(db),
+                   "--json"])
+    described = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert described["schema"]["rows"] == 2
+
+
+def test_compare_json_and_out(tmp_path, capsys):
+    a = _write_de_file(tmp_path / "a.csv", ["G1", "G2", "G3"])
+    b = _write_de_file(tmp_path / "b.csv", ["G2", "G3", "G4"])
+    out = tmp_path / "compare.csv"
+    rc = cli.main(["compare", str(a), str(b), "--json", "--include-table",
+                   "--out", str(out)])
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert payload["overlap_stats"]["common_genes_count"] == 2
+    assert payload["artifact"] == str(out)
+    assert out.exists()
+
+
 def test_schema_json(capsys):
     rc = cli.main(["schema", "--json"])
     out = json.loads(capsys.readouterr().out)

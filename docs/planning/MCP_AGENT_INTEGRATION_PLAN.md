@@ -53,8 +53,8 @@ only an optional later phase and is not the primary AI-agent path.
 
 | 영역 | 현재 | 판단 |
 |------|------|------|
-| CLI | `load/filter/run/batch` + `summary/query/plot/export/schema/help` (`src/cli.py`) | 자동화 기반 확보. `datasets/compare`는 아직 |
-| Services | `src/services/` Dataset/Filter/Plot/HelpService | 공유 계층 확보. AnalysisService/handle registry는 아직 |
+| CLI | `load/filter/run/batch` + `summary/query/plot/export/datasets/compare/schema/help` (`src/cli.py`) | 자동화 기반 확보. pure FilterService 추출은 후속 |
+| Services | `src/services/` Dataset/Database/Filter/Analysis/Plot/HelpService | 공유 계층 확보. FilterService는 아직 presenter wrapper |
 | 필터 | `FilterService` → `MainPresenter.compute_filtered_df` | 동작 공유 완료. 순수 추출은 후속 |
 | 플롯 | `src/plots/*.py` + `PlotService` (Agg) | **핵심 자산**. headless 이미지 생성 가능 |
 | DB | `DatabaseManager` import/load/search/export | MCP tool로 노출 가능 |
@@ -72,8 +72,10 @@ only an optional later phase and is not the primary AI-agent path.
 - ✅ MCP policy/audit: schema-only default, preview/images/write opt-in, JSONL audit
 - ✅ MCP resources: help, dataset schema, pipeline doc, workflow notes
 - ✅ MCP prompts: DE, expression summary, composition
-- ⏳ `AnalysisService` / `datasets list|describe` / `compare_datasets`
-- Verification: `405 passed, 4 deselected`; service/CLI/MCP tests included
+- ✅ `AnalysisService`: headless compare over `StatisticalAnalyzer`
+- ✅ CLI `datasets list|describe` + `compare`
+- ⏳ `FilterService` pure extraction (still wraps `MainPresenter`)
+- Verification: `412 passed, 4 deselected`; service/CLI/MCP tests included
 
 ### 현재 CLI의 한계
 
@@ -327,7 +329,7 @@ cmg-seqviewer-cli schema|help
 | Phase | 내용 | 예상 |
 |------|------|------|
 | 0 | 결정·tool schema·client 호환성 | 2–3일 (✅ 2026-11-14) |
-| 1 | headless services + CLI 확장 + 테스트 (partial: services + inspection/plot/export commands done) | 1–2주 (⏳) |
+| 1 | headless services + CLI 확장 + 테스트 (services + inspection/plot/export/datasets/compare done) | 1–2주 (✅ 2026-11-14) |
 | 2 | MCP server v1 (stdio, tools/resources/prompts) | 1주 (✅ v1, 2026-11-14) |
 | 3 | (선택) GUI bridge — service-layer bridge only, not live control | 1–2주 |
 | 4 | packaging/docs/security | 3–5일 |
@@ -379,8 +381,8 @@ Phase 3 제외 시 **2–3주**, 포함 시 **4–5주** (1인 기준).
 ## 15. Next Actions
 
 1. Phase 0: ✅ privacy threat model/노출 레벨 + tool schema + client 설정 문서
-2. Phase 1: ✅ services + CLI inspection/plot/export; ⏳ `AnalysisService`/`datasets`/`compare`
+2. Phase 1: ✅ services + CLI inspection/plot/export/datasets/compare; ⏳ pure `FilterService` extraction
 3. Phase 2: ✅ `cmg-seqviewer-mcp` stdio v1 + resources/prompts
 4. Phase 3 이후: GUI bridge, enrichment, 추가 클라이언트
-5. 남은 검증: Claude Desktop/Cursor end-to-end 수동 확인, `compare_datasets` v1.1 (stdio client E2E는 자동 테스트 완료)
+5. 남은 검증: Claude Desktop/Cursor end-to-end 수동 확인, MCP `compare_datasets` v1.1 (stdio client E2E는 자동 테스트 완료)
 6. 모든 Phase에서 privacy acceptance criteria(7.7) 충족 여부를 릴리스 게이트로 확인

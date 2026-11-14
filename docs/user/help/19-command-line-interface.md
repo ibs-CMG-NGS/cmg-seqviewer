@@ -33,7 +33,7 @@ or, from a source checkout, equivalently:
 python src/cli.py --help
 ```
 
-Subcommands: `load`, `filter`, `run`, `batch`, `summary`, `query`, `plot`, `export`, `schema`, and `help`.
+Subcommands: `load`, `filter`, `run`, `batch`, `summary`, `query`, `plot`, `export`, `datasets`, `compare`, `schema`, and `help`.
 
 ## 19.2 `load` — inspect a file
 
@@ -173,7 +173,7 @@ writes a JSON array with one entry per file (`input`, `status`,
 machine-readable record of what was run, suitable for checking into a
 results folder alongside the filtered tables.
 
-## 19.5 Headless inspection and plotting
+## 19.5 Headless inspection, comparison, and plotting
 
 These commands use the shared `src/services/` layer, so they behave the same
 way as the CLI filtering path and can be called by an AI client or a pipeline.
@@ -208,6 +208,31 @@ created.
 ```bash
 cmg-seqviewer-cli export data/DE.xlsx --out exported/de.csv
 ```
+
+**`datasets`** lists or describes datasets in the pre-loaded database. Use
+`--database-dir` to point at a non-default database (useful for a project
+export or a CI fixture):
+
+```bash
+cmg-seqviewer-cli datasets list --json
+cmg-seqviewer-cli datasets list --query hypoxia --type differential_expression
+cmg-seqviewer-cli datasets describe <dataset_id> --json
+```
+
+`datasets describe` loads the parquet to include its schema; add
+`--no-schema` to read metadata only.
+
+**`compare`** compares two or more DE datasets using the same
+`StatisticalAnalyzer` as the GUI. It reports common genes, per-dataset unique
+genes, and an optional comparison table:
+
+```bash
+cmg-seqviewer-cli compare a_DE.csv b_DE.csv --json --include-table
+cmg-seqviewer-cli compare a_DE.csv b_DE.csv --out comparison.csv
+```
+
+`--gene-list` restricts the comparison to a text file of genes (one per line);
+`--adj-pvalue-max` / `--log2fc-min` set the significance cutoffs.
 
 **`schema`** lists plot types and help sections; **`help`** searches or prints
 the Markdown F1 help:
