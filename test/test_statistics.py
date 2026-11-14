@@ -14,31 +14,26 @@ class TestStatisticalAnalyzer:
     
     @pytest.fixture
     def sample_dataset(self):
-        """샘플 데이터셋 생성"""
+        """샘플 데이터셋 생성 (표준 컬럼명 사용)"""
         np.random.seed(42)
         n = 100
-        
+
         df = pd.DataFrame({
-            'gene': [f'GENE{i}' for i in range(n)],
+            'gene_id': [f'GENE{i}' for i in range(n)],
+            'symbol': [f'GENE{i}' for i in range(n)],
             'log2fc': np.random.randn(n) * 2,
             'pvalue': np.random.uniform(0, 1, n),
-            'padj': np.random.uniform(0, 1, n)
+            'adj_pvalue': np.random.uniform(0, 1, n)
         })
-        
+
         # 일부 유전자를 유의미하게 설정
-        df.loc[:20, 'padj'] = 0.01
+        df.loc[:20, 'adj_pvalue'] = 0.01
         df.loc[:20, 'log2fc'] = np.random.randn(21) * 3 + 2
-        
+
         return Dataset(
             name="Test Dataset",
             dataset_type=DatasetType.DIFFERENTIAL_EXPRESSION,
             dataframe=df,
-            column_mapping={
-                'gene': 'gene_id',
-                'log2fc': 'log2fc',
-                'pvalue': 'pvalue',
-                'padj': 'adj_pvalue'
-            }
         )
     
     def test_fisher_exact_test(self, sample_dataset):
@@ -85,7 +80,6 @@ class TestStatisticalAnalyzer:
             name="Test Dataset 2",
             dataset_type=DatasetType.DIFFERENTIAL_EXPRESSION,
             dataframe=df2,
-            column_mapping=sample_dataset.column_mapping
         )
         
         result = analyzer.compare_datasets([sample_dataset, dataset2])
