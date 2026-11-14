@@ -92,8 +92,10 @@ file is safe to import into the database. Auto-detection works for
 
 ## 19.3 `filter` — load + filter one file
 
-Applies a one-off statistical filter and writes (or prints) the result.
-Flag names and defaults match the Filter Panel's Statistical tab exactly:
+Applies a one-off filter and writes (or prints) the result. The default
+mode is `statistical`; the same command also supports gene-list, keyword, and
+column-subset modes. Statistical flag names and defaults match the Filter
+Panel's Statistical tab exactly:
 
 ```bash
 cmg-seqviewer-cli filter sample1_DE.xlsx \
@@ -101,15 +103,39 @@ cmg-seqviewer-cli filter sample1_DE.xlsx \
   --out sample1_filtered.xlsx
 ```
 
-Omit `--out` to print the filtered table to stdout instead of writing a
-file. Output format is chosen from the `--out` extension: `.xlsx`, `.csv`,
-`.tsv`, or `.parquet`.
+Other modes:
+
+```bash
+# Gene list (one symbol per line); order is preserved
+cmg-seqviewer-cli filter sample1_DE.xlsx --mode gene_list \
+  --gene-list-file genes.txt --out gene_filtered.csv
+
+# GO/KEGG term IDs instead of gene symbols
+cmg-seqviewer-cli filter go_result.xlsx --mode gene_list \
+  --term-id GO:0006955 --term-id GO:0006954 --out terms.csv
+
+# Case-insensitive substring search
+cmg-seqviewer-cli filter sample1_DE.xlsx --mode keyword \
+  --keyword hypoxia --search-column description --out keyword.csv
+
+# Keep only selected columns (row count unchanged)
+cmg-seqviewer-cli filter sample1_DE.xlsx --mode column_subset \
+  --columns gene_id log2fc adj_pvalue --out subset.csv
+```
+
+`gene-list` and `column-subset` are accepted as aliases. Omit `--out` to print
+the filtered table to stdout instead of writing a file. Output format is chosen
+from the `--out` extension: `.xlsx`, `.csv`, `.tsv`, or `.parquet`.
 
 Common flags (see `cmg-seqviewer-cli filter --help` for the full list):
 
 | Flag | Applies to | Matches |
 |------|-----------|---------|
 | `--type` | all | Force dataset type instead of auto-detecting: `atac`, `differential_expression`, `go_analysis`, `multi_group`, `composition`, `expression_summary`, `expression_distribution` |
+| `--mode` | all | `statistical` (default), `gene_list`, `keyword`, `column_subset` |
+| `--gene-list-file`, `--term-id` | gene_list | Gene symbols file or GO/KEGG term IDs |
+| `--keyword`, `--search-column` | keyword | Substring and optional target column |
+| `--columns` | column_subset | Columns to keep, in original order |
 | `--adj-pvalue-max` | DE / ATAC | Filter Panel "Padj" |
 | `--log2fc-min` | DE / ATAC | Filter Panel "log2FC" |
 | `--regulation` | DE / ATAC | Up / Down / Both |

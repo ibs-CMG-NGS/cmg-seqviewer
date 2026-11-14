@@ -69,6 +69,7 @@ only an optional later phase and is not the primary AI-agent path.
 - ✅ `PlotService`: Agg render to PNG/PDF/SVG using `plots.registry`
 - ✅ `HelpService`: list/read/search F1 Markdown
 - ✅ CLI: `summary`, `query`, `plot`, `export`, `schema`, `help`
+- ✅ CLI `filter`: statistical/gene_list/keyword/column_subset modes
 - ✅ MCP server v1.2 (stdio): `src/mcp_server.py`, `cmg-seqviewer-mcp`
 - ✅ MCP `compare_datasets`: counts by default; gene lists/table gated by policy
 - ✅ MCP `run_enrichment`: dataset-source ORA; network + aggregate/preview gated
@@ -77,12 +78,12 @@ only an optional later phase and is not the primary AI-agent path.
 - ✅ MCP prompts: DE, expression summary, composition
 - ✅ `AnalysisService`: headless compare over `StatisticalAnalyzer`
 - ✅ CLI `datasets list|describe` + `compare`
-- Verification: `427 passed, 4 deselected`; service/CLI/MCP tests included
+- Verification: `431 passed, 4 deselected`; service/CLI/MCP tests included
 
 ### 현재 CLI의 한계
 
 - `load --json`은 타입/행수/컬럼/유효성만 반환
-- `filter`는 statistical 모드만 지원 (gene list/keyword/column subset 미지원)
+- ✅ `filter`는 statistical/gene_list/keyword/column_subset 모드 지원
 - `summary`, `query`, `plot`, `export`, `compare`, `datasets`, `schema` 명령 없음
 - 플롯은 GUI 다이얼로그에서만 실행
 - `MainPresenter`를 `SimpleNamespace`로 인스턴스화해 필터만 재사용하는 구조 — MCP에
@@ -153,7 +154,7 @@ src/services/
 ```
 cmg-seqviewer-cli datasets list|describe
 cmg-seqviewer-cli load <file> --json
-cmg-seqviewer-cli filter <file> --mode statistical|gene-list|keyword|column-subset ...
+cmg-seqviewer-cli filter <file> --mode statistical|gene-list|keyword|column-subset ...  # implemented
 cmg-seqviewer-cli summary <file> --json
 cmg-seqviewer-cli query <file> --columns ... --limit ... --offset ...
 cmg-seqviewer-cli plot <file> --plot-type volcano --params-json '{...}' --out out.png

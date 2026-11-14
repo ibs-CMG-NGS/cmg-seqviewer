@@ -16,7 +16,7 @@ dataset.
 
 Subcommands:
     load      — report a file's detected type/rows/columns/validity
-    filter    — load + apply a statistical filter + export, flags only
+    filter    — load + apply a filter (statistical/gene list/keyword/columns)
     run       — load + filter + export, driven by a recipe file (utils/recipe.py)
     batch     — apply one recipe's filter/output settings across many input files
     summary   — JSON-safe dataset summary
@@ -32,6 +32,9 @@ Usage:
     python -m cli load data.xlsx
     python -m cli load data.parquet --json          # CI용 기계 판독 출력
     python -m cli filter data.xlsx --adj-pvalue-max 0.05 --log2fc-min 1.0 --out filtered.xlsx
+    python -m cli filter data.xlsx --mode gene_list --gene-list-file genes.txt --out filtered.csv
+    python -m cli filter data.xlsx --mode keyword --keyword hypoxia --out filtered.csv
+    python -m cli filter data.xlsx --mode column_subset --columns gene_id log2fc --out subset.csv
     python -m cli filter atac.parquet --type atac --out filtered.csv
     python -m cli run recipe.yaml
     python -m cli batch recipe.yaml --inputs "data/*.xlsx" --out-dir results/ --manifest results/manifest.json
@@ -302,23 +305,57 @@ def cmd_filter(args: argparse.Namespace) -> int:
     dataset = _load(Path(args.file), args.type, logger)
 
     from models.data_models import FilterCriteria, FilterMode
-    criteria = FilterCriteria(
-        mode=FilterMode.STATISTICAL,
-        adj_pvalue_max=args.adj_pvalue_max,
-        log2fc_min=args.log2fc_min,
-        regulation_direction=args.regulation,
-        fdr_max=args.fdr_max,
-        fold_enrichment_min=args.fold_enrichment_min,
-        go_min_gene_count=args.go_min_gene_count,
-        ontology=args.ontology,
-        go_direction=args.go_direction,
-        mg_padj_max=args.mg_padj_max,
-        mg_basemean_min=args.mg_basemean_min,
-        atac_annotation=args.atac_annotation,
-        atac_distance_max=args.atac_distance_max,
-        atac_peak_width_min=args.atac_peak_width_min,
-        atac_peak_width_max=args.atac_peak_width_max,
-    )
+    try:
+        mode = FilterMode(str(args.mode).replace("-", "_"))
+    except ValueError:
+        print(f"Invalid --mode: {args.mode!r}", file=sys.stderr)
+        return 1
+
+    if mode == FilterMode.GENE_LIST:
+        genes = _read_gene_list(args.gene_list_file)
+        if args.term_id and genes:
+            print("Use either --gene-list-file or --term-id, not both.",
+                  file=sys.stderr)
+            return 1
+        if args.term_id:
+            criteria = FilterCriteria(mode=mode, term_id_list=args.term_id)
+        elif genes:
+            criteria = FilterCriteria(mode=mode, gene_list=genes)
+        else:
+            print("gene_list mode requires --gene-list-file or --term-id.",
+                  file=sys.stderr)
+            return 1
+    elif mode == FilterMode.KEYWORD:
+        keyword = (args.keyword or "").strip()
+        if not keyword:
+            print("keyword mode requires --keyword.", file=sys.stderr)
+            return 1
+        criteria = FilterCriteria(
+            mode=mode, search_keyword=keyword,
+            search_column=args.search_column or "")
+    elif mode == FilterMode.COLUMN_SUBSET:
+        if not args.columns:
+            print("column_subset mode requires --columns.", file=sys.stderr)
+            return 1
+        criteria = FilterCriteria(mode=mode, subset_columns=args.columns)
+    else:
+        criteria = FilterCriteria(
+            mode=FilterMode.STATISTICAL,
+            adj_pvalue_max=args.adj_pvalue_max,
+            log2fc_min=args.log2fc_min,
+            regulation_direction=args.regulation,
+            fdr_max=args.fdr_max,
+            fold_enrichment_min=args.fold_enrichment_min,
+            go_min_gene_count=args.go_min_gene_count,
+            ontology=args.ontology,
+            go_direction=args.go_direction,
+            mg_padj_max=args.mg_padj_max,
+            mg_basemean_min=args.mg_basemean_min,
+            atac_annotation=args.atac_annotation,
+            atac_distance_max=args.atac_distance_max,
+            atac_peak_width_min=args.atac_peak_width_min,
+            atac_peak_width_max=args.atac_peak_width_max,
+        )
 
     from services.filter_service import FilterService
     filtered = FilterService().filter(dataset, criteria)
@@ -328,6 +365,8 @@ def cmd_filter(args: argparse.Namespace) -> int:
         return 1
 
     print(f"filtered: {len(filtered)}/{len(dataset.dataframe)} rows")
+    if mode == FilterMode.COLUMN_SUBSET:
+        print(f"columns: {len(filtered.columns)}/{len(dataset.dataframe.columns)}")
     if args.out:
         _write_table(filtered, Path(args.out))
         print(f"wrote: {args.out}")
@@ -431,6 +470,20 @@ def _add_filter_args(parser: argparse.ArgumentParser) -> None:
     해당하는 것만 쓰고 나머지는 무시한다 (FilterCriteria 기본값과 동일)."""
     parser.add_argument("--type", choices=_TYPE_CHOICES, default=None,
                         help="명시적 데이터셋 타입 힌트 (자동 감지를 건너뜀)")
+    parser.add_argument("--mode", default="statistical",
+                        choices=["statistical", "gene_list", "gene-list",
+                                 "keyword", "column_subset", "column-subset"],
+                        help="필터 모드 (default: statistical)")
+    parser.add_argument("--gene-list-file", default=None,
+                        help="gene_list 모드: 한 줄에 유전자 하나인 텍스트 파일")
+    parser.add_argument("--term-id", action="append", default=None,
+                        help="gene_list 모드: GO/KEGG term ID (여러 번 지정 가능)")
+    parser.add_argument("--keyword", default=None,
+                        help="keyword 모드: 부분문자열 검색어")
+    parser.add_argument("--search-column", default=None,
+                        help="keyword 모드: 검색할 컬럼 (기본: 자동 선택)")
+    parser.add_argument("--columns", nargs="+", default=None,
+                        help="column_subset 모드: 남길 컬럼 목록")
     parser.add_argument("--adj-pvalue-max", type=float, default=0.05,
                         help="DE/ATAC: adjusted p-value 상한 (default: 0.05)")
     parser.add_argument("--log2fc-min", type=float, default=1.0,
@@ -478,7 +531,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="판정 결과를 JSON으로 출력 (CI 기계 판독용)")
     p_load.set_defaults(func=cmd_load)
 
-    p_filter = sub.add_parser("filter", help="로드 + 통계 필터 적용 + 결과 export")
+    p_filter = sub.add_parser("filter", help="로드 + 필터 적용 + 결과 export")
     p_filter.add_argument("file", help="입력 파일")
     p_filter.add_argument("--out", default=None,
                           help="출력 파일 경로 (.xlsx/.csv/.tsv/.parquet) — 생략하면 표준출력")

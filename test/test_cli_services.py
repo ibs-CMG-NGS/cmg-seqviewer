@@ -109,6 +109,43 @@ def test_datasets_list_and_describe(tmp_path, capsys):
     assert described["schema"]["rows"] == 2
 
 
+def test_filter_gene_list_mode(tmp_path, capsys):
+    path = _write_de_file(tmp_path / "de.csv", ["G1", "G2", "G3"])
+    genes = tmp_path / "genes.txt"
+    genes.write_text("G3\nG1\n", encoding="utf-8")
+    out = tmp_path / "gene_filtered.csv"
+    rc = cli.main(["filter", str(path), "--mode", "gene_list",
+                   "--gene-list-file", str(genes), "--out", str(out)])
+    assert rc == 0
+    assert list(pd.read_csv(out)["gene_id"]) == ["G3", "G1"]
+
+
+def test_filter_keyword_mode(tmp_path, capsys):
+    path = _write_de_file(tmp_path / "de.csv", ["G1", "G2", "G3"])
+    out = tmp_path / "keyword_filtered.csv"
+    rc = cli.main(["filter", str(path), "--mode", "keyword",
+                   "--keyword", "G2", "--search-column", "gene_id",
+                   "--out", str(out)])
+    assert rc == 0
+    assert list(pd.read_csv(out)["gene_id"]) == ["G2"]
+
+
+def test_filter_column_subset_mode(tmp_path, capsys):
+    path = _write_de_file(tmp_path / "de.csv", ["G1", "G2", "G3"])
+    out = tmp_path / "subset.csv"
+    rc = cli.main(["filter", str(path), "--mode", "column-subset",
+                   "--columns", "gene_id", "log2fc", "--out", str(out)])
+    assert rc == 0
+    assert list(pd.read_csv(out).columns) == ["gene_id", "log2fc"]
+
+
+def test_filter_gene_list_requires_input(tmp_path, capsys):
+    path = _write_de_file(tmp_path / "de.csv", ["G1", "G2", "G3"])
+    rc = cli.main(["filter", str(path), "--mode", "gene_list"])
+    assert rc == 1
+    assert "gene-list-file or --term-id" in capsys.readouterr().err
+
+
 def test_compare_json_and_out(tmp_path, capsys):
     a = _write_de_file(tmp_path / "a.csv", ["G1", "G2", "G3"])
     b = _write_de_file(tmp_path / "b.csv", ["G2", "G3", "G4"])
