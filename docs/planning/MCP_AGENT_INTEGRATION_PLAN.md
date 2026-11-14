@@ -33,7 +33,7 @@ cmg-seqviewer의 분석을 실행하고 결과를 확인할 수 있게 한다.
 - MCP 서버 자체에서 LLM/API 호출
 - 모든 GUI 기능의 CLI/MCP 노출
 - 원격/멀티유저 MCP 서버
-- GO/KEGG enrichment의 완전 자동화 (v1.1 이후)
+- GO/KEGG enrichment의 완전 자동화 (v1.2는 dataset-source ORA만)
 - AI 클라이언트로 raw table/full dataset을 기본 전송하는 것
 - 클라이언트 측 데이터 보관·학습 정책을 MCP 서버가 보장하는 것
 
@@ -59,7 +59,7 @@ only an optional later phase and is not the primary AI-agent path.
 | 플롯 | `src/plots/*.py` + `PlotService` (Agg) | **핵심 자산**. headless 이미지 생성 가능 |
 | DB | `DatabaseManager` import/load/search/export | MCP tool로 노출 가능 |
 | 도움말 | `docs/user/help/*.md` + `HelpService` | MCP **resources**로 그대로 제공 가능 |
-| MCP/서버 | `src/mcp_server.py` v1.1 (stdio, 11 tools, resources, prompts) | compare_datasets 포함. enrichment는 v1.2 |
+| MCP/서버 | `src/mcp_server.py` v1.2 (stdio, 12 tools, resources, prompts) | compare_datasets + run_enrichment 포함 |
 
 ### Implementation status (2026-11-14)
 
@@ -69,14 +69,15 @@ only an optional later phase and is not the primary AI-agent path.
 - ✅ `PlotService`: Agg render to PNG/PDF/SVG using `plots.registry`
 - ✅ `HelpService`: list/read/search F1 Markdown
 - ✅ CLI: `summary`, `query`, `plot`, `export`, `schema`, `help`
-- ✅ MCP server v1.1 (stdio): `src/mcp_server.py`, `cmg-seqviewer-mcp`
+- ✅ MCP server v1.2 (stdio): `src/mcp_server.py`, `cmg-seqviewer-mcp`
 - ✅ MCP `compare_datasets`: counts by default; gene lists/table gated by policy
+- ✅ MCP `run_enrichment`: dataset-source ORA; network + aggregate/preview gated
 - ✅ MCP policy/audit: schema-only default, preview/images/write opt-in, JSONL audit
 - ✅ MCP resources: help, dataset schema, pipeline doc, workflow notes
 - ✅ MCP prompts: DE, expression summary, composition
 - ✅ `AnalysisService`: headless compare over `StatisticalAnalyzer`
 - ✅ CLI `datasets list|describe` + `compare`
-- Verification: `422 passed, 4 deselected`; service/CLI/MCP tests included
+- Verification: `427 passed, 4 deselected`; service/CLI/MCP tests included
 
 ### 현재 CLI의 한계
 
@@ -127,14 +128,15 @@ src/services/
 ├── filter_engine.py     # pure statistical/gene list/keyword/column subset
 ├── filter_service.py    # headless facade over FilterEngine
 ├── plot_service.py      # plot_type + params -> PNG/SVG/PDF
-├── analysis_service.py  # compare/enrichment (옵션)
+├── analysis_service.py  # compare
+├── enrichment_service.py # dataset-source GO/KEGG ORA
 └── help_service.py      # F1 help/schema 조회
 ```
 
 - `DatasetService.load()`는 `Dataset` + `handle(UUID)` 반환
 - `FilterEngine`은 순수 로직, `MainPresenter`와 `FilterService`가 공유
 - `PlotService`는 `plots.registry.render_to_figure()` + `figure_export.save_figure()` 사용
-- `AnalysisService`는 v1에서 `compare_datasets` 우선, enrichment는 optional
+- `AnalysisService`는 compare, `EnrichmentService`는 dataset-source ORA 담당
 - 서비스 반환값은 JSON 직렬화 가능한 dict + artifact path + (플롯) PNG bytes
 
 ### Dataset handle
@@ -187,6 +189,7 @@ cmg-seqviewer-cli schema|help
 | `plot` | handle + plot_type/params/out_path → image + file path |
 | `export_table` | handle + format/out_path |
 | `compare_datasets` | handles + method → table/summary |
+| `run_enrichment` | handle + direction/libraries/engine → ORA summary/table (v1.2) |
 | `get_help` | topic → 도움말 markdown |
 
 **plot_type (v1 우선순위)**
@@ -207,6 +210,8 @@ cmg-seqviewer-cli schema|help
 - `workflow://de-analysis`
 - `workflow://expression-summary`
 - `workflow://composition`
+- `workflow://compare-datasets`
+- `workflow://enrichment`
 
 ### 7.4 Prompts
 
@@ -214,6 +219,7 @@ cmg-seqviewer-cli schema|help
 - “Expression Summary: gene 검색 → dot plot”
 - “Composition: PropRatio/FDR 해석”
 - “여러 dataset 비교”
+- “GO/KEGG enrichment 실행”
 - “이 데이터셋에 맞는 필터/플롯 추천”
 
 ### 7.5 Output Contract (privacy-first)
@@ -333,7 +339,7 @@ cmg-seqviewer-cli schema|help
 |------|------|------|
 | 0 | 결정·tool schema·client 호환성 | 2–3일 (✅ 2026-11-14) |
 | 1 | headless services + CLI 확장 + 테스트 (services + inspection/plot/export/datasets/compare + pure FilterEngine) | 1–2주 (✅ 2026-11-14) |
-| 2 | MCP server v1.1 (stdio, tools/resources/prompts) | 1주 (✅ v1.1, 2026-11-14) |
+| 2 | MCP server v1.2 (stdio, tools/resources/prompts) | 1주 (✅ v1.2, 2026-11-15) |
 | 3 | (선택) GUI bridge — service-layer bridge only, not live control | 1–2주 |
 | 4 | packaging/docs/security | 3–5일 |
 
@@ -357,7 +363,7 @@ Phase 3 제외 시 **2–3주**, 포함 시 **4–5주** (1인 기준).
 - **데이터 유출/클라이언트 보관·학습**: MCP tool 결과는 AI 클라이언트로 전송됨 → 기본 schema-only, opt-in, 로컬 모델 권장
 - 대용량 dataset을 AI context에 넣을 수 없음 → preview/artifact 필수
 - headless 플롯과 GUI 플롯의 파라미터 기본값 불일치 → 동일 renderer/params 사용
-- enrichment 네트워크/캐시 지연 → v1에서 optional
+- enrichment 네트워크/캐시 지연 → `allow_network` opt-in + aggregate/preview 정책으로 제한
 - MCP 클라이언트별 tool 지원 차이 → 초기 1–2개 클라이언트만 공식 지원
 - GUI bridge의 보안/복잡도 → v2로 연기
 - WSLg GUI 제약 → MCP headless로 우회, bridge는 비권장
@@ -370,7 +376,7 @@ Phase 3 제외 시 **2–3주**, 포함 시 **4–5주** (1인 기준).
 1. **v1 범위**: headless 결과(JSON + opt-in PNG + artifact)만. GUI bridge는 Phase 3 선택.
 2. **공식 지원 클라이언트**: Claude Desktop + Cursor.
 3. **v1 필수 plot**: volcano, heatmap, PCA, composition, expression_dot.
-4. **GO/KEGG enrichment**: v1.1 (v1은 기존 결과 조회/필터만).
+4. **GO/KEGG enrichment**: v1.2 dataset-source ORA (`allow_network` + aggregate/preview).
 5. **쓰기 권한**: 기본 read-only + export 허용 (DB import/삭제는 opt-in).
 6. **패키징**: 별도 `cmg-seqviewer-mcp` 콘솔 스크립트 + `[mcp]` optional extra.
 7. **데이터 정책 기본값**: `schema_only` (row/image/aggregate는 프로젝트별 opt-in). MCP는 optional extra이며, 사용자가 `cmg-seqviewer-mcp`를 실행할 때만 동작한다.
@@ -378,15 +384,14 @@ Phase 3 제외 시 **2–3주**, 포함 시 **4–5주** (1인 기준).
 추가 협의 가능:
 
 - HPC/원격 MCP 필요 여부
-- enrichment를 v1에 포함할지
 - GUI bridge를 어느 시점에 넣을지
 
 ## 15. Next Actions
 
 1. Phase 0: ✅ privacy threat model/노출 레벨 + tool schema + client 설정 문서
 2. Phase 1: ✅ services + CLI inspection/plot/export/datasets/compare + pure `FilterEngine`
-3. Phase 2: ✅ `cmg-seqviewer-mcp` stdio v1.1 + resources/prompts + compare
-4. Phase 3 이후: GUI bridge, enrichment, 추가 클라이언트
+3. Phase 2: ✅ `cmg-seqviewer-mcp` stdio v1.2 + resources/prompts + compare + enrichment
+4. Phase 3 이후: GUI bridge, paste/meta/prerank enrichment, 추가 클라이언트
 5. 남은 검증: Claude Desktop/Cursor end-to-end 수동 확인 (stdio client E2E는 자동 테스트 완료)
 6. 모든 Phase에서 privacy acceptance criteria(7.7) 충족 여부를 릴리스 게이트로 확인
-7. enrichment는 v1.2에서 검토
+7. enrichment는 v1.2에서 dataset-source ORA로 구현

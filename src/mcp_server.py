@@ -25,9 +25,11 @@ from typing import Any, Callable, Dict, Optional
 from models.data_models import Dataset, DatasetType, FilterCriteria, FilterMode
 from services.analysis_service import AnalysisService
 from services.dataset_service import DatasetService
+from services.enrichment_service import EnrichmentService
 from services.filter_service import FilterService
 from services.help_service import HelpService
 from services.plot_service import PlotService
+from utils.enrichment_analyzer import EnrichmentError
 
 SCHEMA_VERSION = "1.0"
 _TYPE_HINTS = {
@@ -66,6 +68,12 @@ def _tool_error(fn: Callable):
             return fn(*args, **kwargs)
         except ToolError as exc:
             return exc.to_dict()
+        except EnrichmentError as exc:
+            return {
+                "error_code": f"ENRICHMENT_{exc.kind.value.upper()}",
+                "message": exc.message,
+                "hint": "",
+            }
         except FileNotFoundError as exc:
             return {"error_code": "FILE_NOT_FOUND", "message": str(exc), "hint": ""}
         except ValueError as exc:
@@ -82,6 +90,7 @@ class MCPPolicy:
     allow_row_preview: bool = False
     allow_images: bool = False
     allow_write: bool = False
+    allow_network: bool = False
     max_preview_rows: int = 20
     workspace_root: Path = field(default_factory=Path.cwd)
     audit_log: Optional[Path] = field(
@@ -188,6 +197,7 @@ class MCPToolService:
         self.datasets = DatasetService(self.logger)
         self.filters = FilterService(self.logger)
         self.analysis = AnalysisService(self.logger)
+        self.enrichment = EnrichmentService(logger=self.logger)
         self.plots = PlotService(self.logger)
         self.help = HelpService()
 
@@ -381,6 +391,81 @@ class MCPToolService:
         return out
 
     @_tool_error
+    def run_enrichment(
+        self,
+        handle: str,
+        direction: str = "TOTAL",
+        fc_min: float = 1.0,
+        fdr_max: float = 0.05,
+        organism: str = "human",
+        libraries: Optional[list[str]] = None,
+        engine: str = "auto",
+        background: Optional[list[str]] = None,
+        one_sided: bool = False,
+        top_n: int = 20,
+        include_table: bool = False,
+    ) -> dict:
+        from models.enrichment_models import EnrichmentRequest
+
+        if not self.policy.allow_network:
+            raise ToolError(
+                "NETWORK_DENIED",
+                "Enrichment is disabled by policy.",
+                "Set allow_network=true in .cmg-mcp-policy.json.",
+            )
+        if self.policy.data_policy not in ("aggregate", "preview"):
+            raise ToolError(
+                "ENRICHMENT_POLICY_DENIED",
+                "Enrichment results require aggregate or preview data policy.",
+                "Set data_policy=aggregate (or preview) in .cmg-mcp-policy.json.",
+            )
+        if include_table and self.policy.data_policy != "preview":
+            raise ToolError(
+                "TABLE_DENIED",
+                "Enrichment tables require preview data policy.",
+                "Set data_policy=preview in .cmg-mcp-policy.json.",
+            )
+
+        dataset = self.registry.get(handle)
+        request = EnrichmentRequest(
+            source="dataset",
+            dataset_name=dataset.name,
+            fc_min=fc_min,
+            fdr_max=fdr_max,
+            direction=direction,
+            organism=organism,
+            libraries=list(libraries or []),
+            engine=engine,
+            background=background,
+            extra={"one_sided": bool(one_sided)},
+        )
+        result = self.enrichment.run_dataset(dataset, request)
+        df = result.dataframe
+        limit = max(0, min(int(top_n), 100))
+        out = self._base()
+        out.update(
+            {
+                "handle": handle,
+                "dataset_name": result.dataset_name,
+                "direction": direction,
+                "organism": organism,
+                "libraries": request.libraries or ["BP", "CC", "MF", "KEGG"],
+                "engine_requested": engine,
+                "engine_used": result.engine_used,
+                "n_input_genes": result.metadata.get("n_deg"),
+                "n_terms": int(len(df)),
+                "warnings": list(result.warnings),
+                "metadata": self._redact_paths(result.metadata),
+            }
+        )
+        if include_table:
+            out["table"] = json.loads(df.head(limit).to_json(orient="records"))
+        else:
+            out["top_terms"] = json.loads(df.head(limit).to_json(orient="records"))
+        self._audit("run_enrichment", handle, out)
+        return out
+
+    @_tool_error
     def query_rows(
         self,
         handle: str,
@@ -486,6 +571,7 @@ _WORKFLOWS = {
     "expression-summary": '# Expression summary\n\n1. `load_dataset(path, type_hint="expression_summary")`\n2. `describe_dataset(handle)`\n3. `plot(handle, plot_type="expression_dot")`\n',
     "composition": '# Composition\n\n1. `load_dataset(path, type_hint="composition")`\n2. `summarize_dataset(handle)`\n3. `plot(handle, plot_type="composition")`\n',
     "compare-datasets": "# Compare datasets\n\n1. `load_dataset` for each DE file\n2. `compare_datasets(handles=[...])` for overlap counts\n3. Add `include_genes=true` only with aggregate/preview policy\n",
+    "enrichment": '# GO/KEGG enrichment\n\n1. `load_dataset(path, type_hint="differential_expression")`\n2. Ensure `allow_network=true` and `data_policy=aggregate`/`preview`\n3. `run_enrichment(handle, direction="TOTAL", libraries=[...])`\n',
 }
 
 TOOL_DESCRIPTIONS = {
@@ -495,6 +581,7 @@ TOOL_DESCRIPTIONS = {
     "summarize_dataset": "Return a JSON-safe summary for a handle.",
     "filter_dataset": "Apply a filter and return a new child handle (counts only).",
     "compare_datasets": "Compare >=2 DE handles; counts by default, gene lists opt-in.",
+    "run_enrichment": "Run GO/KEGG ORA on a DE handle; network + aggregate/preview policy.",
     "query_rows": "Preview rows; requires preview policy opt-in.",
     "plot": "Render a registered plot type to a workspace image; requires image opt-in.",
     "export_table": "Export a handle to a workspace file; requires write opt-in.",
@@ -623,6 +710,17 @@ def build_server(policy: Optional[MCPPolicy] = None):
             "Load each DE file, call compare_datasets with their handles, and report "
             "overlap counts. Ask before enabling include_genes or include_table; "
             "gene lists need aggregate/preview and tables need preview policy."
+        )
+
+    @server.prompt(
+        name="enrichment",
+        description="GO/KEGG ORA: network + aggregate/preview policy",
+    )
+    def enrichment_prompt() -> str:
+        return (
+            "Load a DE dataset, confirm allow_network=true and aggregate/preview "
+            "data policy, then call run_enrichment with direction and libraries. "
+            "Do not enable include_table unless the policy is preview."
         )
 
     return server

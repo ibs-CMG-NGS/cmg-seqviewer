@@ -22,8 +22,8 @@
 | L2 | `preview` | opt-in | small row preview (default 20, max 100) |
 | L3 | `full` | never via MCP | full table; use CLI/local files |
 
-Default policy is `schema_only`. `aggregate`, `preview`, images, and writes must
-be explicitly enabled per workspace.
+Default policy is `schema_only`. `aggregate`, `preview`, images, writes, and
+network access must be explicitly enabled per workspace.
 
 ## Consent and configuration
 
@@ -31,8 +31,17 @@ be explicitly enabled per workspace.
 - Higher exposure levels are recorded in the workspace policy file.
 - A dataset may additionally carry an `ai_access` flag in its manifest/metadata
   (future integration); the MCP layer still enforces the workspace policy.
+- `allow_network=false` blocks enrichment by default.
 - `CMG_MCP_DISABLE=1` or `"enabled": false` disables the server.
 - Uninstalling the optional `[mcp]` extra removes the server entirely.
+
+## Network and enrichment
+
+`allow_network=false` is the default. GO/KEGG enrichment requires
+`allow_network=true` because even local runs may need annotation caches
+(GO OBO, NCBI gene2go/gene_info, Enrichr GMT). Enrichment results contain
+pathway names and gene symbols, so they also require `data_policy=aggregate`
+or `preview`; a full enrichment table requires `preview`.
 
 ## Images and plots
 

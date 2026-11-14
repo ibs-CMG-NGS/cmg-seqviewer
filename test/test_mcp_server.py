@@ -52,6 +52,7 @@ def test_policy_defaults_are_schema_only(tmp_path):
     assert policy.allow_row_preview is False
     assert policy.allow_images is False
     assert policy.allow_write is False
+    assert policy.allow_network is False
     assert policy.max_preview_rows == 20
 
 
@@ -169,6 +170,75 @@ def test_compare_requires_two_handles(tmp_path):
     assert out["error_code"] == "TOO_FEW_DATASETS"
 
 
+def _fake_enrichment_result():
+    from models.enrichment_models import EnrichmentRequest, EnrichmentResult
+
+    request = EnrichmentRequest(
+        source="dataset",
+        dataset_name="de",
+        fc_min=1.0,
+        fdr_max=0.05,
+        direction="TOTAL",
+        organism="human",
+        libraries=["BP"],
+        engine="offline",
+    )
+    return EnrichmentResult(
+        dataframe=pd.DataFrame(
+            {
+                "term_id": ["GO:1", "GO:2"],
+                "description": ["Term 1", "Term 2"],
+                "fdr": [0.01, 0.02],
+                "gene_count": [2, 1],
+                "ontology": ["BP", "BP"],
+                "direction": ["TOTAL", "TOTAL"],
+            }
+        ),
+        request=request,
+        metadata={"n_deg": 2, "engine_effective": "fake"},
+        warnings=[],
+        engine_used="fake",
+        dataset_name="Enrichment: de",
+    )
+
+
+def test_enrichment_requires_network_and_aggregate_policy(tmp_path):
+    svc = _service(tmp_path)
+    handle = svc.load_dataset("de.csv", "differential_expression")["handle"]
+    assert svc.run_enrichment(handle)["error_code"] == "NETWORK_DENIED"
+
+    network = _service(tmp_path, allow_network=True)
+    handle = network.load_dataset("de.csv", "differential_expression")["handle"]
+    assert network.run_enrichment(handle)["error_code"] == "ENRICHMENT_POLICY_DENIED"
+
+
+def test_enrichment_top_terms_and_table_policy(tmp_path, monkeypatch):
+    svc = _service(tmp_path, allow_network=True, data_policy="aggregate")
+    handle = svc.load_dataset("de.csv", "differential_expression")["handle"]
+    monkeypatch.setattr(
+        svc.enrichment,
+        "run_dataset",
+        lambda dataset, request: _fake_enrichment_result(),
+    )
+    out = svc.run_enrichment(handle)
+    assert out["n_terms"] == 2
+    assert len(out["top_terms"]) == 2
+    assert "table" not in out
+    assert (
+        svc.run_enrichment(handle, include_table=True)["error_code"] == "TABLE_DENIED"
+    )
+
+    preview = _service(tmp_path, allow_network=True, data_policy="preview")
+    handle = preview.load_dataset("de.csv", "differential_expression")["handle"]
+    monkeypatch.setattr(
+        preview.enrichment,
+        "run_dataset",
+        lambda dataset, request: _fake_enrichment_result(),
+    )
+    out = preview.run_enrichment(handle, include_table=True, top_n=1)
+    assert len(out["table"]) == 1
+
+
 def test_preview_images_write_and_audit(tmp_path):
     svc = _service(
         tmp_path,
@@ -222,6 +292,7 @@ def test_policy_file_opt_in(tmp_path):
                 "data_policy": "preview",
                 "allow_images": True,
                 "allow_write": True,
+                "allow_network": True,
                 "max_preview_rows": 5,
                 "audit_log": None,
             }
@@ -232,6 +303,7 @@ def test_policy_file_opt_in(tmp_path):
     assert policy.data_policy == "preview"
     assert policy.allow_images is True
     assert policy.allow_write is True
+    assert policy.allow_network is True
     assert policy.max_preview_rows == 5
 
 
@@ -308,7 +380,7 @@ def test_stdio_end_to_end(tmp_path):
                 init = await session.initialize()
                 assert init.server_info.name == "cmg-seqviewer"
                 tools = await session.list_tools()
-                assert len(tools.tools) == 11
+                assert len(tools.tools) == 12
                 result = await session.call_tool(
                     "load_dataset",
                     {"path": "de.csv", "type_hint": "differential_expression"},

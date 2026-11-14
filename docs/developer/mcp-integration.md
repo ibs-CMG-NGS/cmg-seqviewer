@@ -1,8 +1,8 @@
 # MCP Integration (v1)
 
-> Status: v1.1 headless server implemented (2026-11-14). Phase 1 services/CLI are
-> shared; enrichment and the optional GUI bridge are not v1.1. Read
-> [MCP privacy](mcp-privacy.md) before enabling anything beyond `schema_only`.
+> Status: v1.2 headless server implemented (2026-11-15). Phase 1 services/CLI are
+> shared; the optional GUI bridge is not v1.2. Read [MCP privacy](mcp-privacy.md)
+> before enabling anything beyond `schema_only`.
 
 ## Install and run
 
@@ -39,6 +39,7 @@ the server starts in `schema_only` mode.
   "allow_row_preview": false,
   "allow_images": false,
   "allow_write": false,
+  "allow_network": false,
   "max_preview_rows": 20,
   "enabled": true
 }
@@ -47,7 +48,7 @@ the server starts in `schema_only` mode.
 - `data_policy`: `schema_only` (default), `aggregate`, or `preview`.
 - `preview` implies `allow_row_preview=true`; setting `allow_row_preview=true`
   without `data_policy=preview` is a configuration error.
-- `allow_images` and `allow_write` are separate opt-ins.
+- `allow_images`, `allow_write`, and `allow_network` are separate opt-ins.
 - `max_preview_rows` is capped at 100.
 - `CMG_MCP_DISABLE=1` is the kill switch; `enabled: false` also disables the
   server.
@@ -75,7 +76,20 @@ explicitly:
 Use an absolute path to the environment's `cmg-seqviewer-mcp` if the client does
 not inherit your shell `PATH`. Restart the client after changing the config.
 
-## Tools (v1.1)
+### Manual E2E smoke test (Claude Code)
+
+```bash
+claude mcp add --scope local cmg-seqviewer-e2e \
+  -e CMG_MCP_WORKSPACE=/absolute/project/path \
+  -- /absolute/venv/bin/cmg-seqviewer-mcp
+claude mcp get cmg-seqviewer-e2e          # expect Status: Connected
+```
+
+Then, after logging in (`/login` in Claude Code), ask it to call
+`list_datasets`, `load_dataset`, `summarize_dataset`, and `compare_datasets`.
+This is the manual acceptance check; automated tests use a Python MCP client.
+
+## Tools (v1.2)
 
 | Tool | Purpose | Policy |
 |---|---|---|
@@ -85,6 +99,7 @@ not inherit your shell `PATH`. Restart the client after changing the config.
 | `summarize_dataset` | JSON-safe dataset summary. | always |
 | `filter_dataset` | Apply a filter; return a new child handle and counts. | always |
 | `compare_datasets` | Compare >=2 DE handles; counts by default. | always (gene lists: `aggregate`/`preview`; table: `preview`) |
+| `run_enrichment` | GO/KEGG ORA on a DE handle. | `allow_network` + `aggregate`/`preview`; table: `preview` |
 | `query_rows` | Small row preview (default 20, max 100). | `preview` |
 | `plot` | Render a registered plot type to a workspace file. | `allow_images` + `allow_write` |
 | `export_table` | Export a handle to CSV/TSV/XLSX/Parquet. | `allow_write` |
@@ -113,7 +128,7 @@ Resources:
 - `schema://dataset/{dataset_type}` — required standard columns.
 - `docs://pipeline-integration` — pipeline integration specification.
 - `workflow://de-analysis`, `workflow://expression-summary`,
-  `workflow://composition`, `workflow://compare-datasets` — short workflow notes.
+  `workflow://composition`, `workflow://compare-datasets`, `workflow://enrichment` — short workflow notes.
 
 Prompts:
 
@@ -121,6 +136,7 @@ Prompts:
 - `expression-summary`
 - `composition`
 - `compare-datasets`
+- `enrichment`
 
 ## Errors
 
@@ -131,8 +147,9 @@ Tool errors are structured and contain no data values:
 ```
 
 Common codes: `MCP_DISABLED`, `WRITE_DENIED`, `ROW_PREVIEW_DENIED`,
-`IMAGES_DENIED`, `PATH_OUTSIDE_WORKSPACE`, `UNKNOWN_HANDLE`, `BAD_TYPE`,
-`BAD_FILTER_MODE`, `BAD_FILTER_KEY`, `FILTER_EMPTY`, `INTERNAL_ERROR`.
+`IMAGES_DENIED`, `NETWORK_DENIED`, `ENRICHMENT_POLICY_DENIED`,
+`PATH_OUTSIDE_WORKSPACE`, `UNKNOWN_HANDLE`, `BAD_TYPE`, `BAD_FILTER_MODE`,
+`BAD_FILTER_KEY`, `FILTER_EMPTY`, `ENRICHMENT_NO_INPUT_GENES`, `INTERNAL_ERROR`.
 
 ## Audit log
 
@@ -140,14 +157,14 @@ The default audit log is `~/.cmg-seqviewer/mcp_audit.jsonl` (local JSONL). Each
 line records timestamp, tool, a truncated dataset-handle hash, data policy, and
 response size. It does **not** record row values, absolute paths, or user names.
 
-## v1.1 limitations
+## v1.2 limitations
 
 - `compare_datasets` returns counts only by default; set `include_genes=true`
   with `aggregate`/`preview`, or `include_table=true` with `preview`.
+- `run_enrichment` supports dataset-source ORA only (no paste/meta/prerank yet).
 - `aggregate` is accepted by policy, but `summarize_dataset` returns the
-  metadata summary; grouped aggregate tools are v1.1.
+  metadata summary; grouped aggregate tools are future work.
 - No full-table transfer (`L3`); use `export_table` and a local file.
-- No enrichment/network tools in v1.
 - No GUI bridge or live GUI control.
 - No in-app chat assistant; the AI stays in the researcher's MCP client.
 

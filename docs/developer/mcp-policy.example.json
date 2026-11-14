@@ -3,6 +3,7 @@
   "allow_row_preview": false,
   "allow_images": false,
   "allow_write": false,
+  "allow_network": false,
   "max_preview_rows": 20,
   "enabled": true
 }
