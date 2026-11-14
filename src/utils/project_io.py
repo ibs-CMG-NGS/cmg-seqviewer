@@ -22,6 +22,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+try:  # normal app runtime: ``src`` is on sys.path
+    from version import __version__ as APP_VERSION
+except ImportError:  # imported as ``src.utils.project_io``
+    from ..version import __version__ as APP_VERSION
+
 logger = logging.getLogger(__name__)
 
 FORMAT_VERSION = "1.0"
@@ -189,7 +194,7 @@ class ProjectIO:
 
         spec: Dict[str, Any] = {
             "format_version": FORMAT_VERSION,
-            "app_version": "1.2.1",
+            "app_version": APP_VERSION,
             "created_at": datetime.now().isoformat(timespec="seconds"),
             "description": "",
             "datasets": list(datasets_spec.values()),

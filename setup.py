@@ -2,16 +2,29 @@
 Setup script for RNA-Seq Data Analysis Program
 """
 
+import re
 from setuptools import setup, find_packages
 from pathlib import Path
 
+ROOT = Path(__file__).parent
+
 # Read README
-readme_file = Path(__file__).parent / "README.md"
+readme_file = ROOT / "README.md"
 long_description = readme_file.read_text(encoding="utf-8") if readme_file.exists() else ""
+
+# 버전은 src/version.py 한 곳에서만 관리한다.
+_version_match = re.search(
+    r'^__version__\s*=\s*["\']([^"\']+)["\']',
+    (ROOT / "src" / "version.py").read_text(encoding="utf-8"),
+    re.MULTILINE,
+)
+if not _version_match:
+    raise RuntimeError("Could not read __version__ from src/version.py")
+VERSION = _version_match.group(1)
 
 setup(
     name="rna-seq-data-analyzer",
-    version="1.4.1",
+    version=VERSION,
     author="RNA-Seq Analysis Team",
     author_email="your-email@example.com",
     description="A comprehensive tool for RNA-Seq data analysis and visualization",

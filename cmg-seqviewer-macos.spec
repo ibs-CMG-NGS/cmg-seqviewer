@@ -8,6 +8,10 @@ src_path = str(Path('.').resolve() / 'src')
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
+# 버전은 src/version.py 한 곳에서만 관리한다.
+import version as _app_version
+APP_VERSION = _app_version.__version__
+
 # GO/KEGG Enrichment Engine 번들 (plan §8/G1)
 from PyInstaller.utils.hooks import collect_all, collect_submodules, collect_data_files
 _datas, _binaries, _hidden = [], [], []
@@ -167,15 +171,15 @@ app = BUNDLE(
     name='CMG-SeqViewer.app',
     icon='cmg-seqviewer.icns',
     bundle_identifier='com.ibs.cmgseqviewer',
-    version='1.4.1',
+    version=APP_VERSION,
     info_plist={
         'NSPrincipalClass': 'NSApplication',
         'NSAppleScriptEnabled': False,
         'LSMinimumSystemVersion': '10.13.0',  # macOS 10.13 High Sierra minimum
         'NSHighResolutionCapable': True,
         'NSRequiresAquaSystemAppearance': False,
-        'CFBundleShortVersionString': '1.4.1',
-        'CFBundleVersion': '1.4.1',
+        'CFBundleShortVersionString': APP_VERSION,
+        'CFBundleVersion': APP_VERSION,
         'CFBundleName': 'CMG-SeqViewer',
         'CFBundleDisplayName': 'CMG-SeqViewer',
         'CFBundleExecutable': 'CMG-SeqViewer',

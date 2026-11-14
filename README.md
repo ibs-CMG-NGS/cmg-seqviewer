@@ -702,7 +702,7 @@ MIT License -- see [LICENSE](LICENSE).
   title   = {CMG-SeqViewer: RNA-Seq Data Analysis and Visualization Tool},
   year    = {2026},
   url     = {https://github.com/ibs-CMG-NGS/cmg-seqviewer},
-  version = {1.2.3}
+  version = {1.4.1}
 }
 ```
 

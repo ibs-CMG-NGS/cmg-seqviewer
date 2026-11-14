@@ -103,7 +103,7 @@ def export_figure_bundle(
         for ext in ("png", "pdf", "svg"):
             path = bundle_dir / "outputs" / f"{stem}.{ext}"
             if path.exists():
-                saved_outputs.append(str(path.relative_to(bundle_dir)))
+                saved_outputs.append(path.relative_to(bundle_dir).as_posix())
     output_formats = [
         ext for ext in ("png", "pdf", "svg")
         if (bundle_dir / "outputs" / f"{source_stem}.{ext}").exists()
@@ -135,10 +135,10 @@ def export_figure_bundle(
         "plot_type": plot_type,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "files": [
-            str(data_path.relative_to(bundle_dir)),
-            *([str(stats_path.relative_to(bundle_dir))] if has_statistics else []),
-            str(script_path.relative_to(bundle_dir)),
-            str(metadata_path.relative_to(bundle_dir)),
+            data_path.relative_to(bundle_dir).as_posix(),
+            *([stats_path.relative_to(bundle_dir).as_posix()] if has_statistics else []),
+            script_path.relative_to(bundle_dir).as_posix(),
+            metadata_path.relative_to(bundle_dir).as_posix(),
             *saved_outputs,
         ],
     }
@@ -154,8 +154,8 @@ def _app_version() -> str:
     except Exception:
         pass
     try:
-        init = Path(__file__).resolve().parents[1] / "__init__.py"
-        for line in init.read_text(encoding="utf-8").splitlines():
+        version_file = Path(__file__).resolve().parents[1] / "version.py"
+        for line in version_file.read_text(encoding="utf-8").splitlines():
             if line.startswith("__version__"):
                 return line.split("=", 1)[1].strip().strip('"').strip("'")
     except Exception:
@@ -655,9 +655,9 @@ def export_fig_atlas_bundle(
         "plot_type": plot_type,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "files": [
-            str(data_path.relative_to(bundle_dir)),
-            *([str(stats_path.relative_to(bundle_dir))] if has_statistics else []),
-            str(metadata_path.relative_to(bundle_dir)),
+            data_path.relative_to(bundle_dir).as_posix(),
+            *([stats_path.relative_to(bundle_dir).as_posix()] if has_statistics else []),
+            metadata_path.relative_to(bundle_dir).as_posix(),
             *[f"outputs/{source_stem}.{fmt}" for fmt in saved_formats],
         ],
     }
