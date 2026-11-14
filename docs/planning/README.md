@@ -7,7 +7,7 @@
 
 | Document | Description | Status | Remaining work |
 |---|---|---|---|
-| [MCP / AI Agent integration](MCP_AGENT_INTEGRATION_PLAN.md) | Headless service layer + MCP tools for AI clients | Planned (Phase 0 not started) | Privacy/threat model, tool schema, headless service, MCP server |
+| [MCP / AI Agent integration](MCP_AGENT_INTEGRATION_PLAN.md) | Headless CLI/MCP first; optional GUI bridge later | Planned (Phase 0 not started) | Privacy/threat model, tool schema, headless service, MCP server; GUI live control is a non-goal |
 | [Figure bundle handoff](FIGURE_QUALITY_REPRODUCIBILITY_PLAN.md) | Reproducible per-panel bundles for fig-atlas (contract) and cmg-figure (project layout) | P1 + P4 done; fig-atlas contract accepted (22/22); next cmg-figure real bundles | coverage complete; metadata contract + headless validation ([audit](FIGURE_BUNDLE_COVERAGE.md)) |
 | [Expression Distribution](EXPRESSION_DISTRIBUTION_PLAN.md) | Per-sample pseudobulk/quantile violin-box view | **v1.4.1 released** | Phase 3 cell-level store, full-atlas lazy DuckDB query, full-atlas export scope |
 | [ATAC pipeline packaging](ATAC_PIPELINE_SEQVIEWER_PACKAGING.md) | Requirements for the external ATAC 3rd-party pipeline | External coordination | Pipeline-side manifest/companion fields |

@@ -37,6 +37,18 @@ cmg-seqviewer의 분석을 실행하고 결과를 확인할 수 있게 한다.
 - AI 클라이언트로 raw table/full dataset을 기본 전송하는 것
 - 클라이언트 측 데이터 보관·학습 정책을 MCP 서버가 보장하는 것
 
+### 2.1 AI agent usage paths
+
+| Path | Status | Notes |
+|---|---|---|
+| **CLI / headless MCP** | **v1 primary** | AI client calls MCP tools; CLI shares the same service layer. No GUI needed. |
+| **GUI bridge** | Optional Phase 3 | Connect the service layer to the running GUI. Not detailed in v1; not live AI control. |
+| **GUI live control** | Non-goal | AI does not click/drag the GUI or use screen vision. |
+| **In-app chat assistant** | Not planned | AI stays in the researcher's own client (Claude Desktop, Cursor, etc.). |
+
+So the plan is **CLI/headless-first**. The GUI is kept unchanged; a GUI bridge is
+only an optional later phase and is not the primary AI-agent path.
+
 ## 3. Current State
 
 | 영역 | 현재 | 판단 |
@@ -302,7 +314,7 @@ cmg-seqviewer-cli schema|help
 | 0 | 결정·tool schema·client 호환성 | 2–3일 |
 | 1 | headless services + CLI 확장 + 테스트 | 1–2주 |
 | 2 | MCP server v1 (stdio, tools/resources/prompts) | 1주 |
-| 3 | (선택) GUI bridge | 1–2주 |
+| 3 | (선택) GUI bridge — service-layer bridge only, not live control | 1–2주 |
 | 4 | packaging/docs/security | 3–5일 |
 
 Phase 3 제외 시 **2–3주**, 포함 시 **4–5주** (1인 기준).
