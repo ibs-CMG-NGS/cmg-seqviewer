@@ -33,7 +33,7 @@ or, from a source checkout, equivalently:
 python src/cli.py --help
 ```
 
-Four subcommands are available: `load`, `filter`, `run`, `batch`.
+Subcommands: `load`, `filter`, `run`, `batch`, `summary`, `query`, `plot`, `export`, `schema`, and `help`.
 
 ## 19.2 `load` — inspect a file
 
@@ -173,7 +173,52 @@ writes a JSON array with one entry per file (`input`, `status`,
 machine-readable record of what was run, suitable for checking into a
 results folder alongside the filtered tables.
 
-## 19.5 Exit codes and scripting
+## 19.5 Headless inspection and plotting
+
+These commands use the shared `src/services/` layer, so they behave the same
+way as the CLI filtering path and can be called by an AI client or a pipeline.
+
+**`summary`** prints a JSON-safe dataset summary:
+
+```bash
+cmg-seqviewer-cli summary data/DE.xlsx --json
+```
+
+**`query`** selects columns and a row range without filtering:
+
+```bash
+cmg-seqviewer-cli query data/DE.xlsx \
+  --columns gene_id log2fc adj_pvalue --limit 100 --out preview.csv
+```
+
+**`plot`** renders any registered plot type with the same renderers as the GUI:
+
+```bash
+cmg-seqviewer-cli plot data/DE.xlsx --plot-type volcano \
+  --params-json '{"log2fc_threshold": 1.0, "padj_threshold": 0.05}' \
+  --out figures/volcano.png --dpi 300
+```
+
+Use `schema --json` to list available `plot_type`s and their parameters.
+The plot is rendered headlessly with matplotlib Agg; no `QApplication` is
+created.
+
+**`export`** writes the loaded table as CSV/TSV/Excel/Parquet:
+
+```bash
+cmg-seqviewer-cli export data/DE.xlsx --out exported/de.csv
+```
+
+**`schema`** lists plot types and help sections; **`help`** searches or prints
+the Markdown F1 help:
+
+```bash
+cmg-seqviewer-cli schema --json
+cmg-seqviewer-cli help filter --json
+cmg-seqviewer-cli help --section 01-getting-started
+```
+
+## 19.6 Exit codes and scripting
 
 Every subcommand returns `0` on success and `1` on failure (an
 unrecognized file, missing required columns, a bad recipe, or — for

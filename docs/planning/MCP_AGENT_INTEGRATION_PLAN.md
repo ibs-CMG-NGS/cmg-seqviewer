@@ -53,12 +53,24 @@ only an optional later phase and is not the primary AI-agent path.
 
 | 영역 | 현재 | 판단 |
 |------|------|------|
-| CLI | `load/filter/run/batch` (`src/cli.py`) | 자동화 기반은 있음. `list/describe/summary/query/plot/export/compare` 확장 필요 |
-| 필터 | `MainPresenter.compute_filtered_df` | GUI 결합. 순수 `FilterService`로 추출 필요 |
-| 플롯 | `src/plots/*.py` 렌더러가 Qt 비의존 | **핵심 자산**. Agg로 headless 이미지 생성 가능 |
+| CLI | `load/filter/run/batch` + `summary/query/plot/export/schema/help` (`src/cli.py`) | 자동화 기반 확보. `datasets/compare`는 아직 |
+| Services | `src/services/` Dataset/Filter/Plot/HelpService | 공유 계층 확보. AnalysisService/handle registry는 아직 |
+| 필터 | `FilterService` → `MainPresenter.compute_filtered_df` | 동작 공유 완료. 순수 추출은 후속 |
+| 플롯 | `src/plots/*.py` + `PlotService` (Agg) | **핵심 자산**. headless 이미지 생성 가능 |
 | DB | `DatabaseManager` import/load/search/export | MCP tool로 노출 가능 |
-| 도움말 | `docs/user/help/*.md` | MCP **resources**로 그대로 제공 가능 |
-| MCP/서버 | 없음 | `mcp` SDK를 optional extra로 추가 |
+| 도움말 | `docs/user/help/*.md` + `HelpService` | MCP **resources**로 그대로 제공 가능 |
+| MCP/서버 | 없음 | `mcp` SDK를 optional extra로 추가 (Phase 2) |
+
+### Implementation status (2026-11-10)
+
+- ✅ `DatasetService`: load/describe/summary/query/export
+- ✅ `FilterService`: statistical/gene-list/keyword via the GUI-shared path
+- ✅ `PlotService`: Agg render to PNG/PDF/SVG using `plots.registry`
+- ✅ `HelpService`: list/read/search F1 Markdown
+- ✅ CLI: `summary`, `query`, `plot`, `export`, `schema`, `help`
+- ⏳ `AnalysisService` / `datasets list|describe` / `compare`
+- ⏳ MCP server v1 (stdio) and privacy/audit controls
+- Verification: `391 passed, 4 deselected`; service/CLI tests included
 
 ### 현재 CLI의 한계
 
@@ -312,7 +324,7 @@ cmg-seqviewer-cli schema|help
 | Phase | 내용 | 예상 |
 |------|------|------|
 | 0 | 결정·tool schema·client 호환성 | 2–3일 |
-| 1 | headless services + CLI 확장 + 테스트 | 1–2주 |
+| 1 | headless services + CLI 확장 + 테스트 (partial: services + inspection/plot/export commands done) | 1–2주 |
 | 2 | MCP server v1 (stdio, tools/resources/prompts) | 1주 |
 | 3 | (선택) GUI bridge — service-layer bridge only, not live control | 1–2주 |
 | 4 | packaging/docs/security | 3–5일 |

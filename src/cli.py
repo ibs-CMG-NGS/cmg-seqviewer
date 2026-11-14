@@ -42,22 +42,14 @@ import json
 import logging
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Optional
 
 import pandas as pd
 
 
-def _build_presenter():
-    """Qt 이벤트 루프/QApplication 없이 MainPresenter를 만든다 (compute_filtered_df
-    등 순수 로직 메서드만 쓰므로 GUI 위젯은 전혀 필요 없음 — Phase 0 타당성 검증에서
-    확인됨)."""
-    from presenters.main_presenter import MainPresenter
-    return MainPresenter(SimpleNamespace())
-
-
 _TYPE_CHOICES = ["atac", "differential_expression", "go_analysis", "multi_group",
-                 "composition", "expression_summary", "expression_distribution"]
+                 "composition", "expression_summary", "expression_distribution",
+                 "chromvar", "motif", "footprint"]
 
 
 def _dataset_type_hint(type_arg: Optional[str]):
@@ -72,6 +64,9 @@ def _dataset_type_hint(type_arg: Optional[str]):
         "composition": DatasetType.COMPOSITION,
         "expression_summary": DatasetType.EXPRESSION_SUMMARY,
         "expression_distribution": DatasetType.EXPRESSION_DISTRIBUTION,
+        "chromvar": DatasetType.CHROMVAR_DIFF_TF,
+        "motif": DatasetType.MOTIF_ENRICHMENT,
+        "footprint": DatasetType.TF_FOOTPRINT,
     }
     if type_arg not in mapping:
         raise ValueError(f"--type must be one of {sorted(mapping)}, got {type_arg!r}")
@@ -79,58 +74,28 @@ def _dataset_type_hint(type_arg: Optional[str]):
 
 
 def _load(file_path: Path, type_arg: Optional[str], logger: logging.Logger):
-    """load_any_dataset()을 호출 — 컬럼 매핑 콜백은 항상 None (CLI는 대화형 UI가
-    없으므로, 인식 실패 시 조용히 넘어가지 않고 바로 예외를 낸다)."""
-    from utils.data_loader import DataLoader
-    from utils.dataset_detection import load_any_dataset
-
-    hint = _dataset_type_hint(type_arg)
-    return load_any_dataset(
-        file_path, DataLoader(), dataset_type_hint=hint,
-        column_mapper_callback=None, logger=logger,
-    )
+    """Load through the shared DatasetService (same path as the GUI/CLI)."""
+    from services.dataset_service import DatasetService
+    return DatasetService(logger).load(
+        file_path, _dataset_type_hint(type_arg), column_mapper=None)
 
 
 def _write_table(df: pd.DataFrame, out_path: Path) -> None:
-    suffix = out_path.suffix.lower()
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    if suffix in (".xlsx", ".xls"):
-        df.to_excel(out_path, index=False)
-    elif suffix == ".csv":
-        df.to_csv(out_path, index=False)
-    elif suffix == ".tsv":
-        df.to_csv(out_path, index=False, sep="\t")
-    elif suffix == ".parquet":
-        df.to_parquet(out_path, index=False)
-    else:
-        raise ValueError(
-            f"Unsupported output format: {suffix!r} (use .xlsx/.csv/.tsv/.parquet)")
+    from services.dataset_service import DatasetService
+    DatasetService().export(df, out_path)
 
 
 def _dataset_report(dataset) -> dict:
-    """`load --json` 출력 — 파이프라인 CI가 타입/행수/컬럼/필수 컬럼 충족 여부를
-    기계적으로 검증할 수 있는 최소 스키마."""
-    from models.data_models import DatasetType
-    from models.standard_columns import StandardColumns
+    from services.dataset_service import DatasetService
+    return DatasetService().describe(dataset)
 
-    required = {
-        DatasetType.DIFFERENTIAL_EXPRESSION: StandardColumns.get_de_required(),
-        DatasetType.GO_ANALYSIS: StandardColumns.get_go_required(),
-        DatasetType.ATAC_SEQ: StandardColumns.get_atac_required(),
-        DatasetType.COMPOSITION: StandardColumns.get_composition_required(),
-        DatasetType.EXPRESSION_SUMMARY: StandardColumns.get_expression_summary_required(),
-        DatasetType.EXPRESSION_DISTRIBUTION: (
-            StandardColumns.get_expression_distribution_required()),
-    }.get(dataset.dataset_type, [])
-    present = list(dataset.dataframe.columns)
-    return {
-        "dataset_type": dataset.dataset_type.value,
-        "rows": len(dataset.dataframe),
-        "columns": present,
-        "valid": bool(dataset.is_valid),
-        "required_columns": list(required),
-        "missing_required_columns": [c for c in required if c not in present],
-    }
+
+def _parse_figsize(text: str) -> tuple[float, float]:
+    try:
+        w, h = str(text).lower().replace(" ", "").split("x", 1)
+        return (float(w), float(h))
+    except Exception as exc:
+        raise ValueError(f"Invalid --figsize {text!r}; use WIDTHxHEIGHT, e.g. 10x7") from exc
 
 
 def cmd_load(args: argparse.Namespace) -> int:
@@ -146,6 +111,94 @@ def cmd_load(args: argparse.Namespace) -> int:
     print(f"rows: {len(df)}")
     print(f"columns: {list(df.columns)}")
     print(f"valid: {dataset.is_valid}")
+    return 0
+
+
+def cmd_summary(args: argparse.Namespace) -> int:
+    logger = logging.getLogger("cmg_cli.summary")
+    dataset = _load(Path(args.file), args.type, logger)
+    from services.dataset_service import DatasetService
+    summary = DatasetService(logger).summary(dataset)
+    if args.json:
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+    else:
+        for key in ("name", "type", "valid", "row_count", "column_count"):
+            if key in summary:
+                print(f"{key}: {summary[key]}")
+    return 0
+
+
+def cmd_query(args: argparse.Namespace) -> int:
+    logger = logging.getLogger("cmg_cli.query")
+    dataset = _load(Path(args.file), args.type, logger)
+    from services.dataset_service import DatasetService
+    df = DatasetService(logger).query(
+        dataset, columns=args.columns, limit=args.limit, offset=args.offset)
+    if args.out:
+        _write_table(df, Path(args.out))
+        print(f"wrote: {args.out} ({len(df)} rows)")
+    else:
+        print(df.to_string(index=False))
+    return 0
+
+
+def cmd_plot(args: argparse.Namespace) -> int:
+    logger = logging.getLogger("cmg_cli.plot")
+    dataset = _load(Path(args.file), args.type, logger)
+    try:
+        params = json.loads(args.params_json or "{}")
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid --params-json: {exc}") from exc
+    if not isinstance(params, dict):
+        raise ValueError("--params-json must be a JSON object")
+    from services.plot_service import PlotService
+    out = PlotService(logger).render(
+        dataset, args.plot_type, args.out, params=params,
+        dpi=args.dpi, figsize=_parse_figsize(args.figsize))
+    print(f"wrote: {out}")
+    return 0
+
+
+def cmd_export(args: argparse.Namespace) -> int:
+    logger = logging.getLogger("cmg_cli.export")
+    dataset = _load(Path(args.file), args.type, logger)
+    from services.dataset_service import DatasetService
+    out = DatasetService(logger).export(dataset, args.out, fmt=args.format)
+    print(f"wrote: {out} ({len(dataset.dataframe)} rows)")
+    return 0
+
+
+def cmd_schema(args: argparse.Namespace) -> int:
+    from services.help_service import HelpService
+    from services.plot_service import PlotService
+    payload = {
+        "plot_types": PlotService().list_plot_types(),
+        "help_sections": HelpService().sections(),
+    }
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print("plot types:")
+        for name in payload["plot_types"]:
+            print(f"  {name}")
+        print("help sections:")
+        for section in payload["help_sections"]:
+            print(f"  {section['slug']}: {section['title']}")
+    return 0
+
+
+def cmd_help(args: argparse.Namespace) -> int:
+    from services.help_service import HelpService
+    svc = HelpService()
+    if args.section:
+        print(svc.get(args.section))
+        return 0
+    sections = svc.search(args.query) if args.query else svc.sections()
+    if args.json:
+        print(json.dumps(sections, ensure_ascii=False, indent=2))
+    else:
+        for section in sections:
+            print(f"{section['slug']}: {section['title']}")
     return 0
 
 
@@ -172,9 +225,8 @@ def cmd_filter(args: argparse.Namespace) -> int:
         atac_peak_width_max=args.atac_peak_width_max,
     )
 
-    presenter = _build_presenter()
-    presenter.current_dataset = dataset
-    filtered = presenter.compute_filtered_df(criteria)
+    from services.filter_service import FilterService
+    filtered = FilterService().filter(dataset, criteria)
     if filtered is None:
         print("Filter produced no result (unsupported dataset type/mode combination).",
               file=sys.stderr)
@@ -196,9 +248,8 @@ def _load_and_filter(file_path: Path, type_arg: Optional[str], criteria, logger:
         (dataset, filtered_df). filtered_df는 지원 안 되는 타입/모드 조합이면 None.
     """
     dataset = _load(file_path, type_arg, logger)
-    presenter = _build_presenter()
-    presenter.current_dataset = dataset
-    filtered = presenter.compute_filtered_df(criteria)
+    from services.filter_service import FilterService
+    filtered = FilterService().filter(dataset, criteria)
     return dataset, filtered
 
 
@@ -354,6 +405,62 @@ def build_parser() -> argparse.ArgumentParser:
     p_batch.add_argument("--manifest", default=None,
                          help="파일별 성공/실패·행수 요약을 쓸 JSON 경로")
     p_batch.set_defaults(func=cmd_batch)
+
+    p_summary = sub.add_parser("summary", help="데이터셋 요약을 JSON/텍스트로 출력")
+    p_summary.add_argument("file", help="입력 파일")
+    p_summary.add_argument("--type", choices=_TYPE_CHOICES, default=None,
+                           help="명시적 데이터셋 타입 힌트")
+    p_summary.add_argument("--json", action="store_true", help="JSON으로 출력")
+    p_summary.set_defaults(func=cmd_summary)
+
+    p_query = sub.add_parser("query", help="컬럼/행 범위를 잘라 표로 출력")
+    p_query.add_argument("file", help="입력 파일")
+    p_query.add_argument("--type", choices=_TYPE_CHOICES, default=None,
+                         help="명시적 데이터셋 타입 힌트")
+    p_query.add_argument("--columns", nargs="+", default=None,
+                         help="출력할 컬럼 목록 (기본: 전체)")
+    p_query.add_argument("--limit", type=int, default=None, help="최대 행 수")
+    p_query.add_argument("--offset", type=int, default=0, help="시작 행 (0-based)")
+    p_query.add_argument("--out", default=None,
+                         help="결과를 저장할 파일 (.csv/.tsv/.xlsx/.parquet)")
+    p_query.set_defaults(func=cmd_query)
+
+    p_plot = sub.add_parser("plot", help="등록된 plot_type으로 headless 이미지 생성")
+    p_plot.add_argument("file", help="입력 파일")
+    p_plot.add_argument("--type", choices=_TYPE_CHOICES, default=None,
+                        help="명시적 데이터셋 타입 힌트")
+    p_plot.add_argument("--plot-type", required=True,
+                        help="예: volcano, heatmap, ma, pca, go_dot")
+    p_plot.add_argument("--params-json", default="{}",
+                        help="plot_params JSON (기본: {})")
+    p_plot.add_argument("--out", required=True,
+                        help="출력 이미지 (.png/.pdf/.svg)")
+    p_plot.add_argument("--dpi", type=int, default=300, help="raster DPI (기본: 300)")
+    p_plot.add_argument("--figsize", default="10x7",
+                        help="그림 크기 WIDTHxHEIGHT (기본: 10x7)")
+    p_plot.set_defaults(func=cmd_plot)
+
+    p_export = sub.add_parser("export", help="로드한 데이터셋을 파일로 export")
+    p_export.add_argument("file", help="입력 파일")
+    p_export.add_argument("--type", choices=_TYPE_CHOICES, default=None,
+                          help="명시적 데이터셋 타입 힌트")
+    p_export.add_argument("--out", required=True,
+                          help="출력 파일 (.csv/.tsv/.xlsx/.parquet)")
+    p_export.add_argument("--format", choices=["csv", "tsv", "xlsx", "parquet"],
+                          default=None, help="출력 포맷 (기본: --out 확장자)")
+    p_export.set_defaults(func=cmd_export)
+
+    p_schema = sub.add_parser("schema", help="plot type과 help section 목록")
+    p_schema.add_argument("--json", action="store_true", help="JSON으로 출력")
+    p_schema.set_defaults(func=cmd_schema)
+
+    p_help = sub.add_parser("help", help="F1 도움말 section 목록/검색/출력")
+    p_help.add_argument("query", nargs="?", default=None,
+                        help="검색어 (생략하면 전체 목록)")
+    p_help.add_argument("--section", default=None,
+                        help="section slug를 Markdown으로 출력")
+    p_help.add_argument("--json", action="store_true", help="JSON으로 출력")
+    p_help.set_defaults(func=cmd_help)
 
     return parser
 
