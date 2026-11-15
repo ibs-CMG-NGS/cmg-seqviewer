@@ -39,6 +39,13 @@ def test_macos_spec_matches():
     assert f"'{VERSION}'" not in spec, "macOS spec 에 하드코딩된 버전이 남아 있습니다"
 
 
+def test_main_window_about_uses_version_module():
+    main_window = _read("src/gui/main_window.py")
+    assert "from version import __version__ as APP_VERSION" in main_window
+    assert "Version {APP_VERSION}" in main_window
+    assert "Version 1." not in main_window
+
+
 def test_project_io_uses_version_module():
     project_io = _read("src/utils/project_io.py")
     assert "from version import __version__ as APP_VERSION" in project_io

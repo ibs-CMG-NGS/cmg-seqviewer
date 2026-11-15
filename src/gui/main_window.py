@@ -40,6 +40,11 @@ from models.data_models import FilterMode, DatasetType
 from presenters.main_presenter import MainPresenter
 from utils.export_paths import remembered_save_path
 
+try:
+    from version import __version__ as APP_VERSION
+except ImportError:  # package-relative import (src.gui.main_window)
+    from ..version import __version__ as APP_VERSION
+
 
 def _is_wsl() -> bool:
     """WSL/WSLg 환경인지 감지한다."""
@@ -3447,7 +3452,7 @@ class MainWindow(QMainWindow):
 
         title_label = QLabel(
             "<h2 style='margin:0;'>CMG-SeqViewer</h2>"
-            "<p style='margin:2px 0;'><b>Version 1.4.1</b></p>"
+            f"<p style='margin:2px 0;'><b>Version {APP_VERSION}</b></p>"
             "<p style='margin:2px 0; color:#555;'>RNA-Seq Data Analysis &amp; Visualization</p>"
         )
         title_label.setWordWrap(True)
