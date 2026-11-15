@@ -8,6 +8,7 @@
 |------|------|------|
 | [빌드 가이드](build-guide.md) | Windows/macOS 실행 파일 빌드 (Apple Silicon 포함) | 빌드 담당자 |
 | [배포 가이드](deployment.md) | GitHub Release 및 CI/CD | 릴리스 매니저 |
+| [v1.5.1 릴리스 노트](release-notes-v1.5.1.md) | v1.5.1 About 버전 수정 | 릴리스 매니저 |
 | [v1.5.0 릴리스 노트](release-notes-v1.5.0.md) | v1.5.0 변경사항/업그레이드 노트 | 릴리스 매니저 |
 | [v1.4.1 릴리스 노트](release-notes-v1.4.1.md) | v1.4.1 변경사항/업그레이드 노트 | 릴리스 매니저 |
 | [v1.4.0 릴리스 노트](release-notes-v1.4.0.md) | v1.4.0 변경사항/업그레이드 노트 | 릴리스 매니저 |
@@ -38,7 +39,7 @@ pip install -r requirements-dev.txt
 .\dist\CMG-SeqViewer\CMG-SeqViewer.exe
 
 # 4. 압축
-Compress-Archive -Path "dist\CMG-SeqViewer" -DestinationPath "CMG-SeqViewer-v1.5.0-Windows.zip"
+Compress-Archive -Path "dist\CMG-SeqViewer" -DestinationPath "CMG-SeqViewer-v1.5.1-Windows.zip"
 
 # 5. GitHub Release 업로드
 # GitHub → Releases → Draft new release
@@ -63,7 +64,7 @@ chmod +x build-macos.sh
 open dist/CMG-SeqViewer.app
 
 # 4. DMG 생성
-hdiutil create -volname "CMG-SeqViewer" -srcfolder dist/CMG-SeqViewer.app -ov -format UDZO CMG-SeqViewer-v1.5.0-macOS.dmg
+hdiutil create -volname "CMG-SeqViewer" -srcfolder dist/CMG-SeqViewer.app -ov -format UDZO CMG-SeqViewer-v1.5.1-macOS.dmg
 
 # 5. GitHub Release 업로드
 ```
@@ -151,31 +152,29 @@ zip -r CMG-SeqViewer-macOS.zip dist/CMG-SeqViewer.app
 **1. 버전 업데이트**:
 ```python
 # 단일 소스: src/version.py
-__version__ = "1.5.0"
+__version__ = "1.5.1"
 ```
 함께 갱신할 사본: `README.md` 배지/인용, `installer.iss`의
 `MyAppVersion`. `pytest test/test_version_consistency.py`가 불일치를 검사한다.
 
 **2. 릴리스 노트 업데이트**:
 ```markdown
-## [1.5.0] - 2026-11-15
+## [1.5.1] - 2026-11-15
 
-### Added
-- Headless MCP server (`cmg-seqviewer-mcp`, optional `[mcp]` extra)
-- Expanded CLI: summary/query/plot/export/datasets/compare/schema/help
-- CLI filter modes: statistical/gene_list/keyword/column_subset
-- Shared headless services and pure FilterEngine
+### Fixed
+- About dialog now reads the version from `src/version.py`
+- Added a version-consistency regression test
 ```
 
 **3. Git 태그 생성**:
 ```powershell
-git tag -a v1.5.0 -m "Release v1.5.0: MCP server and expanded CLI"
-git push origin v1.5.0
+git tag -a v1.5.1 -m "Release v1.5.1: fix About version"
+git push origin v1.5.1
 ```
 
 **4. GitHub Release 생성**:
 - Releases → Draft new release
-- 태그: v1.5.0
+- 태그: v1.5.1
 - 빌드 파일 업로드
 
 ### CI/CD 자동 릴리스

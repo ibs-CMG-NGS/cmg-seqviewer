@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyQt6](https://img.shields.io/badge/PyQt-6-green.svg)](https://www.riverbankcomputing.com/software/pyqt/)
-[![Release](https://img.shields.io/badge/release-v1.5.0-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
+[![Release](https://img.shields.io/badge/release-v1.5.1-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
 [![Docs](https://img.shields.io/badge/docs-online%20guide-blue.svg)](https://ibs-cmg-ngs.github.io/cmg-seqviewer/)
 
 ---
@@ -32,7 +32,12 @@
 
 ---
 
-## Latest Update: v1.5.0 (Nov 2026)
+## Latest Update: v1.5.1 (Nov 2026)
+
+- [FIX] **About dialog version** now reads `src/version.py` instead of a hardcoded string; v1.5.0 GUI builds showed `1.4.1` in About. Use v1.5.1 GUI assets.
+- [TEST] Added a version-consistency regression test for the About dialog.
+
+### Previous: v1.5.0 (Nov 2026)
 
 - [NEW] **Headless MCP server** (`cmg-seqviewer-mcp`, optional `[mcp]` extra): Claude Desktop/Cursor/Claude Code can load and inspect datasets, filter, compare DE results, render headless plots, export tables, run dataset-source GO/KEGG ORA, and read F1 help/workflows
 - [NEW] **MCP privacy controls**: `schema_only` default, row/image/write/network opt-ins, workspace path guard, JSONL audit log, `CMG_MCP_DISABLE` kill switch
@@ -712,7 +717,7 @@ MIT License -- see [LICENSE](LICENSE).
   title   = {CMG-SeqViewer: RNA-Seq Data Analysis and Visualization Tool},
   year    = {2026},
   url     = {https://github.com/ibs-CMG-NGS/cmg-seqviewer},
-  version = {1.5.0}
+  version = {1.5.1}
 }
 ```
 
