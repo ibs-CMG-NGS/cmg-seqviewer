@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyQt6](https://img.shields.io/badge/PyQt-6-green.svg)](https://www.riverbankcomputing.com/software/pyqt/)
-[![Release](https://img.shields.io/badge/release-v1.4.1-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
+[![Release](https://img.shields.io/badge/release-v1.5.0-brightgreen.svg)](https://github.com/ibs-CMG-NGS/cmg-seqviewer/releases)
 [![Docs](https://img.shields.io/badge/docs-online%20guide-blue.svg)](https://ibs-cmg-ngs.github.io/cmg-seqviewer/)
 
 ---
@@ -32,7 +32,17 @@
 
 ---
 
-## Latest Update: v1.4.1 (Oct 2026)
+## Latest Update: v1.5.0 (Nov 2026)
+
+- [NEW] **Headless MCP server** (`cmg-seqviewer-mcp`, optional `[mcp]` extra): Claude Desktop/Cursor/Claude Code can load and inspect datasets, filter, compare DE results, render headless plots, export tables, run dataset-source GO/KEGG ORA, and read F1 help/workflows
+- [NEW] **MCP privacy controls**: `schema_only` default, row/image/write/network opt-ins, workspace path guard, JSONL audit log, `CMG_MCP_DISABLE` kill switch
+- [NEW] **Expanded CLI**: `summary`, `query`, `plot`, `export`, `datasets list|describe`, `compare`, `schema`, and `help`; `filter` now supports statistical, gene-list, keyword, and column-subset modes
+- [NEW] **Shared headless services**: `DatasetService`, `DatabaseService`, `FilterEngine`, `AnalysisService`, `EnrichmentService`, `PlotService`, and `HelpService` are used by both CLI and MCP
+- [REFACTOR] **Pure `FilterEngine`**: GUI `MainPresenter`, CLI, and MCP now share one filtering implementation
+- [DOC] **AI Agent / MCP guide**, expanded CLI guide, and GUI/CLI/MCP feature-boundary documentation
+- [NOTE] **GUI installers remain GUI-only**; CLI/MCP are available from source/pip. Install MCP with `pip install "rna-seq-data-analyzer[mcp]"`
+
+### Previous: v1.4.1 (Oct 2026)
 
 - [NEW] **Gene Expression Distribution (violin/box)** (`Visualization → 🧬 Single-cell RNA-seq → 🎻 Gene Expression Distribution`): per-sample pseudobulk or quantile summary, grouped by condition/dataset/sample, with violin/box/strip, n_cells/% expressing filters, and export/bundle/pin
 - [NEW] **`expression_distribution` bundle support**: manifest `distribution_schema`, `sample_unit`, `gene_index`/`cell_type_summary` companions, and `*_pseudobulk.parquet` auto-detection; the 70-dataset pilot bundle imports 70/70
@@ -702,7 +712,7 @@ MIT License -- see [LICENSE](LICENSE).
   title   = {CMG-SeqViewer: RNA-Seq Data Analysis and Visualization Tool},
   year    = {2026},
   url     = {https://github.com/ibs-CMG-NGS/cmg-seqviewer},
-  version = {1.4.1}
+  version = {1.5.0}
 }
 ```
 

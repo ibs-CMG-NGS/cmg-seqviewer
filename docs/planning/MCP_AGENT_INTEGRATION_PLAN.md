@@ -381,6 +381,7 @@ Phase 3 제외 시 **2–3주**, 포함 시 **4–5주** (1인 기준).
 5. **쓰기 권한**: 기본 read-only + export 허용 (DB import/삭제는 opt-in).
 6. **패키징**: 별도 `cmg-seqviewer-mcp` 콘솔 스크립트 + `[mcp]` optional extra.
 7. **데이터 정책 기본값**: `schema_only` (row/image/aggregate는 프로젝트별 opt-in). MCP는 optional extra이며, 사용자가 `cmg-seqviewer-mcp`를 실행할 때만 동작한다.
+8. **배포 경계**: GUI installer에는 CLI/MCP를 번들하지 않는다. CLI/MCP는 pip/source의 optional extra로 제공하고, 추후 별도 CLI tools/AI tools artifact를 검토한다.
 
 추가 협의 가능:
 
