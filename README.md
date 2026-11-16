@@ -39,6 +39,7 @@
 
 ### Previous: v1.5.0 (Nov 2026)
 
+- [NOTE] v1.5.0 GUI About dialog showed `1.4.1`; fixed in v1.5.1
 - [NEW] **Headless MCP server** (`cmg-seqviewer-mcp`, optional `[mcp]` extra): Claude Desktop/Cursor/Claude Code can load and inspect datasets, filter, compare DE results, render headless plots, export tables, run dataset-source GO/KEGG ORA, and read F1 help/workflows
 - [NEW] **MCP privacy controls**: `schema_only` default, row/image/write/network opt-ins, workspace path guard, JSONL audit log, `CMG_MCP_DISABLE` kill switch
 - [NEW] **Expanded CLI**: `summary`, `query`, `plot`, `export`, `datasets list|describe`, `compare`, `schema`, and `help`; `filter` now supports statistical, gene-list, keyword, and column-subset modes

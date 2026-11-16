@@ -5,6 +5,8 @@
 - **Full diff**: https://github.com/ibs-CMG-NGS/cmg-seqviewer/compare/v1.4.1...v1.5.0
 - **Branch**: `chore/release-v1.5.0` (from `master`)
 
+> **Known issue (fixed in v1.5.1):** v1.5.0 GUI installers show `Version 1.4.1` in the About dialog. Use the v1.5.1 GUI assets.
+
 ## Highlights
 
 ### AI agent integration (MCP)
